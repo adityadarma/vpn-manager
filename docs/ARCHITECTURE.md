@@ -4,7 +4,7 @@
 
 VPN Manager uses a scalable, modular architecture:
 - **API** - Fastify REST API (control plane)
-- **Web UI** - Next.js dashboard
+- **Web UI** - ReactJS dashboard
 - **Agent** - Node.js worker (node controller)
 - **VPN Server** - OpenVPN, WireGuard, or other VPN providers
 

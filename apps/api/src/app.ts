@@ -65,7 +65,6 @@ export async function buildApp(env: Env) {
     { prefix: '/api/v1' },
   )
 
-  // Serve Next.js static build output (only in production)
   if (env.NODE_ENV === 'production') {
     await app.register(staticPlugin)
   }

@@ -303,9 +303,6 @@ JWT_SECRET=dev-secret-please-change-in-production-32chars
 
 # VPN Token (for hooks authentication)
 VPN_TOKEN=dev-vpn-token-change-in-production
-
-# API URL
-NEXT_PUBLIC_API_URL=http://localhost:3001
 ```
 
 ### Step 4: Setup Database

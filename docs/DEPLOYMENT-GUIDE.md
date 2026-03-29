@@ -49,7 +49,7 @@ ghcr.io/adityadarma/vpn-manager:latest
 ```
 
 **Contains:**
-- Web UI (Next.js) on port 3000
+- Web UI (ReactJS) on port 3000
 - API (Fastify) on port 3001
 - Managed by supervisor
 

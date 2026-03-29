@@ -6,12 +6,6 @@ node_modules
 # Build outputs
 dist
 build
-.next
-.next/
-**/.next
-**/.next/
-apps/web/.next
-apps/web/.next/
 out
 
 # Turbo

@@ -54,7 +54,7 @@ export function ThemeProvider({
 
       return () => {
         // Force restyle
-        ;(() => window.getComputedStyle(document.body))()
+        ; (() => window.getComputedStyle(document.body))()
 
         // Wait for next tick before removing
         setTimeout(() => {
@@ -78,7 +78,7 @@ export function ThemeProvider({
           .matches
           ? "dark"
           : "light"
-        
+
         activeTheme = systemTheme
       }
 
@@ -100,7 +100,7 @@ export function ThemeProvider({
     if (theme !== "system" || !enableSystem) return
 
     const media = window.matchMedia("(prefers-color-scheme: dark)")
-    
+
     const handleChange = () => {
       const root = window.document.documentElement
       const cls = attribute === "class"
