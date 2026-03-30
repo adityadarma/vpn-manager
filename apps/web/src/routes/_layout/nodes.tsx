@@ -390,7 +390,7 @@ function NodesPage() {
                 </p>
 
                 <div className="bg-muted/50 rounded-lg p-4 border border-border/50 mb-6 relative group">
-                  <pre className="text-xs font-mono text-gray-800 whitespace-pre-wrap break-all">
+                  <pre className="text-xs font-mono text-foreground whitespace-pre-wrap break-all">
                     <span className="text-emerald-600">AGENT_NODE_ID</span>={registeredNode.id}{'\n'}
                     <span className="text-emerald-600">AGENT_SECRET_TOKEN</span>={registeredNode.token}
                   </pre>
@@ -405,7 +405,7 @@ function NodesPage() {
 
                 <Button
                   onClick={closeRegistration}
-                  className="w-full bg-gray-900 hover:bg-gray-800"
+                  className="w-full"
                 >
                   I have saved these credentials
                 </Button>

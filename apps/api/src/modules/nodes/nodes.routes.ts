@@ -246,21 +246,17 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       const { hostname, ip, port, region, version, registrationKey, config } = request.body
 
       // Check authentication: either JWT token (admin) or registration key
-      const authHeader = request.headers.authorization
       let isAuthenticated = false
 
-      // Method 1: Check JWT token (admin only)
-      if (authHeader?.startsWith('Bearer ')) {
-        try {
-          const token = authHeader.substring(7)
-          const decoded = app.jwt.verify(token) as { id: string; role: string }
-          
-          if (decoded.role === 'admin') {
-            isAuthenticated = true
-          }
-        } catch (err) {
-          // Invalid JWT, continue to check registration key
+      // Method 1: Check JWT token (admin only) via fastify-jwt (supports both cookie and header)
+      try {
+        await request.jwtVerify()
+        const user = request.user as { role: string }
+        if (user?.role === 'admin') {
+          isAuthenticated = true
         }
+      } catch (err) {
+        // Invalid JWT or missing token, continue to check registration key
       }
 
       // Method 2: Check registration key from environment
