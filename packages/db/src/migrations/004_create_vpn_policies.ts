@@ -8,14 +8,18 @@ export async function up(knex: Knex): Promise<void> {
     
     table.foreign('user_id').references('id').inTable('users').onDelete('CASCADE')
     table.foreign('group_id').references('id').inTable('groups').onDelete('CASCADE')
-    table.string('allowed_network', 50).notNullable()
+    
+    table.string('target_network', 50).notNullable()
+    table.string('protocol', 10).notNullable().defaultTo('all')
+    table.string('target_port', 50).nullable().defaultTo(null)
+    
     table.enu('action', ['allow', 'deny']).notNullable().defaultTo('allow')
     table.integer('priority').notNullable().defaultTo(100)
     table.text('description').nullable()
     table.timestamps(true, true)
     
-    // Check constraint: either user_id or group_id must be set, but not both
-    table.check('(user_id IS NOT NULL AND group_id IS NULL) OR (user_id IS NULL AND group_id IS NOT NULL)', [], 'chk_policy_target')
+    // Constraint: Can't have both user and group target. (But both can be null for Global policy)
+    table.check('(user_id IS NULL OR group_id IS NULL)', [], 'chk_policy_target')
   })
 }
 
