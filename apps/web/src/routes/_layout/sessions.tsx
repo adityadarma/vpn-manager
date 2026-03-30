@@ -141,10 +141,10 @@ function KickDropdown({ sessionId, username, onKick, isPending }: KickDropdownPr
       {open && (
         <div
           style={{ position: 'fixed', top: menuPos.top, right: menuPos.right, zIndex: 9999 }}
-          className="w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-1 text-sm"
+          className="w-48 bg-card text-card-foreground rounded-lg shadow-xl border border-border py-1 text-sm"
         >
           <button
-            className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2 text-gray-700"
+            className="w-full text-left px-3 py-2 hover:bg-muted/50 flex items-center gap-2 text-foreground"
             onClick={() => {
               setOpen(false)
               if (confirm(`Disconnect ${username}?\n\nUser will be able to reconnect after.`)) {
@@ -155,10 +155,10 @@ function KickDropdown({ sessionId, username, onKick, isPending }: KickDropdownPr
             <UserX className="h-4 w-4 text-red-500" />
             <div>
               <div className="font-medium">Kick</div>
-              <div className="text-xs text-gray-400">Disconnect, allow reconnect</div>
+              <div className="text-xs text-muted-foreground/70">Disconnect, allow reconnect</div>
             </div>
           </button>
-          <div className="my-1 border-t border-gray-100" />
+          <div className="my-1 border-t border-border/50" />
           <button
             className="w-full text-left px-3 py-2 hover:bg-red-50 flex items-center gap-2 text-red-700"
             onClick={() => {
@@ -183,17 +183,17 @@ function KickDropdown({ sessionId, username, onKick, isPending }: KickDropdownPr
 
 // ── DisconnectReasonBadge ────────────────────────────────────────────────────
 function DisconnectReasonBadge({ reason }: { reason?: string }) {
-  if (!reason) return <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Disconnected</span>
+  if (!reason) return <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground">Disconnected</span>
 
   const map: Record<string, { label: string; className: string }> = {
-    normal:               { label: 'Disconnected',   className: 'bg-gray-100 text-gray-600' },
+    normal:               { label: 'Disconnected',   className: 'bg-muted text-muted-foreground' },
     admin_kick:           { label: 'Kicked',          className: 'bg-red-100 text-red-700' },
     admin_kick_permanent: { label: 'Blocked',         className: 'bg-red-200 text-red-800 font-semibold' },
     timeout:              { label: 'Timeout',         className: 'bg-yellow-100 text-yellow-700' },
     reconnect:            { label: 'Reconnected',     className: 'bg-blue-100 text-blue-700' },
   }
 
-  const style = map[reason] ?? { label: reason, className: 'bg-gray-100 text-gray-600' }
+  const style = map[reason] ?? { label: reason, className: 'bg-muted text-muted-foreground' }
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${style.className}`}>
       {reason === 'admin_kick_permanent' && <ShieldOff className="h-3 w-3" />}
@@ -250,8 +250,8 @@ function SessionsPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">VPN Sessions</h1>
-        <p className="text-sm text-gray-500 mt-1">Monitor active connections and view history</p>
+        <h1 className="text-2xl font-bold text-foreground">VPN Sessions</h1>
+        <p className="text-sm text-muted-foreground mt-1">Monitor active connections and view history</p>
       </div>
 
       <Tabs defaultValue="active" className="space-y-4">
@@ -269,73 +269,73 @@ function SessionsPage() {
         {/* Active Sessions Tab */}
         <TabsContent value="active" className="space-y-4">
           <div className="flex items-center justify-end">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 text-gray-500 text-xs font-medium rounded-full">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted text-muted-foreground text-xs font-medium rounded-full">
               <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
               Auto-refresh 15s
             </span>
           </div>
 
           {isLoading ? (
-            <div className="text-center py-12 text-gray-400">Loading sessions...</div>
+            <div className="text-center py-12 text-muted-foreground/70">Loading sessions...</div>
           ) : sessions.length === 0 ? (
-            <div className="bg-white rounded-xl border border-dashed border-gray-200 p-16 text-center">
+            <div className="bg-card text-card-foreground rounded-xl border border-dashed border-border p-16 text-center">
               <Activity className="h-10 w-10 text-gray-200 mx-auto mb-3" />
-              <p className="font-medium text-gray-700">No active sessions</p>
-              <p className="text-sm text-gray-400 mt-1">Sessions will appear here when users connect</p>
+              <p className="font-medium text-foreground">No active sessions</p>
+              <p className="text-sm text-muted-foreground/70 mt-1">Sessions will appear here when users connect</p>
             </div>
           ) : (
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">User</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Device</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Location</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Node</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">VPN IP</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Duration</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Traffic</th>
-                    <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                  <tr className="bg-muted/50 border-b border-border">
+                    <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">User</th>
+                    <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Device</th>
+                    <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Location</th>
+                    <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Node</th>
+                    <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">VPN IP</th>
+                    <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Duration</th>
+                    <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Traffic</th>
+                    <th className="text-right px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {sessions.map((s) => (
-                    <tr key={s.id} className="hover:bg-gray-50 transition-colors">
+                    <tr key={s.id} className="hover:bg-muted/50 transition-colors">
                       <td className="px-5 py-4">
                         <div>
-                          <div className="font-medium text-gray-900">{s.username}</div>
-                          {s.real_ip && <div className="text-xs text-gray-400 font-mono">{s.real_ip}</div>}
+                          <div className="font-medium text-foreground">{s.username}</div>
+                          {s.real_ip && <div className="text-xs text-muted-foreground/70 font-mono">{s.real_ip}</div>}
                         </div>
                       </td>
                       <td className="px-5 py-4">
                         <div className="flex items-start gap-2">
-                          <Monitor className="h-4 w-4 text-gray-400 mt-0.5" />
+                          <Monitor className="h-4 w-4 text-muted-foreground/70 mt-0.5" />
                           <div>
-                            <div className="text-gray-700 text-xs">{s.device_name || 'Unknown'}</div>
-                            {s.client_version && <div className="text-xs text-gray-400">{s.client_version}</div>}
+                            <div className="text-foreground text-xs">{s.device_name || 'Unknown'}</div>
+                            {s.client_version && <div className="text-xs text-muted-foreground/70">{s.client_version}</div>}
                           </div>
                         </div>
                       </td>
                       <td className="px-5 py-4">
                         {s.geo_city || s.geo_country ? (
-                          <div className="flex items-center gap-1.5 text-gray-600">
-                            <MapPin className="h-3.5 w-3.5 text-gray-400" />
+                          <div className="flex items-center gap-1.5 text-muted-foreground">
+                            <MapPin className="h-3.5 w-3.5 text-muted-foreground/70" />
                             <span className="text-xs">
                               {s.geo_city && s.geo_country ? `${s.geo_city}, ${s.geo_country}` : s.geo_country || s.geo_city}
                             </span>
                           </div>
                         ) : (
-                          <span className="text-xs text-gray-400">-</span>
+                          <span className="text-xs text-muted-foreground/70">-</span>
                         )}
                       </td>
                       <td className="px-5 py-4">
                         <div>
-                          <div className="text-gray-700">{s.node_hostname}</div>
-                          {s.node_region && <div className="text-xs text-gray-400">{s.node_region}</div>}
+                          <div className="text-foreground">{s.node_hostname}</div>
+                          {s.node_region && <div className="text-xs text-muted-foreground/70">{s.node_region}</div>}
                         </div>
                       </td>
-                      <td className="px-5 py-4 font-mono text-gray-600 text-xs">{s.vpn_ip}</td>
-                      <td className="px-5 py-4 text-gray-500">{formatDuration(s.connected_at, null, s.duration_seconds)}</td>
+                      <td className="px-5 py-4 font-mono text-muted-foreground text-xs">{s.vpn_ip}</td>
+                      <td className="px-5 py-4 text-muted-foreground">{formatDuration(s.connected_at, null, s.duration_seconds)}</td>
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-2 text-xs">
                           <span className="flex items-center gap-1 text-blue-500">
@@ -372,51 +372,51 @@ function SessionsPage() {
         {/* History Tab */}
         <TabsContent value="history" className="space-y-4">
           {isLoadingHistory ? (
-            <div className="text-center py-12 text-gray-400">Loading history...</div>
+            <div className="text-center py-12 text-muted-foreground/70">Loading history...</div>
           ) : history.length === 0 ? (
-            <div className="bg-white rounded-xl border border-dashed border-gray-200 p-16 text-center">
+            <div className="bg-card text-card-foreground rounded-xl border border-dashed border-border p-16 text-center">
               <History className="h-10 w-10 text-gray-200 mx-auto mb-3" />
-              <p className="font-medium text-gray-700">No session history</p>
-              <p className="text-sm text-gray-400 mt-1">Past connections will appear here</p>
+              <p className="font-medium text-foreground">No session history</p>
+              <p className="text-sm text-muted-foreground/70 mt-1">Past connections will appear here</p>
             </div>
           ) : (
             <>
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm overflow-hidden">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">User</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Device</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Node</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">VPN IP</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Connected</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Duration</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Traffic</th>
-                      <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                    <tr className="bg-muted/50 border-b border-border">
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">User</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Device</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Node</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">VPN IP</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Connected</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Duration</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Traffic</th>
+                      <th className="text-right px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {history.map((s) => (
-                      <tr key={s.id} className="hover:bg-gray-50 transition-colors">
+                      <tr key={s.id} className="hover:bg-muted/50 transition-colors">
                         <td className="px-5 py-4">
                           <div>
-                            <div className="font-medium text-gray-900">{s.username}</div>
-                            {s.real_ip && <div className="text-xs text-gray-400 font-mono">{s.real_ip}</div>}
+                            <div className="font-medium text-foreground">{s.username}</div>
+                            {s.real_ip && <div className="text-xs text-muted-foreground/70 font-mono">{s.real_ip}</div>}
                           </div>
                         </td>
                         <td className="px-5 py-4">
                           <div className="flex items-start gap-2">
-                            <Monitor className="h-4 w-4 text-gray-400 mt-0.5" />
+                            <Monitor className="h-4 w-4 text-muted-foreground/70 mt-0.5" />
                             <div>
-                              <div className="text-gray-700 text-xs">{s.device_name || 'Unknown'}</div>
-                              {s.client_version && <div className="text-xs text-gray-400">{s.client_version}</div>}
+                              <div className="text-foreground text-xs">{s.device_name || 'Unknown'}</div>
+                              {s.client_version && <div className="text-xs text-muted-foreground/70">{s.client_version}</div>}
                             </div>
                           </div>
                         </td>
-                        <td className="px-5 py-4 text-gray-500">{s.node_hostname}</td>
-                        <td className="px-5 py-4 font-mono text-gray-600 text-xs">{s.vpn_ip}</td>
-                        <td className="px-5 py-4 text-gray-500 text-xs">{formatDateTime(s.connected_at)}</td>
-                        <td className="px-5 py-4 text-gray-500">
+                        <td className="px-5 py-4 text-muted-foreground">{s.node_hostname}</td>
+                        <td className="px-5 py-4 font-mono text-muted-foreground text-xs">{s.vpn_ip}</td>
+                        <td className="px-5 py-4 text-muted-foreground text-xs">{formatDateTime(s.connected_at)}</td>
+                        <td className="px-5 py-4 text-muted-foreground">
                           {formatDuration(s.connected_at, s.disconnected_at, s.connection_duration_seconds)}
                         </td>
                         <td className="px-5 py-4">
@@ -459,7 +459,7 @@ function SessionsPage() {
 
               {/* Pagination */}
               <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-muted-foreground">
                   {pagination ? (
                     <>Page {pagination.page} of {pagination.pages} • {pagination.total} total sessions</>
                   ) : (

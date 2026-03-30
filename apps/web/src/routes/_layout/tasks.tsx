@@ -145,12 +145,12 @@ function TasksPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Task Queue</h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <h1 className="text-2xl font-bold text-foreground">Task Queue</h1>
+          <p className="text-sm text-muted-foreground mt-1">
             {tasks.length} task{tasks.length !== 1 ? 's' : ''} • {pendingTasks.length} pending
           </p>
         </div>
-        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 text-gray-500 text-xs font-medium rounded-full">
+        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted text-muted-foreground text-xs font-medium rounded-full">
           <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
           Auto-refresh 10s
         </span>
@@ -158,7 +158,7 @@ function TasksPage() {
 
       {/* Search */}
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/70" />
         <Input
           placeholder="Search tasks by node, type, or error..."
           value={searchQuery}
@@ -211,13 +211,13 @@ function TasksPage() {
 
       {/* Tabs */}
       {isLoading ? (
-        <div className="py-12 text-center text-gray-400">Loading tasks...</div>
+        <div className="py-12 text-center text-muted-foreground/70">Loading tasks...</div>
       ) : tasks.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center">
             <Clock className="h-10 w-10 text-gray-200 mx-auto mb-3" />
-            <p className="font-medium text-gray-700">No tasks yet</p>
-            <p className="text-sm text-gray-400 mt-1">Tasks will appear here when agents execute operations</p>
+            <p className="font-medium text-foreground">No tasks yet</p>
+            <p className="text-sm text-muted-foreground/70 mt-1">Tasks will appear here when agents execute operations</p>
           </CardContent>
         </Card>
       ) : (

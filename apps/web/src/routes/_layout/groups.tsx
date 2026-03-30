@@ -242,8 +242,8 @@ function GroupsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Groups</h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <h1 className="text-2xl font-bold text-foreground">Groups</h1>
+          <p className="text-sm text-muted-foreground mt-1">
             {groups.length} group{groups.length !== 1 ? 's' : ''} created
             {selectedGroups.size > 0 && ` • ${selectedGroups.size} selected`}
           </p>
@@ -292,7 +292,7 @@ function GroupsPage() {
                           type="checkbox"
                           checked={groups.length > 0 && selectedGroups.size === groups.length}
                           onChange={toggleAll}
-                          className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                          className="rounded border-input text-emerald-600 focus:ring-emerald-500"
                         />
                       </TableHead>
                       <TableHead>Name</TableHead>
@@ -314,7 +314,7 @@ function GroupsPage() {
                             type="checkbox"
                             checked={selectedGroups.has(g.id)}
                             onChange={() => toggleGroup(g.id)}
-                            className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                            className="rounded border-input text-emerald-600 focus:ring-emerald-500"
                           />
                         </TableCell>
                         <TableCell className="font-medium" onClick={() => setDetailGroup(detailGroup === g.id ? null : g.id)}>{g.name}</TableCell>

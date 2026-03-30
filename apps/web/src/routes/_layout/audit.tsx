@@ -55,7 +55,7 @@ function getActionColor(action: string) {
   if (action.includes('create')) return 'bg-emerald-50 text-emerald-700'
   if (action.includes('update')) return 'bg-blue-50 text-blue-700'
   if (action.includes('delete')) return 'bg-red-50 text-red-700'
-  return 'bg-gray-50 text-gray-700'
+  return 'bg-muted/50 text-foreground'
 }
 
 function getActionIcon(action: string) {
@@ -103,14 +103,14 @@ function AuditPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Audit Logs</h1>
-        <p className="text-sm text-gray-500 mt-1">Track all administrative actions and changes</p>
+        <h1 className="text-2xl font-bold text-foreground">Audit Logs</h1>
+        <p className="text-sm text-muted-foreground mt-1">Track all administrative actions and changes</p>
       </div>
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/70" />
           <Input
             placeholder="Search by user, action, resource, or IP..."
             value={searchQuery}
@@ -145,14 +145,14 @@ function AuditPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm overflow-hidden">
         {isLoading ? (
-          <div className="py-12 text-center text-gray-400">Loading audit logs...</div>
+          <div className="py-12 text-center text-muted-foreground/70">Loading audit logs...</div>
         ) : filteredLogs.length === 0 ? (
           <div className="py-16 text-center">
             <Shield className="h-10 w-10 text-gray-200 mx-auto mb-3" />
-            <p className="font-medium text-gray-700">No audit logs found</p>
-            <p className="text-sm text-gray-400 mt-1">
+            <p className="font-medium text-foreground">No audit logs found</p>
+            <p className="text-sm text-muted-foreground/70 mt-1">
               {searchQuery || actionFilter !== 'all' || resourceFilter !== 'all'
                 ? 'Try adjusting your filters'
                 : 'Audit logs will appear here as actions are performed'}
@@ -224,8 +224,8 @@ function AuditPage() {
             </Table>
 
             {/* Pagination */}
-            <div className="flex items-center justify-between px-5 py-4 border-t border-gray-200">
-              <p className="text-sm text-gray-500">
+            <div className="flex items-center justify-between px-5 py-4 border-t border-border">
+              <p className="text-sm text-muted-foreground">
                 Page {page} • Showing {filteredLogs.length} logs
               </p>
               <div className="flex gap-2">

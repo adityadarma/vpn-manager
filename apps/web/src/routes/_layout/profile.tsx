@@ -55,8 +55,8 @@ function ProfilePage() {
     <div className="space-y-6 max-w-3xl">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Profile</h1>
-        <p className="text-sm text-gray-500 mt-1">Manage your account settings</p>
+        <h1 className="text-2xl font-bold text-foreground">Profile</h1>
+        <p className="text-sm text-muted-foreground mt-1">Manage your account settings</p>
       </div>
 
       {/* Account Info */}
@@ -75,7 +75,7 @@ function ProfilePage() {
                 <User className="h-3.5 w-3.5" />
                 Username
               </Label>
-              <p className="font-medium text-gray-900">{user?.username ?? '—'}</p>
+              <p className="font-medium text-foreground">{user?.username ?? '—'}</p>
             </div>
             
             <div className="space-y-1.5">
@@ -83,7 +83,7 @@ function ProfilePage() {
                 <Mail className="h-3.5 w-3.5" />
                 Email
               </Label>
-              <p className="font-medium text-gray-900">{user?.email ?? 'Not set'}</p>
+              <p className="font-medium text-foreground">{user?.email ?? 'Not set'}</p>
             </div>
             
             <div className="space-y-1.5">
@@ -91,7 +91,7 @@ function ProfilePage() {
                 <Shield className="h-3.5 w-3.5" />
                 Role
               </Label>
-              <p className="font-medium text-gray-900 capitalize">{user?.role ?? '—'}</p>
+              <p className="font-medium text-foreground capitalize">{user?.role ?? '—'}</p>
             </div>
             
             <div className="space-y-1.5">
@@ -99,7 +99,7 @@ function ProfilePage() {
                 <Calendar className="h-3.5 w-3.5" />
                 Last Login
               </Label>
-              <p className="font-medium text-gray-900 text-sm">
+              <p className="font-medium text-foreground text-sm">
                 {user?.lastLogin 
                   ? new Date(user.lastLogin).toLocaleString('en-US', {
                       month: 'short',

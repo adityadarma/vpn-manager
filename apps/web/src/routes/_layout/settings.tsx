@@ -50,15 +50,15 @@ function SettingsPage() {
     <div className="space-y-6 max-w-3xl">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-        <p className="text-sm text-gray-500 mt-1">System configuration</p>
+        <h1 className="text-2xl font-bold text-foreground">Settings</h1>
+        <p className="text-sm text-muted-foreground mt-1">System configuration</p>
       </div>
 
       {/* System Settings */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
-          <Settings className="h-4 w-4 text-gray-400" />
-          <h2 className="font-semibold text-gray-900">System Configuration</h2>
+      <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm">
+        <div className="px-5 py-4 border-b border-border/50 flex items-center gap-2">
+          <Settings className="h-4 w-4 text-muted-foreground/70" />
+          <h2 className="font-semibold text-foreground">System Configuration</h2>
         </div>
         <div className="p-5">
           {!isAdmin && mounted && (
@@ -72,15 +72,15 @@ function SettingsPage() {
           )}
 
           {settings.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-8">No configurable settings.</p>
+            <p className="text-sm text-muted-foreground/70 text-center py-8">No configurable settings.</p>
           ) : (
             <div className="space-y-5">
               {settings.map((s) => (
                 <div key={s.key}>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  <label className="block text-sm font-medium text-foreground mb-1.5">
                     {s.key}
                     {s.description && (
-                      <span className="ml-2 text-xs font-normal text-gray-400">{s.description}</span>
+                      <span className="ml-2 text-xs font-normal text-muted-foreground/70">{s.description}</span>
                     )}
                   </label>
                   <input
@@ -88,7 +88,7 @@ function SettingsPage() {
                     value={settingValues[s.key] ?? ''}
                     onChange={(e) => setValues({ ...values, [s.key]: e.target.value })}
                     disabled={!isAdmin}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-50"
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-muted/50"
                   />
                 </div>
               ))}

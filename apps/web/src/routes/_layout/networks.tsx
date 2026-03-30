@@ -112,8 +112,8 @@ function NetworksPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Networks</h1>
-          <p className="text-sm text-gray-500 mt-1">{networks.length} network{networks.length !== 1 ? 's' : ''} defined</p>
+          <h1 className="text-2xl font-bold text-foreground">Networks</h1>
+          <p className="text-sm text-muted-foreground mt-1">{networks.length} network{networks.length !== 1 ? 's' : ''} defined</p>
         </div>
         <Button id="btn-create-network" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => { setShowCreate(true); setForm({ name: '', cidr: '', description: '' }) }}>
           <Plus className="mr-2 h-4 w-4" />

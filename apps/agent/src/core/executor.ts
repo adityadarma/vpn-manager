@@ -14,6 +14,7 @@ import { handleSyncServerConfig } from '../handlers/sync-server-config'
 import { handleKickSession } from '../handlers/kick-session'
 import { handleUnkickSession } from '../handlers/unkick-session'
 import { handleWriteClientCcd } from '../handlers/write-client-ccd'
+import { handleApplyNetworkPolicy } from '../handlers/apply-network-policy'
 
 interface Task {
   id: string
@@ -37,6 +38,7 @@ const HANDLERS: Partial<Record<TaskAction, HandlerFn>> = {
   kick_vpn_session: handleKickSession,
   unkick_vpn_session: handleUnkickSession,
   write_client_ccd: handleWriteClientCcd,
+  apply_network_policy: handleApplyNetworkPolicy,
 }
 
 export async function executeTask(env: AgentEnv, task: Task, driver: VpnDriver): Promise<void> {

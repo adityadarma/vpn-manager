@@ -325,7 +325,7 @@ function UsersPage() {
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {expiringCerts.slice(0, 5).map((cert: any) => (
-                  <span key={cert.id} className="inline-flex items-center gap-1 px-2 py-1 bg-white border border-amber-200 rounded text-xs text-amber-800">
+                  <span key={cert.id} className="inline-flex items-center gap-1 px-2 py-1 bg-card text-card-foreground border border-amber-200 rounded text-xs text-amber-800">
                     {cert.username}
                     <span className="text-amber-600">
                       ({getDaysUntilExpiry(cert.certExpiresAt)} days)
@@ -346,8 +346,8 @@ function UsersPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">VPN Users</h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <h1 className="text-2xl font-bold text-foreground">VPN Users</h1>
+          <p className="text-sm text-muted-foreground mt-1">
             {users.length} user{users.length !== 1 ? 's' : ''} registered
             {selectedUsers.size > 0 && ` • ${selectedUsers.size} selected`}
           </p>
@@ -403,49 +403,49 @@ function UsersPage() {
 
       {/* Search */}
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/70" />
         <input
           type="text"
           placeholder="Search users..."
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="w-full max-w-sm pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+          className="w-full max-w-sm pl-9 pr-4 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-card text-card-foreground"
         />
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-200">
+            <tr className="bg-muted/50 border-b border-border">
               <th className="px-5 py-3 w-12">
                 <input
                   type="checkbox"
                   checked={filtered.length > 0 && selectedUsers.size === filtered.length}
                   onChange={toggleAll}
-                  className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                  className="rounded border-input text-emerald-600 focus:ring-emerald-500"
                 />
               </th>
-              <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">User</th>
-              <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Role</th>
-              <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-              <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Last Login</th>
-              <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+              <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">User</th>
+              <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Role</th>
+              <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
+              <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Last Login</th>
+              <th className="text-right px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {isLoading ? (
-              <tr><td colSpan={6} className="py-12 text-center text-gray-400">Loading users...</td></tr>
+              <tr><td colSpan={6} className="py-12 text-center text-muted-foreground/70">Loading users...</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={6} className="py-12 text-center text-gray-400">No users found.</td></tr>
+              <tr><td colSpan={6} className="py-12 text-center text-muted-foreground/70">No users found.</td></tr>
             ) : filtered.map((user) => (
-              <tr key={user.id} className="hover:bg-gray-50 transition-colors">
+              <tr key={user.id} className="hover:bg-muted/50 transition-colors">
                 <td className="px-5 py-4">
                   <input
                     type="checkbox"
                     checked={selectedUsers.has(user.id)}
                     onChange={() => toggleUser(user.id)}
-                    className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                    className="rounded border-input text-emerald-600 focus:ring-emerald-500"
                   />
                 </td>
                 <td className="px-5 py-4">
@@ -455,14 +455,14 @@ function UsersPage() {
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <p className="font-medium text-gray-900">{user.username}</p>
+                        <p className="font-medium text-foreground">{user.username}</p>
                         {(user as any).clientCert && (
                           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700" title="Has certificate">
                             <Key className="h-3 w-3" />
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-gray-400">{user.email ?? 'No email'}</p>
+                      <p className="text-xs text-muted-foreground/70">{user.email ?? 'No email'}</p>
                     </div>
                   </div>
                 </td>
@@ -470,7 +470,7 @@ function UsersPage() {
                   <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${
                     user.role === 'admin' 
                       ? 'bg-violet-50 text-violet-700' 
-                      : 'bg-gray-100 text-gray-600'
+                      : 'bg-muted text-muted-foreground'
                   }`}>
                     {user.role === 'admin' && <Shield className="h-3 w-3" />}
                     {user.role}
@@ -484,35 +484,35 @@ function UsersPage() {
                     {user.is_active ? 'Active' : 'Disabled'}
                   </span>
                 </td>
-                <td className="px-5 py-4 text-gray-500" >
+                <td className="px-5 py-4 text-muted-foreground" >
                   {user.last_login ? new Date(user.last_login).toLocaleDateString() : 'Never'}
                 </td>
                 <td className="px-5 py-4">
                   <div className="flex items-center justify-end gap-1">
                     <button
                       onClick={() => handleOpenEditModal(user)}
-                      className="p-2 text-gray-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-colors"
+                      className="p-2 text-muted-foreground/70 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-colors"
                       title="Edit user"
                     >
                       <Edit className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => handleOpenCertModal(user)}
-                      className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      className="p-2 text-muted-foreground/70 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                       title="Generate certificate"
                     >
                       <Key className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => handleOpenCertListModal(user)}
-                      className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                      className="p-2 text-muted-foreground/70 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
                       title="View certificates"
                     >
                       <Download className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => { if (confirm('Delete user?')) deleteMutation.mutate(user.id) }}
-                      className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                      className="p-2 text-muted-foreground/70 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                       title="Delete user"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -528,13 +528,13 @@ function UsersPage() {
       {/* Add User Modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+          <div className="bg-card text-card-foreground rounded-xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between p-5 border-b border-border/50">
               <div>
-                <h2 className="font-semibold text-gray-900">Add VPN User</h2>
-                <p className="text-sm text-gray-400 mt-0.5">Create a new user account</p>
+                <h2 className="font-semibold text-foreground">Add VPN User</h2>
+                <p className="text-sm text-muted-foreground/70 mt-0.5">Create a new user account</p>
               </div>
-              <button onClick={() => setShowForm(false)} className="p-1 text-gray-400 hover:text-gray-600 rounded-md">
+              <button onClick={() => setShowForm(false)} className="p-1 text-muted-foreground/70 hover:text-muted-foreground rounded-md">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -543,28 +543,28 @@ function UsersPage() {
               className="p-5 space-y-4"
             >
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Username <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-foreground mb-1.5">Username <span className="text-red-500">*</span></label>
                 <input
                   type="text"
                   value={form.username}
                   onChange={(e) => setForm({ ...form, username: e.target.value })}
                   placeholder="johndoe"
                   required
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
+                <label className="block text-sm font-medium text-foreground mb-1.5">Email</label>
                 <input
                   type="email"
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                   placeholder="john@example.com"
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Password <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-foreground mb-1.5">Password <span className="text-red-500">*</span></label>
                 <input
                   type="password"
                   value={form.password}
@@ -572,15 +572,15 @@ function UsersPage() {
                   placeholder="Min. 8 characters"
                   required
                   minLength={8}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Role</label>
+                <label className="block text-sm font-medium text-foreground mb-1.5">Role</label>
                 <select
                   value={form.role}
                   onChange={(e) => setForm({ ...form, role: e.target.value as 'admin' | 'user' })}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-card text-card-foreground"
                 >
                   <option value="user">User</option>
                   <option value="admin">Admin</option>
@@ -611,14 +611,14 @@ function UsersPage() {
       {/* Edit User Modal */}
       {showEditForm && selectedUserForEdit && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+          <div className="bg-card text-card-foreground rounded-xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between p-5 border-b border-border/50">
               <div>
-                <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+                <h2 className="font-semibold text-foreground flex items-center gap-2">
                   <Edit className="h-5 w-5 text-violet-600" />
                   Edit User
                 </h2>
-                <p className="text-sm text-gray-400 mt-0.5">Update user information</p>
+                <p className="text-sm text-muted-foreground/70 mt-0.5">Update user information</p>
               </div>
               <button 
                 onClick={() => {
@@ -626,7 +626,7 @@ function UsersPage() {
                   setSelectedUserForEdit(null)
                   setEditForm({ email: '', password: '', role: 'user', isActive: true })
                 }} 
-                className="p-1 text-gray-400 hover:text-gray-600 rounded-md"
+                className="p-1 text-muted-foreground/70 hover:text-muted-foreground rounded-md"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -642,32 +642,32 @@ function UsersPage() {
               className="p-5 space-y-4"
             >
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                <label className="block text-sm font-medium text-foreground mb-1.5">
                   Username
                 </label>
                 <input
                   type="text"
                   value={selectedUserForEdit.username}
                   disabled
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-500 cursor-not-allowed"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-muted/50 text-muted-foreground cursor-not-allowed"
                   title="Username cannot be changed after creation"
                 />
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   Username cannot be changed (used as certificate CN)
                 </p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
+                <label className="block text-sm font-medium text-foreground mb-1.5">Email</label>
                 <input
                   type="email"
                   value={editForm.email}
                   onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
                   placeholder="john@example.com"
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                <label className="block text-sm font-medium text-foreground mb-1.5">
                   New Password
                 </label>
                 <input
@@ -676,32 +676,32 @@ function UsersPage() {
                   onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
                   placeholder="Leave blank to keep current password"
                   minLength={8}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
                 />
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   Min. 8 characters. Leave blank to keep current password.
                 </p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Role</label>
+                <label className="block text-sm font-medium text-foreground mb-1.5">Role</label>
                 <select
                   value={editForm.role}
                   onChange={(e) => setEditForm({ ...editForm, role: e.target.value as 'admin' | 'user' })}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-card text-card-foreground"
                 >
                   <option value="user">User</option>
                   <option value="admin">Admin</option>
                 </select>
               </div>
-              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
                 <input
                   type="checkbox"
                   id="isActive"
                   checked={editForm.isActive}
                   onChange={(e) => setEditForm({ ...editForm, isActive: e.target.checked })}
-                  className="rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                  className="rounded border-input text-violet-600 focus:ring-violet-500"
                 />
-                <label htmlFor="isActive" className="text-sm font-medium text-gray-700 cursor-pointer">
+                <label htmlFor="isActive" className="text-sm font-medium text-foreground cursor-pointer">
                   Account is active
                 </label>
               </div>
@@ -734,15 +734,15 @@ function UsersPage() {
       {/* Generate Certificate Modal */}
       {showCertModal && selectedUserForCert && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+          <div className="bg-card text-card-foreground rounded-xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between p-5 border-b border-border/50">
               <div>
-                <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+                <h2 className="font-semibold text-foreground flex items-center gap-2">
                   <Key className="h-5 w-5 text-blue-600" />
                   Generate Certificate
                 </h2>
-                <p className="text-sm text-gray-400 mt-0.5">
-                  For user: <span className="font-medium text-gray-600">{selectedUserForCert.username}</span>
+                <p className="text-sm text-muted-foreground/70 mt-0.5">
+                  For user: <span className="font-medium text-muted-foreground">{selectedUserForCert.username}</span>
                 </p>
               </div>
               <button 
@@ -751,7 +751,7 @@ function UsersPage() {
                   setSelectedUserForCert(null)
                   setCertForm({ nodeId: '', passwordProtected: false, password: '', validDays: 0 })
                 }} 
-                className="p-1 text-gray-400 hover:text-gray-600 rounded-md"
+                className="p-1 text-muted-foreground/70 hover:text-muted-foreground rounded-md"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -778,14 +778,14 @@ function UsersPage() {
               className="p-5 space-y-4"
             >
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                <label className="block text-sm font-medium text-foreground mb-1.5">
                   VPN Node <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={certForm.nodeId}
                   onChange={(e) => setCertForm({ ...certForm, nodeId: e.target.value })}
                   required
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-card text-card-foreground"
                 >
                   <option value="">Select a node...</option>
                   {nodes.filter((n: any) => n.status === 'online').map((node: any) => (
@@ -800,13 +800,13 @@ function UsersPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                <label className="block text-sm font-medium text-foreground mb-1.5">
                   Certificate Validity Period
                 </label>
                 <select
                   value={certForm.validDays}
                   onChange={(e) => setCertForm({ ...certForm, validDays: parseInt(e.target.value) })}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-card text-card-foreground"
                 >
                   <option value="0">Unlimited (No expiration)</option>
                   <option value="1">1 Day</option>
@@ -817,28 +817,28 @@ function UsersPage() {
                   <option value="180">6 Months (180 days)</option>
                   <option value="365">1 Year (365 days)</option>
                 </select>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   {certForm.validDays === 0 ? 'Certificate will never expire' : 'Shorter validity = better security if compromised'}
                 </p>
               </div>
 
-              <div className="border border-gray-200 rounded-lg p-4 space-y-3">
+              <div className="border border-border rounded-lg p-4 space-y-3">
                 <div className="flex items-start gap-3">
                   <input
                     type="checkbox"
                     id="passwordProtected"
                     checked={certForm.passwordProtected}
                     onChange={(e) => setCertForm({ ...certForm, passwordProtected: e.target.checked, password: '' })}
-                    className="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    className="mt-1 rounded border-input text-blue-600 focus:ring-blue-500"
                   />
                   <div className="flex-1">
-                    <label htmlFor="passwordProtected" className="block text-sm font-medium text-gray-700 cursor-pointer">
+                    <label htmlFor="passwordProtected" className="block text-sm font-medium text-foreground cursor-pointer">
                       <div className="flex items-center gap-2">
-                        <Lock className="h-4 w-4 text-gray-400" />
+                        <Lock className="h-4 w-4 text-muted-foreground/70" />
                         Password-protect private key
                       </div>
                     </label>
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-muted-foreground mt-1">
                       User will need to enter password when connecting to VPN
                     </p>
                   </div>
@@ -846,7 +846,7 @@ function UsersPage() {
 
                 {certForm.passwordProtected && (
                   <div className="pl-7">
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    <label className="block text-sm font-medium text-foreground mb-1.5">
                       Key Password <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -856,9 +856,9 @@ function UsersPage() {
                       placeholder="Enter password for private key"
                       required={certForm.passwordProtected}
                       minLength={8}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-muted-foreground mt-1">
                       Min. 8 characters. User must remember this password.
                     </p>
                   </div>
@@ -900,14 +900,14 @@ function UsersPage() {
       {/* Certificate List Modal */}
       {showCertListModal && selectedUserForCertList && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+          <div className="bg-card text-card-foreground rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b border-border/50">
               <div>
-                <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+                <h2 className="font-semibold text-foreground flex items-center gap-2">
                   <Key className="h-5 w-5 text-emerald-600" />
                   Certificates for {selectedUserForCertList.username}
                 </h2>
-                <p className="text-sm text-gray-400 mt-0.5">
+                <p className="text-sm text-muted-foreground/70 mt-0.5">
                   Manage certificates across all nodes
                 </p>
               </div>
@@ -916,7 +916,7 @@ function UsersPage() {
                   setShowCertListModal(false)
                   setSelectedUserForCertList(null)
                 }} 
-                className="p-1 text-gray-400 hover:text-gray-600 rounded-md"
+                className="p-1 text-muted-foreground/70 hover:text-muted-foreground rounded-md"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -926,8 +926,8 @@ function UsersPage() {
               {userCertificates.length === 0 ? (
                 <div className="text-center py-12">
                   <Key className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                  <p className="text-gray-500 font-medium">No certificates found</p>
-                  <p className="text-sm text-gray-400 mt-1">
+                  <p className="text-muted-foreground font-medium">No certificates found</p>
+                  <p className="text-sm text-muted-foreground/70 mt-1">
                     Generate a certificate for this user on a node
                   </p>
                   <Button
@@ -951,19 +951,19 @@ function UsersPage() {
                           ? 'border-red-200 bg-red-50' 
                           : cert.node_status === 'online'
                           ? 'border-emerald-200 bg-emerald-50/30'
-                          : 'border-gray-200 bg-white'
+                          : 'border-border bg-card text-card-foreground'
                       }`}
                     >
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-2">
-                            <h3 className="font-semibold text-gray-900">
+                            <h3 className="font-semibold text-foreground">
                               {cert.node_hostname}
                             </h3>
                             <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${
                               cert.node_status === 'online'
                                 ? 'bg-emerald-100 text-emerald-700'
-                                : 'bg-gray-100 text-gray-600'
+                                : 'bg-muted text-muted-foreground'
                             }`}>
                               <span className={`w-1.5 h-1.5 rounded-full ${
                                 cert.node_status === 'online' ? 'bg-emerald-500' : 'bg-gray-400'
@@ -984,14 +984,14 @@ function UsersPage() {
                           </div>
 
                           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                            <div className="text-gray-500">
+                            <div className="text-muted-foreground">
                               <span className="font-medium">IP:</span> {cert.node_ip}
                             </div>
-                            <div className="text-gray-500" >
+                            <div className="text-muted-foreground" >
                               <span className="font-medium">Generated:</span>{' '}
                               {cert.generated_at ? new Date(cert.generated_at).toLocaleDateString() : 'N/A'}
                             </div>
-                            <div className="text-gray-500" >
+                            <div className="text-muted-foreground" >
                               <span className="font-medium">Expires:</span>{' '}
                               {cert.expires_at ? (
                                 <>
@@ -1010,7 +1010,7 @@ function UsersPage() {
                                 <span className="text-emerald-600">Never</span>
                               )}
                             </div>
-                            <div className="text-gray-500">
+                            <div className="text-muted-foreground">
                               <span className="font-medium">Downloads:</span> {cert.download_count}
                             </div>
                           </div>
@@ -1066,9 +1066,9 @@ function UsersPage() {
               )}
             </div>
 
-            <div className="border-t border-gray-100 p-5 bg-gray-50">
+            <div className="border-t border-border/50 p-5 bg-muted/50">
               <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-muted-foreground">
                   {userCertificates.filter((c: any) => !c.is_revoked).length} active certificate(s)
                 </p>
                 <div className="flex gap-2">
@@ -1101,19 +1101,19 @@ function UsersPage() {
       {/* Revoke Certificate Confirmation Modal */}
       {revokingCertId && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-            <div className="p-5 border-b border-gray-100">
-              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+          <div className="bg-card text-card-foreground rounded-xl shadow-xl w-full max-w-md">
+            <div className="p-5 border-b border-border/50">
+              <h3 className="font-semibold text-foreground flex items-center gap-2">
                 <AlertTriangle className="h-5 w-5 text-red-600" />
                 Revoke Certificate
               </h3>
-              <p className="text-sm text-gray-500 mt-1">
+              <p className="text-sm text-muted-foreground mt-1">
                 This action cannot be undone. The user will not be able to connect with this certificate.
               </p>
             </div>
             <div className="p-5 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                <label className="block text-sm font-medium text-foreground mb-1.5">
                   Reason for revocation <span className="text-red-500">*</span>
                 </label>
                 <textarea
@@ -1122,7 +1122,7 @@ function UsersPage() {
                   placeholder="e.g., Security breach, Lost device, User terminated..."
                   required
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
                 />
               </div>
               <div className="flex gap-3">

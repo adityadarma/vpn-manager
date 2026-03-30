@@ -1,6 +1,7 @@
 import { useRouterState, useNavigate } from '@tanstack/react-router'
 import { useAuthStore } from '@/store/auth.store'
 import { API_URL } from '@/lib/api'
+import packageJson from '../../../../../package.json'
 import {
   LayoutDashboard,
   Users,
@@ -81,7 +82,7 @@ export function AppSidebar() {
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-semibold">VPN Manager</span>
-                <span className="truncate text-xs text-muted-foreground">VPN Management</span>
+                <span className="truncate text-xs text-muted-foreground">v{packageJson.version}</span>
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>

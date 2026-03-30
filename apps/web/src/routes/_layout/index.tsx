@@ -27,22 +27,22 @@ function DashboardPage() {
     <div className="space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-500 mt-1 text-sm">Overview of your VPN infrastructure</p>
+        <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+        <p className="text-muted-foreground mt-1 text-sm">Overview of your VPN infrastructure</p>
       </div>
 
       {/* Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map(({ label, value, sub, icon: Icon, color, bg }) => (
-          <div key={label} className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+          <div key={label} className="bg-card text-card-foreground rounded-xl border border-border p-5 shadow-sm">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-medium text-gray-500">{label}</span>
+              <span className="text-sm font-medium text-muted-foreground">{label}</span>
               <div className={`${bg} p-2 rounded-lg`}>
                 <Icon className={`h-4 w-4 ${color}`} />
               </div>
             </div>
-            <div className="text-2xl font-bold text-gray-900">{value}</div>
-            {sub && <div className="text-xs text-gray-400 mt-1">{sub}</div>}
+            <div className="text-2xl font-bold text-foreground">{value}</div>
+            {sub && <div className="text-xs text-muted-foreground/70 mt-1">{sub}</div>}
           </div>
         ))}
       </div>
@@ -50,26 +50,26 @@ function DashboardPage() {
       {/* Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-7 gap-4">
         {/* Nodes Table */}
-        <div className="lg:col-span-4 bg-white rounded-xl border border-gray-200 shadow-sm">
-          <div className="p-5 border-b border-gray-100">
-            <h2 className="font-semibold text-gray-900">VPN Nodes</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Recently registered infrastructure</p>
+        <div className="lg:col-span-4 bg-card text-card-foreground rounded-xl border border-border shadow-sm">
+          <div className="p-5 border-b border-border/50">
+            <h2 className="font-semibold text-foreground">VPN Nodes</h2>
+            <p className="text-xs text-muted-foreground/70 mt-0.5">Recently registered infrastructure</p>
           </div>
           <div className="p-5">
             {nodes.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-8">No nodes registered yet.</p>
+              <p className="text-sm text-muted-foreground/70 text-center py-8">No nodes registered yet.</p>
             ) : (
               <div className="space-y-3">
                 {nodes.slice(0, 5).map((node) => (
                   <div key={node.id} className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-gray-900">{node.hostname}</p>
-                      <p className="text-xs text-gray-400">{node.ip_address}</p>
+                      <p className="text-sm font-medium text-foreground">{node.hostname}</p>
+                      <p className="text-xs text-muted-foreground/70">{node.ip_address}</p>
                     </div>
                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
                       node.status === 'online'
                         ? 'bg-emerald-50 text-emerald-700'
-                        : 'bg-gray-100 text-gray-500'
+                        : 'bg-muted text-muted-foreground'
                     }`}>
                       <span className={`w-1.5 h-1.5 rounded-full ${node.status === 'online' ? 'bg-emerald-500' : 'bg-gray-400'}`} />
                       {node.status}
@@ -82,24 +82,24 @@ function DashboardPage() {
         </div>
 
         {/* Sessions */}
-        <div className="lg:col-span-3 bg-white rounded-xl border border-gray-200 shadow-sm">
-          <div className="p-5 border-b border-gray-100">
-            <h2 className="font-semibold text-gray-900">Active Sessions</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Users currently connected</p>
+        <div className="lg:col-span-3 bg-card text-card-foreground rounded-xl border border-border shadow-sm">
+          <div className="p-5 border-b border-border/50">
+            <h2 className="font-semibold text-foreground">Active Sessions</h2>
+            <p className="text-xs text-muted-foreground/70 mt-0.5">Users currently connected</p>
           </div>
           <div className="p-5">
             {sessions.length === 0 ? (
               <div className="text-center py-8">
                 <TrendingUp className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-                <p className="text-sm text-gray-400">No active sessions</p>
+                <p className="text-sm text-muted-foreground/70">No active sessions</p>
               </div>
             ) : (
               <div className="space-y-3">
                 {sessions.slice(0, 5).map((s) => (
                   <div key={s.id} className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-gray-900">{s.vpn_ip}</p>
-                      <p className="text-xs text-gray-400">
+                      <p className="text-sm font-medium text-foreground">{s.vpn_ip}</p>
+                      <p className="text-xs text-muted-foreground/70">
                         Connected {new Date(s.connected_at).toLocaleTimeString()}
                       </p>
                     </div>

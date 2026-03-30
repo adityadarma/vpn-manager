@@ -22,6 +22,12 @@ export default defineConfig({
   server: {
     host: true,   // bind to 0.0.0.0 — required for Docker
     port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+    },
   },
 })
 
