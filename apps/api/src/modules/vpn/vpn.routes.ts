@@ -172,11 +172,11 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
         .join('users as u', 'p.user_id', 'u.id')
         .where('p.user_id', user.id)
         .where('p.action', 'allow')
-        .select('p.allowed_network')
+        .select('p.target_network')
 
       return reply.status(201).send({
         session_id: sessionId,
-        push_routes: networks.map((n: { allowed_network: string }) => n.allowed_network),
+        push_routes: networks.map((n: { target_network: string }) => n.target_network),
       })
     },
   )

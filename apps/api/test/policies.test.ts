@@ -37,11 +37,11 @@ describe('Policies API', () => {
       method: 'POST',
       url: '/api/v1/policies',
       headers: { Authorization: `Bearer ${adminToken}` },
-      payload: { userId, allowedNetwork: '10.8.0.0/24', action: 'allow', priority: 10 }
+      payload: { userId, targetNetwork: '10.8.0.0/24', action: 'allow', priority: 10 }
     })
     
     expect(res.statusCode).toBe(201)
-    expect(res.json().allowed_network).toBe('10.8.0.0/24')
+    expect(res.json().target_network).toBe('10.8.0.0/24')
   })
 
   it('should list policies', async () => {

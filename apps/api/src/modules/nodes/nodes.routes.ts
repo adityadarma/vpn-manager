@@ -321,6 +321,26 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       const token = crypto.randomBytes(32).toString('hex')
       const id = crypto.randomUUID()
 
+      // Determine dynamic vpn network (10.8.X.0)
+      let nextNetwork = '10.8.0.0'
+      const existingNodes = await app.db('vpn_nodes').select('vpn_network')
+      const usedSubnets = existingNodes.map((n: { vpn_network: string | null }) => {
+        if (!n.vpn_network) return -1
+        const parts = n.vpn_network.split('.')
+        if (parts.length === 4 && parts[0] === '10' && parts[1] === '8') {
+          return parseInt(parts[2], 10)
+        }
+        return -1
+      }).filter((n: number) => !isNaN(n) && n >= 0)
+
+      if (usedSubnets.length > 0) {
+        const maxSubnet = Math.max(...usedSubnets)
+        // ensure we don't overflow 255
+        if (maxSubnet < 254) {
+           nextNetwork = `10.8.${maxSubnet + 1}.0`
+        }
+      }
+
       // Prepare node data with config if provided
       const nodeData: any = {
         id,
@@ -339,7 +359,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       if (config) {
         nodeData.protocol = config.protocol || 'udp'
         nodeData.tunnel_mode = config.tunnel_mode || 'split'
-        nodeData.vpn_network = config.vpn_network || '10.8.0.0'
+        nodeData.vpn_network = config.vpn_network || nextNetwork
         nodeData.vpn_netmask = config.vpn_netmask || '255.255.255.0'
         nodeData.dns_servers = config.dns_servers || '8.8.8.8,1.1.1.1'
         nodeData.push_routes = config.push_routes || ''
@@ -353,7 +373,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         // Set defaults if no config provided
         nodeData.protocol = 'udp'
         nodeData.tunnel_mode = 'split'
-        nodeData.vpn_network = '10.8.0.0'
+        nodeData.vpn_network = nextNetwork
         nodeData.vpn_netmask = '255.255.255.0'
         nodeData.dns_servers = '8.8.8.8,1.1.1.1'
         nodeData.push_routes = ''
