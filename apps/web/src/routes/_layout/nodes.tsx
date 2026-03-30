@@ -33,6 +33,7 @@ interface NodeConfig {
   keepalive_timeout: number
   max_clients: number
   custom_push_directives: string
+  firewall_engine: string
 }
 
 interface RegisterResponse extends VpnNode {
@@ -64,6 +65,7 @@ function NodesPage() {
     keepalive_timeout: 120,
     max_clients: 100,
     custom_push_directives: '',
+    firewall_engine: 'iptables',
   })
 
   const { data: nodes = [], isLoading } = useQuery<VpnNode[]>({
@@ -605,6 +607,21 @@ function NodesPage() {
                 >
                   <option value="full">Full Tunnel (All traffic through VPN)</option>
                   <option value="split">Split Tunnel (Only specific routes)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1.5">Firewall Engine</label>
+                <select
+                  value={nodeConfig.firewall_engine}
+                  onChange={e => setNodeConfig({ ...nodeConfig, firewall_engine: e.target.value })}
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  <option value="iptables">iptables (Legacy/Standard)</option>
+                  <option value="nftables">nftables (Modern Linux/Debian 12+)</option>
+                  <option value="ufw">UFW (Ubuntu)</option>
+                  <option value="firewalld">Firewalld (RHEL/CentOS)</option>
+                  <option value="none">None (Manage manually)</option>
                 </select>
               </div>
 

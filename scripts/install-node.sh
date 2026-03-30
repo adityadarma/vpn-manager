@@ -58,6 +58,16 @@ INSTALL_DIR="/opt/vpn-agent"
 # Check root
 [ "$EUID" -ne 0 ] && { error "Must run as root"; exit 1; }
 
+# Detect OS
+if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    OS=$ID
+    OS_LIKE=${ID_LIKE:-""}
+else
+    error "Cannot detect operating system (missing /etc/os-release)"
+    exit 1
+fi
+
 # Preserve environment variables from command line arguments
 # This allows: sudo bash install-node.sh MANAGER_URL=... VPN_TOKEN=... REG_KEY=...
 for arg in "$@"; do
@@ -110,6 +120,31 @@ else
     read -p "Choice [1-3]: " mode </dev/tty
 fi
 
+if [[ "$OPENVPN_INSTALLED" == true && "$mode" == "4" ]] || [[ "$OPENVPN_INSTALLED" == false && "$mode" == "3" ]]; then
+    exit 0
+fi
+
+echo ""
+
+if [ -z "$FIREWALL_ENGINE" ]; then
+    echo "Firewall Engine (NAT/Routing & Agent Firewall):"
+    echo "1) iptables (Legacy/Standard)"
+    echo "2) nftables (Modern Linux/Debian 12+)"
+    echo "3) ufw (Ubuntu)"
+    echo "4) firewalld (RHEL/CentOS)"
+    echo "5) none (Manage manually)"
+    read -p "Choice [1-5] (default 1): " fw_choice </dev/tty
+    
+    case $fw_choice in
+        2) FIREWALL_ENGINE="nftables" ;;
+        3) FIREWALL_ENGINE="ufw" ;;
+        4) FIREWALL_ENGINE="firewalld" ;;
+        5) FIREWALL_ENGINE="none" ;;
+        *) FIREWALL_ENGINE="iptables" ;;
+    esac
+fi
+export ENV_FIREWALL_ENGINE="$FIREWALL_ENGINE"
+
 echo ""
 
 # Functions
@@ -120,10 +155,29 @@ install_openvpn() {
     if command -v openvpn &> /dev/null; then
         ok "OpenVPN already installed"
     else
-        info "Installing OpenVPN package..."
-        apt-get update -qq
-        apt-get install -y openvpn easy-rsa iptables curl
-        ok "OpenVPN package installed"
+        info "Installing OpenVPN and components for $OS..."
+        
+        local fw_pkg="iptables"
+        if [ "$ENV_FIREWALL_ENGINE" = "nftables" ]; then fw_pkg="nftables"; fi
+        if [ "$ENV_FIREWALL_ENGINE" = "ufw" ]; then fw_pkg="ufw"; fi
+        if [ "$ENV_FIREWALL_ENGINE" = "firewalld" ]; then fw_pkg="firewalld"; fi
+        if [ "$ENV_FIREWALL_ENGINE" = "none" ]; then fw_pkg=""; fi
+
+        if [[ "$OS" == "ubuntu" || "$OS" == "debian" || "$OS_LIKE" == *"debian"* || "$OS_LIKE" == *"ubuntu"* ]]; then
+            apt-get update -qq
+            apt-get install -y openvpn easy-rsa curl $fw_pkg
+        elif [[ "$OS" == "centos" || "$OS" == "rhel" || "$OS" == "rocky" || "$OS" == "almalinux" || "$OS" == "fedora" || "$OS_LIKE" == *"rhel"* || "$OS_LIKE" == *"fedora"* ]]; then
+            local PKG_MGR="yum"
+            if command -v dnf &> /dev/null; then PKG_MGR="dnf"; fi
+            
+            $PKG_MGR install -y epel-release || true
+            $PKG_MGR install -y openvpn easy-rsa curl $fw_pkg
+        else
+            error "Unsupported operating system: $OS. Please install openvpn, easy-rsa, and curl manually."
+            exit 1
+        fi
+        
+        ok "Required packages installed"
     fi
     
     # Setup directories
@@ -133,7 +187,21 @@ install_openvpn() {
     # Setup Easy-RSA if not exists
     if [ ! -d "/etc/openvpn/easy-rsa" ]; then
         info "Setting up Easy-RSA..."
-        make-cadir /etc/openvpn/easy-rsa
+        
+        if command -v make-cadir &> /dev/null; then
+            make-cadir /etc/openvpn/easy-rsa
+        else
+            mkdir -p /etc/openvpn/easy-rsa
+            if [ -d "/usr/share/easy-rsa/3" ]; then
+                cp -R /usr/share/easy-rsa/3/* /etc/openvpn/easy-rsa/
+            elif [ -d "/usr/share/easy-rsa" ]; then
+                cp -R /usr/share/easy-rsa/* /etc/openvpn/easy-rsa/
+            else
+                error "Could not find easy-rsa templates"
+                exit 1
+            fi
+        fi
+        
         cd /etc/openvpn/easy-rsa
         
         # Initialize PKI
@@ -164,7 +232,32 @@ install_openvpn() {
     
     # Setup NAT
     IF=$(ip route | grep default | awk '{print $5}' | head -n1)
-    cat > /etc/systemd/system/openvpn-iptables.service <<EOF
+    
+    if [ "$ENV_FIREWALL_ENGINE" = "nftables" ]; then
+        # Check if nftables is installed and working
+        if command -v nft &> /dev/null; then
+            cat > /etc/systemd/system/openvpn-nat.service <<EOF
+[Unit]
+Before=network.target
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/nft add table ip nat
+ExecStart=/usr/sbin/nft add chain ip nat POSTROUTING { type nat hook postrouting priority 100 \; }
+ExecStart=/usr/sbin/nft add rule ip nat POSTROUTING oifname "$IF" ip saddr 10.8.0.0/24 masquerade
+ExecStop=/usr/sbin/nft delete table ip nat
+RemainAfterExit=yes
+[Install]
+WantedBy=multi-user.target
+EOF
+        else
+            warn "nft command not found despite trying to install nftables. Will try to use iptables-nft."
+            ENV_FIREWALL_ENGINE="iptables"
+        fi
+    fi
+    
+    if [ "$ENV_FIREWALL_ENGINE" = "iptables" ] || [ "$ENV_FIREWALL_ENGINE" = "ufw" ] || [ "$ENV_FIREWALL_ENGINE" = "firewalld" ]; then
+        # Default to standard iptables syntax for compatibility layers
+        cat > /etc/systemd/system/openvpn-nat.service <<EOF
 [Unit]
 Before=network.target
 [Service]
@@ -175,9 +268,14 @@ RemainAfterExit=yes
 [Install]
 WantedBy=multi-user.target
 EOF
+    fi
     
-    systemctl daemon-reload
-    systemctl enable --now openvpn-iptables.service
+    if [ "$ENV_FIREWALL_ENGINE" != "none" ]; then
+        systemctl daemon-reload
+        # Disable old specific service if exists
+        systemctl disable --now openvpn-iptables.service 2>/dev/null || true
+        systemctl enable --now openvpn-nat.service
+    fi
     
     # Start OpenVPN
     systemctl enable --now openvpn-server@server.service 2>/dev/null || \
@@ -301,6 +399,7 @@ install_agent() {
     ENV_VPN_TOKEN="${VPN_TOKEN}"
     ENV_NODE_ID="${AGENT_NODE_ID}"
     ENV_SECRET_TOKEN="${AGENT_SECRET_TOKEN}"
+    ENV_FIREWALL_ENGINE="${FIREWALL_ENGINE}"
     
     # Determine registration mode
     AUTO_REGISTER=false
@@ -323,7 +422,7 @@ install_agent() {
         
         read -p "VPN Token: " VPN_TOKEN </dev/tty
         ENV_VPN_TOKEN="$VPN_TOKEN"
-        
+
         echo ""
         echo "Registration mode:"
         echo "1) Auto-register (using registration key)"
@@ -362,10 +461,18 @@ EOF
         
         # Register node
         info "Registering node with Manager..."
+        
+        # Prepare JSON payload natively
+        JSON_PAYLOAD="{\"hostname\":\"$HOSTNAME\",\"ip\":\"$SERVER_IP\",\"port\":1194,\"version\":\"auto\",\"registrationKey\":\"$ENV_REG_KEY\""
+        if [ -n "$ENV_FIREWALL_ENGINE" ]; then
+            JSON_PAYLOAD="$JSON_PAYLOAD, \"config\":{\"firewall_engine\":\"$ENV_FIREWALL_ENGINE\"}"
+        fi
+        JSON_PAYLOAD="$JSON_PAYLOAD}"
+
         RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${ENV_MANAGER_URL}/api/v1/nodes/register" \
             -H "Content-Type: application/json" \
             -H "X-VPN-Token: ${ENV_VPN_TOKEN}" \
-            -d "{\"hostname\":\"$HOSTNAME\",\"ip\":\"$SERVER_IP\",\"port\":1194,\"version\":\"auto\",\"registrationKey\":\"$ENV_REG_KEY\"}")
+            -d "$JSON_PAYLOAD")
         
         HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
         BODY=$(echo "$RESPONSE" | sed '$d')

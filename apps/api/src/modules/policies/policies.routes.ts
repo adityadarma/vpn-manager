@@ -98,15 +98,14 @@ async function enqueueApplyPolicies(app: any) {
     )
     .orderBy('p.priority', 'asc')
 
-  const onlineNodes = await app.db('vpn_nodes').where({ status: 'online' }).select('id')
+  const onlineNodes = await app.db('vpn_nodes').where({ status: 'online' }).select('id', 'firewall_engine')
   if (onlineNodes.length === 0) return
 
-  const payloadStr = JSON.stringify({ policies })
-  const tasks = onlineNodes.map((node: { id: string }) => ({
+  const tasks = onlineNodes.map((node: { id: string, firewall_engine: string }) => ({
     id: crypto.randomUUID(),
     node_id: node.id,
     action: 'apply_network_policy',
-    payload: payloadStr,
+    payload: JSON.stringify({ policies, firewall_engine: node.firewall_engine }),
     status: 'pending',
     created_at: new Date(),
   }))

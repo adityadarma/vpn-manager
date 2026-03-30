@@ -17,6 +17,7 @@ interface NodeConfig {
   keepalive_timeout: number
   max_clients: number
   custom_push_directives?: string
+  firewall_engine: string
 }
 
 const nodeRoutes: FastifyPluginAsync = async (app) => {
@@ -190,6 +191,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         keepalive_timeout: config.keepalive_timeout,
         max_clients: config.max_clients,
         custom_push_directives: config.custom_push_directives ?? '',
+        firewall_engine: config.firewall_engine ?? 'iptables',
       }
     },
   )
@@ -220,6 +222,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         keepalive_timeout: config.keepalive_timeout,
         max_clients: config.max_clients,
         custom_push_directives: config.custom_push_directives ?? null,
+        firewall_engine: config.firewall_engine,
       })
 
       // Create task to update server config
@@ -355,7 +358,6 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         created_at: new Date(),
       }
 
-      // If config is provided from install script, merge it
       if (config) {
         nodeData.protocol = config.protocol || 'udp'
         nodeData.tunnel_mode = config.tunnel_mode || 'split'
@@ -369,6 +371,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         nodeData.keepalive_ping = config.keepalive_ping || 10
         nodeData.keepalive_timeout = config.keepalive_timeout || 120
         nodeData.max_clients = config.max_clients || 100
+        nodeData.firewall_engine = config.firewall_engine || 'iptables'
       } else {
         // Set defaults if no config provided
         nodeData.protocol = 'udp'
@@ -383,6 +386,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         nodeData.keepalive_ping = 10
         nodeData.keepalive_timeout = 120
         nodeData.max_clients = 100
+        nodeData.firewall_engine = 'iptables'
       }
 
       await app.db('vpn_nodes').insert(nodeData)
@@ -574,7 +578,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
   )
 
   // POST /api/v1/nodes/sync-config (called by agent to sync server config)
-  app.post<{ Body: { port: number; protocol: string; cipher: string; auth: string; vpnNetwork: string; vpnNetmask: string; dnsServers: string; pushRoutes: string; compression: string; keepalivePing: number; keepaliveTimeout: number; maxClients: number; tunnelMode: string } }>(
+  app.post<{ Body: { port: number; protocol: string; cipher: string; auth: string; vpnNetwork: string; vpnNetmask: string; dnsServers: string; pushRoutes: string; compression: string; keepalivePing: number; keepaliveTimeout: number; maxClients: number; tunnelMode: string; firewallEngine?: string } }>(
     '/nodes/sync-config',
     {
       schema: {
@@ -597,7 +601,8 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
             keepalivePing: { type: 'number', description: 'Keepalive ping interval' },
             keepaliveTimeout: { type: 'number', description: 'Keepalive timeout' },
             maxClients: { type: 'number', description: 'Maximum clients' },
-            tunnelMode: { type: 'string', description: 'Tunnel mode (full/split)' }
+            tunnelMode: { type: 'string', description: 'Tunnel mode (full/split)' },
+            firewallEngine: { type: 'string', description: 'Firewall backend engine' }
           }
         }
       }
@@ -638,6 +643,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
             max_clients: config.maxClients,
             tunnel_mode: config.tunnelMode,
             custom_push_directives: (config as any).customPushDirectives ?? null,
+            firewall_engine: config.firewallEngine ?? 'iptables',
             last_seen: new Date()
           })
 
