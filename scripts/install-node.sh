@@ -89,12 +89,18 @@ fi
 
 # Detect existing installation
 OPENVPN_INSTALLED=false
+WIREGUARD_INSTALLED=false
 AGENT_INSTALLED=false
 
 if systemctl is-active --quiet openvpn-server@server 2>/dev/null || \
    systemctl is-active --quiet openvpn@server 2>/dev/null; then
     OPENVPN_INSTALLED=true
     ok "OpenVPN is already installed"
+fi
+
+if systemctl is-active --quiet wg-quick@wg0 2>/dev/null; then
+    WIREGUARD_INSTALLED=true
+    ok "WireGuard is already installed"
 fi
 
 if [ -d "$INSTALL_DIR" ] && [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
@@ -104,24 +110,60 @@ fi
 
 echo ""
 
-# Installation mode
-if [ "$OPENVPN_INSTALLED" = true ]; then
-    echo "OpenVPN is already installed. What do you want to do?"
-    echo "1) Update OpenVPN configuration only"
-    echo "2) Install/Update Agent only"
-    echo "3) Update both OpenVPN and Agent"
-    echo "4) Exit"
-    read -p "Choice [1-4]: " mode </dev/tty
-else
-    echo "OpenVPN is not installed. What do you want to do?"
-    echo "1) Install OpenVPN + Agent (full node)"
-    echo "2) Install OpenVPN only"
-    echo "3) Exit"
-    read -p "Choice [1-3]: " mode </dev/tty
+if [ -z "$VPN_TYPE" ]; then
+    echo "Select VPN Engine to install/manage:"
+    echo "1) OpenVPN (Default, PKI Certificates)"
+    echo "2) WireGuard (Modern, Fast, Static Peers)"
+    read -p "Choice [1-2] (default 1): " vpn_choice </dev/tty
+    
+    case $vpn_choice in
+        2) VPN_TYPE="wireguard" ;;
+        *) VPN_TYPE="openvpn" ;;
+    esac
 fi
+export ENV_VPN_TYPE="$VPN_TYPE"
 
-if [[ "$OPENVPN_INSTALLED" == true && "$mode" == "4" ]] || [[ "$OPENVPN_INSTALLED" == false && "$mode" == "3" ]]; then
-    exit 0
+echo ""
+
+# Installation mode
+if [ "$ENV_VPN_TYPE" = "wireguard" ]; then
+    if [ "$WIREGUARD_INSTALLED" = true ]; then
+        echo "WireGuard is already installed. What do you want to do?"
+        echo "1) Update WireGuard configuration only"
+        echo "2) Install/Update Agent only"
+        echo "3) Update both WireGuard and Agent"
+        echo "4) Exit"
+        read -p "Choice [1-4]: " mode </dev/tty
+    else
+        echo "WireGuard is not installed. What do you want to do?"
+        echo "1) Install WireGuard + Agent (full node)"
+        echo "2) Install WireGuard only"
+        echo "3) Exit"
+        read -p "Choice [1-3]: " mode </dev/tty
+    fi
+    
+    if [[ "$WIREGUARD_INSTALLED" == true && "$mode" == "4" ]] || [[ "$WIREGUARD_INSTALLED" == false && "$mode" == "3" ]]; then
+        exit 0
+    fi
+else
+    if [ "$OPENVPN_INSTALLED" = true ]; then
+        echo "OpenVPN is already installed. What do you want to do?"
+        echo "1) Update OpenVPN configuration only"
+        echo "2) Install/Update Agent only"
+        echo "3) Update both OpenVPN and Agent"
+        echo "4) Exit"
+        read -p "Choice [1-4]: " mode </dev/tty
+    else
+        echo "OpenVPN is not installed. What do you want to do?"
+        echo "1) Install OpenVPN + Agent (full node)"
+        echo "2) Install OpenVPN only"
+        echo "3) Exit"
+        read -p "Choice [1-3]: " mode </dev/tty
+    fi
+    
+    if [[ "$OPENVPN_INSTALLED" == true && "$mode" == "4" ]] || [[ "$OPENVPN_INSTALLED" == false && "$mode" == "3" ]]; then
+        exit 0
+    fi
 fi
 
 echo ""
@@ -147,22 +189,7 @@ export ENV_FIREWALL_ENGINE="$FIREWALL_ENGINE"
 
 echo ""
 
-if [ -z "$VPN_TYPE" ]; then
-    echo "VPN Engine:"
-    echo "1) OpenVPN (Default, PKI Certificates)"
-    echo "2) WireGuard (Modern, Fast, Static Peers)"
-    read -p "Choice [1-2] (default 1): " vpn_choice </dev/tty
-    
-    case $vpn_choice in
-        2) VPN_TYPE="wireguard" ;;
-        *) VPN_TYPE="openvpn" ;;
-    esac
-fi
-export ENV_VPN_TYPE="$VPN_TYPE"
-
-echo ""
-
-# Functions
+# Start of functions
 install_openvpn() {
     info "Installing OpenVPN..."
     
