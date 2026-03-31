@@ -1,6 +1,8 @@
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { execSync } from 'node:child_process'
 import type { VpnDriver } from '../drivers'
+import { loadAgentEnv } from '../config/env'
 
 interface WriteClientCcdParams {
   username: string
@@ -26,11 +28,38 @@ export async function handleWriteClientCcd(
   params: Record<string, unknown>,
   _driver: VpnDriver,
 ): Promise<Record<string, unknown>> {
-  const { username, vpn_ip, netmask = '255.255.255.0', extra_lines = [] } = params as unknown as WriteClientCcdParams
+  const { username, vpn_ip, netmask = '255.255.255.0', extra_lines = [], public_key } = params as any
 
   if (!username || !vpn_ip) {
     throw new Error('username and vpn_ip are required')
   }
+
+  const env = loadAgentEnv()
+
+  // WIRE GUARD LOGIC
+  if (env.VPN_TYPE === 'wireguard') {
+    if (!public_key) {
+      console.warn(`[write-ccd] Warning: No public key provided for WireGuard client ${username}. Skipping peer injection.`)
+      return { success: false, reason: 'missing_public_key' }
+    }
+
+    const iface = env.WIREGUARD_INTERFACE || 'wg0'
+    try {
+      // Inject peer into active WireGuard interface
+      execSync(`wg set ${iface} peer ${public_key} allowed-ips ${vpn_ip}/32`)
+      console.log(`[write-ccd] ✓ WireGuard peer injected for ${username} with IP ${vpn_ip}/32`)
+      
+      // Persist the active state back to wg0.conf
+      execSync(`wg-quick save ${iface}`)
+      console.log(`[write-ccd] ✓ Preserved configuration to /etc/wireguard/${iface}.conf`)
+      return { success: true, username, vpn_ip, public_key, interface: iface }
+    } catch (err: any) {
+      console.error(`[write-ccd] Failed to inject WireGuard peer:`, err.message)
+      throw new Error(`WireGuard peer setup failed: ${err.message}`)
+    }
+  }
+
+  // OPENVPN LOGIC
 
   // Ensure CCD dir exists
   if (!existsSync(CCD_DIR)) {

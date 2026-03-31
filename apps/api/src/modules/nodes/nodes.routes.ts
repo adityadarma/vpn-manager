@@ -28,7 +28,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
     async () => {
       // Get all nodes
       const nodes = await app.db('vpn_nodes')
-        .select('id', 'hostname', 'ip_address', 'port', 'region', 'status', 'version', 'last_seen', 'created_at')
+        .select('id', 'hostname', 'ip_address', 'port', 'region', 'status', 'version', 'last_seen', 'created_at', 'vpn_type', 'public_key', 'endpoint_port')
       
       // Get active sessions count for each node
       const sessionCounts = await app.db('vpn_sessions')
@@ -242,11 +242,11 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
 
   // POST /api/v1/nodes/register  (called by agent or install script)
   // Requires either Admin JWT token OR Registration Key
-  app.post<{ Body: { hostname: string; ip: string; port?: number; region?: string; version?: string; registrationKey?: string; config?: any } }>(
+  app.post<{ Body: { hostname: string; ip: string; port?: number; region?: string; version?: string; registrationKey?: string; vpnType?: 'openvpn' | 'wireguard'; publicKey?: string; privateKey?: string; endpointPort?: number; config?: any } }>(
     '/nodes/register',
     { schema: { tags: ['nodes'], summary: 'Register a new VPN node (requires admin auth or registration key)' } },
     async (request, reply) => {
-      const { hostname, ip, port, region, version, registrationKey, config } = request.body
+      const { hostname, ip, port, region, version, registrationKey, vpnType, publicKey, privateKey, endpointPort, config } = request.body
 
       // Check authentication: either JWT token (admin) or registration key
       let isAuthenticated = false
@@ -349,13 +349,17 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         id,
         hostname,
         ip_address: ip,
-        port: config?.port || port || 1194,
+        port: config?.port || port || (vpnType === 'wireguard' ? 51820 : 1194),
         region: region ?? null,
         token,
         version: version ?? 'auto-registered',
         status: 'offline',
         last_seen: new Date(),
         created_at: new Date(),
+        vpn_type: vpnType ?? 'openvpn',
+        public_key: publicKey ?? null,
+        private_key: privateKey ?? null,
+        endpoint_port: endpointPort ?? null,
       }
 
       if (config) {
@@ -419,8 +423,8 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       if (wasOffline) {
         const tasksToCreate = []
         
-        // Sync certificates if missing
-        if (!currentNode?.ca_cert || !currentNode?.ta_key) {
+        // Sync certificates if missing (OpenVPN only, Wireguard keys are set at registration)
+        if (currentNode?.vpn_type !== 'wireguard' && (!currentNode?.ca_cert || !currentNode?.ta_key)) {
           app.log.info(`Node ${nodeId} came online without certificates, creating sync task`)
           tasksToCreate.push({
             id: crypto.randomUUID(),
@@ -491,19 +495,20 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
   )
 
   // POST /api/v1/nodes/sync-certs (called by agent or sync script)
-  app.post<{ Body: { ca_cert: string; ta_key: string } }>(
+  app.post<{ Body: { ca_cert?: string; ta_key?: string; public_key?: string; private_key?: string } }>(
     '/nodes/sync-certs',
-    { 
+    {
       schema: { 
         tags: ['nodes'], 
-        summary: 'Sync node certificates (CA and TLS key)',
+        summary: 'Sync node certificates (CA and TLS key) or WireGuard keys',
         security: [{ bearerAuth: [] }],
         body: {
           type: 'object',
-          required: ['ca_cert', 'ta_key'],
           properties: {
             ca_cert: { type: 'string', description: 'CA certificate content' },
-            ta_key: { type: 'string', description: 'TLS-Crypt or TLS-Auth key content' }
+            ta_key: { type: 'string', description: 'TLS-Crypt or TLS-Auth key content' },
+            public_key: { type: 'string', description: 'WireGuard public key' },
+            private_key: { type: 'string', description: 'WireGuard private key' }
           }
         }
       } 
@@ -523,12 +528,34 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(401).send({ error: 'Unauthorized', message: 'Invalid node token' })
       }
 
-      const { ca_cert, ta_key } = request.body
+      const { ca_cert, ta_key, public_key, private_key } = request.body
 
+      // If agent is trying to sync WireGuard keys, it MUST be a WireGuard node.
+      // This is crucial because manual registrations via Dashboard currently default to 'openvpn'
+      if (public_key && private_key) {
+        try {
+          await app.db('vpn_nodes')
+            .where({ id: node.id })
+            .update({
+              vpn_type: 'wireguard',
+              public_key: public_key.trim(),
+              private_key: private_key.trim(),
+              last_seen: new Date()
+            })
+
+          app.log.info(`WireGuard keys synced (engine set to wireguard) for node ${node.id}`)
+          return reply.send({ success: true, message: 'WireGuard keys synced successfully', node_id: node.id })
+        } catch (error: any) {
+          app.log.error(`Failed to sync WireGuard keys for node ${node.id}:`, error)
+          return reply.status(500).send({ error: 'Internal Server Error', message: 'Failed to sync WireGuard keys' })
+        }
+      }
+
+      // OpenVPN flow
       if (!ca_cert || !ta_key) {
         return reply.status(400).send({ 
           error: 'Bad Request', 
-          message: 'Both ca_cert and ta_key are required' 
+          message: 'Both ca_cert and ta_key are required for OpenVPN nodes' 
         })
       }
 

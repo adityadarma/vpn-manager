@@ -1,6 +1,7 @@
 import { execSync } from 'node:child_process'
 import { readFileSync, existsSync } from 'node:fs'
 import type { VpnDriver } from '../drivers'
+import { loadAgentEnv } from '../config/env'
 
 interface GenerateClientCertParams {
   username: string
@@ -24,6 +25,30 @@ export async function handleGenerateClientCert(params: Record<string, unknown>, 
     throw new Error('Username is required')
   }
 
+  const env = loadAgentEnv()
+
+  // WIRE GUARD KEY GENERATION
+  if (env.VPN_TYPE === 'wireguard') {
+    console.log(`[generate-cert] Generating WireGuard Keypair for ${username}...`)
+    try {
+      // Generate private key
+      const privateKey = execSync('wg genkey', { encoding: 'utf-8' }).trim()
+      // Generate matching public key
+      const publicKey = execSync('wg pubkey', { input: privateKey + '\n', encoding: 'utf-8' }).trim()
+
+      return {
+        clientCert: publicKey, // For WG, 'cert' stores the Public Key
+        clientKey: privateKey, // For WG, 'key' stores the Private Key
+        passwordProtected: false, // WG keys typically aren't passphrase protected on generation here
+        expiresAt: null // WG keys generally don't expire natively like X509
+      }
+    } catch (err: any) {
+      console.error(`[generate-cert] Failed to generate WireGuard keys for ${username}:`, err.message)
+      throw new Error(`WireGuard key generation failed: ${err.message}`)
+    }
+  }
+
+  // OPENVPN CERTIFICATE GENERATION (Existing Logic)
   // If validDays is null or 0, set to 36500 days (100 years ~ unlimited)
   const certValidDays = (validDays === null || validDays === 0) ? 36500 : (validDays ?? 3650)
 

@@ -147,6 +147,21 @@ export ENV_FIREWALL_ENGINE="$FIREWALL_ENGINE"
 
 echo ""
 
+if [ -z "$VPN_TYPE" ]; then
+    echo "VPN Engine:"
+    echo "1) OpenVPN (Default, PKI Certificates)"
+    echo "2) WireGuard (Modern, Fast, Static Peers)"
+    read -p "Choice [1-2] (default 1): " vpn_choice </dev/tty
+    
+    case $vpn_choice in
+        2) VPN_TYPE="wireguard" ;;
+        *) VPN_TYPE="openvpn" ;;
+    esac
+fi
+export ENV_VPN_TYPE="$VPN_TYPE"
+
+echo ""
+
 # Functions
 install_openvpn() {
     info "Installing OpenVPN..."
@@ -366,6 +381,71 @@ EOF
     fi
 }
 
+install_wireguard() {
+    info "Installing WireGuard..."
+    
+    if command -v wg &> /dev/null; then
+        ok "WireGuard already installed"
+    else
+        info "Installing wireguard-tools for $OS..."
+        
+        local fw_pkg="iptables"
+        if [ "$ENV_FIREWALL_ENGINE" = "nftables" ]; then fw_pkg="nftables"; fi
+        if [ "$ENV_FIREWALL_ENGINE" = "ufw" ]; then fw_pkg="ufw"; fi
+        if [ "$ENV_FIREWALL_ENGINE" = "firewalld" ]; then fw_pkg="firewalld"; fi
+        if [ "$ENV_FIREWALL_ENGINE" = "none" ]; then fw_pkg=""; fi
+
+        if [[ "$OS" == "ubuntu" || "$OS" == "debian" || "$OS_LIKE" == *"debian"* || "$OS_LIKE" == *"ubuntu"* ]]; then
+            apt-get update -qq
+            apt-get install -y wireguard-tools curl $fw_pkg
+        elif [[ "$OS" == "centos" || "$OS" == "rhel" || "$OS" == "rocky" || "$OS" == "almalinux" || "$OS" == "fedora" || "$OS_LIKE" == *"rhel"* || "$OS_LIKE" == *"fedora"* ]]; then
+            local PKG_MGR="yum"
+            if command -v dnf &> /dev/null; then PKG_MGR="dnf"; fi
+            
+            $PKG_MGR install -y epel-release || true
+            $PKG_MGR install -y wireguard-tools curl $fw_pkg
+        else
+            error "Unsupported operating system: $OS. Please install wireguard-tools and curl manually."
+            exit 1
+        fi
+        
+        ok "Required packages installed"
+    fi
+    
+    # Setup directories
+    mkdir -p /etc/wireguard
+    
+    # Generate keys
+    if [ ! -f /etc/wireguard/privatekey ]; then
+        info "Generating WireGuard keys..."
+        wg genkey | tee /etc/wireguard/privatekey | wg pubkey > /etc/wireguard/publickey
+        chmod 600 /etc/wireguard/privatekey
+        chmod 644 /etc/wireguard/publickey
+        ok "WireGuard keys generated"
+    fi
+    
+    # Setup wg0.conf
+    local wg_priv=$(cat /etc/wireguard/privatekey)
+    cat > /etc/wireguard/wg0.conf <<EOF
+[Interface]
+PrivateKey = $wg_priv
+Address = 10.8.0.1/24
+ListenPort = 51820
+EOF
+    chmod 600 /etc/wireguard/wg0.conf
+    
+    # Enable IP forwarding
+    if ! grep -q "net.ipv4.ip_forward=1" /etc/sysctl.conf; then
+        echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+        sysctl -p >/dev/null 2>&1
+    fi
+    
+    # Enable and start WireGuard
+    systemctl enable wg-quick@wg0
+    systemctl restart wg-quick@wg0
+    ok "WireGuard service restarted"
+}
+
 install_agent() {
     info "Installing Agent..."
     
@@ -389,8 +469,31 @@ install_agent() {
         else
             error "Failed to download docker-compose.agent.yml"
             info "Please ensure docker-compose.yml is in $INSTALL_DIR"
-            exit 1
         fi
+    fi
+    
+    # Adjust Docker Compose based on VPN Type
+    if [ "$ENV_VPN_TYPE" = "wireguard" ] && [ -f "docker-compose.yml" ]; then
+        # Add elevated privileges for WireGuard
+        if ! grep -q "cap_add:" docker-compose.yml; then
+            sed -i '/logging:/i \    cap_add:\n      - NET_ADMIN\n' docker-compose.yml
+        elif ! grep -q "NET_ADMIN" docker-compose.yml; then
+            sed -i '/cap_add:/a \      - NET_ADMIN' docker-compose.yml
+        fi
+        
+        # Add WireGuard volume
+        if ! grep -q "/etc/wireguard" docker-compose.yml; then
+            sed -i '/volumes:/a \      - /etc/wireguard:/etc/wireguard' docker-compose.yml
+        fi
+
+        # Remove default OpenVPN environment variables and volumes to keep it clean
+        sed -i '/OPENVPN_SOCKET_PATH/d' docker-compose.yml
+        sed -i '/openvpn:/d' docker-compose.yml
+        sed -i '/VPN Management Interface/d' docker-compose.yml
+    elif [ "$ENV_VPN_TYPE" = "openvpn" ] && [ -f "docker-compose.yml" ]; then
+        # Remove WireGuard environment variables to keep it clean for OpenVPN
+        sed -i '/WIREGUARD_INTERFACE/d' docker-compose.yml
+        sed -i '/WireGuard Interface/d' docker-compose.yml
     fi
     
     # Check for environment variables (support both naming conventions)
@@ -456,14 +559,34 @@ AGENT_NODE_ID=
 AGENT_SECRET_TOKEN=
 AGENT_POLL_INTERVAL_MS=5000
 AGENT_HEARTBEAT_INTERVAL_MS=30000
-OPENVPN_SOCKET_PATH=/run/openvpn/server.sock
 EOF
+        if [ "$ENV_VPN_TYPE" = "wireguard" ]; then
+            echo "VPN_TYPE=wireguard" >> .env
+            echo "WIREGUARD_INTERFACE=wg0" >> .env
+        else
+            echo "VPN_TYPE=openvpn" >> .env
+            echo "OPENVPN_SOCKET_PATH=/run/openvpn/server.sock" >> .env
+        fi
         
         # Register node
         info "Registering node with Manager..."
         
         # Prepare JSON payload natively
-        JSON_PAYLOAD="{\"hostname\":\"$HOSTNAME\",\"ip\":\"$SERVER_IP\",\"port\":1194,\"version\":\"auto\",\"registrationKey\":\"$ENV_REG_KEY\""
+        local port=1194
+        if [ "$ENV_VPN_TYPE" = "wireguard" ]; then port=51820; fi
+        
+        local wg_pub=""
+        local wg_priv=""
+        if [ "$ENV_VPN_TYPE" = "wireguard" ]; then
+            wg_pub=$(cat /etc/wireguard/publickey 2>/dev/null || echo "")
+            wg_priv=$(cat /etc/wireguard/privatekey 2>/dev/null || echo "")
+        fi
+
+        JSON_PAYLOAD="{\"hostname\":\"$HOSTNAME\",\"ip\":\"$SERVER_IP\",\"port\":$port,\"version\":\"auto\",\"registrationKey\":\"$ENV_REG_KEY\""
+        if [ "$ENV_VPN_TYPE" = "wireguard" ]; then
+            JSON_PAYLOAD="$JSON_PAYLOAD, \"vpnType\":\"wireguard\", \"publicKey\":\"$wg_pub\", \"privateKey\":\"$wg_priv\""
+        fi
+        
         if [ -n "$ENV_FIREWALL_ENGINE" ]; then
             JSON_PAYLOAD="$JSON_PAYLOAD, \"config\":{\"firewall_engine\":\"$ENV_FIREWALL_ENGINE\"}"
         fi
@@ -497,6 +620,7 @@ EOF
         fi
     else
         # Manual registration: use provided credentials
+        # Manual registration: use provided credentials
         cat > .env <<EOF
 AGENT_MANAGER_URL=${ENV_MANAGER_URL}
 VPN_TOKEN=${ENV_VPN_TOKEN}
@@ -504,8 +628,14 @@ AGENT_NODE_ID=${ENV_NODE_ID}
 AGENT_SECRET_TOKEN=${ENV_SECRET_TOKEN}
 AGENT_POLL_INTERVAL_MS=5000
 AGENT_HEARTBEAT_INTERVAL_MS=30000
-OPENVPN_SOCKET_PATH=/run/openvpn/server.sock
 EOF
+        if [ "$ENV_VPN_TYPE" = "wireguard" ]; then
+            echo "VPN_TYPE=wireguard" >> .env
+            echo "WIREGUARD_INTERFACE=wg0" >> .env
+        else
+            echo "VPN_TYPE=openvpn" >> .env
+            echo "OPENVPN_SOCKET_PATH=/run/openvpn/server.sock" >> .env
+        fi
         ok "Configuration saved with provided credentials"
     fi
     
@@ -529,18 +659,26 @@ EOF
 # Execute based on mode
 case $mode in
     1)
-        if [ "$OPENVPN_INSTALLED" = true ]; then
+        if [ "$OPENVPN_INSTALLED" = true ] && [ "$ENV_VPN_TYPE" != "wireguard" ]; then
             update_openvpn_config
         else
-            install_openvpn
+            if [ "$ENV_VPN_TYPE" = "wireguard" ]; then
+                install_wireguard
+            else
+                install_openvpn
+            fi
             install_agent
         fi
         ;;
     2)
-        if [ "$OPENVPN_INSTALLED" = true ]; then
-            install_agent
+        if [ "$ENV_VPN_TYPE" = "wireguard" ]; then
+            install_wireguard
         else
-            install_openvpn
+            if [ "$OPENVPN_INSTALLED" = true ]; then
+                install_agent
+            else
+                install_openvpn
+            fi
         fi
         ;;
     3)
@@ -562,13 +700,22 @@ echo -e "${B}============================================================"
 echo "  Installation Complete!"
 echo "============================================================${NC}"
 echo ""
-echo "OpenVPN: $(systemctl is-active openvpn-server@server 2>/dev/null || systemctl is-active openvpn@server 2>/dev/null || echo 'not running')"
+if [ "$ENV_VPN_TYPE" = "wireguard" ]; then
+    echo "WireGuard: $(systemctl is-active wg-quick@wg0 2>/dev/null || echo 'not running')"
+else
+    echo "OpenVPN: $(systemctl is-active openvpn-server@server 2>/dev/null || systemctl is-active openvpn@server 2>/dev/null || echo 'not running')"
+fi
 echo "Agent: $(docker ps --filter name=vpn-agent --format '{{.Status}}' 2>/dev/null || echo 'not running')"
 echo ""
 echo "Useful Commands:"
-echo "  OpenVPN logs: tail -f /var/log/openvpn/openvpn.log"
+if [ "$ENV_VPN_TYPE" = "wireguard" ]; then
+    echo "  WireGuard logs: journalctl -u wg-quick@wg0"
+    echo "  Restart WireGuard: systemctl restart wg-quick@wg0"
+else
+    echo "  OpenVPN logs: tail -f /var/log/openvpn/openvpn.log"
+    echo "  Restart OpenVPN: systemctl restart openvpn-server@server"
+fi
 echo "  Agent logs: docker logs -f vpn-agent"
-echo "  Restart OpenVPN: systemctl restart openvpn-server@server"
 echo "  Restart Agent: cd $INSTALL_DIR && docker compose restart"
 echo ""
 echo "============================================================"

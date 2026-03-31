@@ -34,15 +34,19 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
+      VPN_TOKEN: ${VPN_TOKEN:?VPN_TOKEN is required}
+      VPN_TYPE: ${VPN_TYPE:-openvpn}
       AGENT_MANAGER_URL: ${AGENT_MANAGER_URL:?AGENT_MANAGER_URL is required}
       AGENT_NODE_ID: ${AGENT_NODE_ID:?AGENT_NODE_ID is required}
       AGENT_SECRET_TOKEN: ${AGENT_SECRET_TOKEN:?AGENT_SECRET_TOKEN is required}
-      VPN_TOKEN: ${VPN_TOKEN:?VPN_TOKEN is required}
       AGENT_POLL_INTERVAL_MS: ${AGENT_POLL_INTERVAL_MS:-5000}
       AGENT_HEARTBEAT_INTERVAL_MS: ${AGENT_HEARTBEAT_INTERVAL_MS:-30000}
 
       # VPN Management Interface (Unix Socket)
       OPENVPN_SOCKET_PATH: ${OPENVPN_SOCKET_PATH:-/run/openvpn/server.sock}
+
+      # WireGuard Interface
+      WIREGUARD_INTERFACE: ${WIREGUARD_INTERFACE:-wg0}
 
     # Use host network for direct access to host VPN management interface
     network_mode: host

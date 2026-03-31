@@ -2,10 +2,6 @@ import { readFileSync, existsSync } from 'node:fs'
 import type { VpnDriver } from '../drivers'
 
 export async function handleSyncCertificates(_payload: Record<string, unknown>, _driver: VpnDriver): Promise<Record<string, unknown>> {
-  const CA_CERT_PATH = '/etc/openvpn/server/ca.crt'
-  const TLS_CRYPT_PATH = '/etc/openvpn/server/tls-crypt.key'
-  const TLS_AUTH_PATH = '/etc/openvpn/server/ta.key'
-
   // Get agent configuration from environment
   const MANAGER_URL = process.env.AGENT_MANAGER_URL
   const NODE_TOKEN = process.env.AGENT_SECRET_TOKEN
@@ -13,6 +9,51 @@ export async function handleSyncCertificates(_payload: Record<string, unknown>, 
   if (!MANAGER_URL || !NODE_TOKEN) {
     throw new Error('AGENT_MANAGER_URL and AGENT_SECRET_TOKEN must be set')
   }
+
+  const VPN_TYPE = process.env.VPN_TYPE || 'openvpn'
+
+  if (VPN_TYPE === 'wireguard') {
+    const WG_PUB_PATH = '/etc/wireguard/publickey'
+    const WG_PRIV_PATH = '/etc/wireguard/privatekey'
+    
+    if (!existsSync(WG_PUB_PATH) || !existsSync(WG_PRIV_PATH)) {
+      throw new Error(`WireGuard keys not found at ${WG_PUB_PATH} or ${WG_PRIV_PATH}`)
+    }
+    
+    const pubKey = readFileSync(WG_PUB_PATH, 'utf-8')
+    const privKey = readFileSync(WG_PRIV_PATH, 'utf-8')
+    
+    console.log('[sync-keys] WireGuard keys read successfully')
+    
+    const syncUrl = `${MANAGER_URL}/api/v1/nodes/sync-certs`
+    const response = await fetch(syncUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${NODE_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        public_key: pubKey.trim(),
+        private_key: privKey.trim(),
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to upload WireGuard keys: HTTP ${response.status} - ${await response.text()}`)
+    }
+
+    const result = await response.json() as { success: boolean; message: string; node_id: string }
+    return {
+      success: true,
+      message: 'WireGuard keys synced to database',
+      node_id: result.node_id
+    }
+  }
+
+  // OpenVPN flow
+  const CA_CERT_PATH = '/etc/openvpn/server/ca.crt'
+  const TLS_CRYPT_PATH = '/etc/openvpn/server/tls-crypt.key'
+  const TLS_AUTH_PATH = '/etc/openvpn/server/ta.key'
 
   // Check if CA cert exists
   if (!existsSync(CA_CERT_PATH)) {

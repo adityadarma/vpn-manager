@@ -30,8 +30,8 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
 FROM node:24-alpine AS runner
 WORKDIR /app
 
-# Install OpenSSL and Easy-RSA for certificate generation
-RUN apk add --no-cache openssl easy-rsa
+# Install OpenSSL, Easy-RSA, and WireGuard tools
+RUN apk add --no-cache bash openssl wireguard-tools iptables iproute2
 
 COPY --from=builder /prod/agent /app
 # Copy built dist from builder

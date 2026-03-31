@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/_layout/groups')({
   component: GroupsPage,
@@ -84,8 +84,9 @@ function GroupsPage() {
   const [form, setForm] = useState<FormState>({ name: '', description: '', vpn_subnet: '' })
   const [showAddMember, setShowAddMember] = useState(false)
   const [showAddNetwork, setShowAddNetwork] = useState(false)
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
-  const [selectedNetworkId, setSelectedNetworkId] = useState<string | null>(null)
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set())
+  const [selectedNetworkIds, setSelectedNetworkIds] = useState<Set<string>>(new Set())
+  const [searchQuery, setSearchQuery] = useState('')
   const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set())
 
   const { data: groups = [], isLoading } = useQuery<Group[]>({
@@ -179,13 +180,15 @@ function GroupsPage() {
   }
 
   const addMemberMutation = useMutation({
-    mutationFn: ({ groupId, userId }: { groupId: string; userId: string }) =>
-      api.post(`/api/v1/groups/${groupId}/members`, { user_id: userId }),
+    mutationFn: async ({ groupId, userIds }: { groupId: string; userIds: string[] }) => {
+      await Promise.all(userIds.map(id => api.post(`/api/v1/groups/${groupId}/members`, { user_id: id })))
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['groups'] })
       setShowAddMember(false)
-      setSelectedUserId(null)
-      toast.success('Member added to group')
+      setSelectedUserIds(new Set())
+      setSearchQuery('')
+      toast.success('Members added to group')
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -201,13 +204,15 @@ function GroupsPage() {
   })
 
   const addNetworkMutation = useMutation({
-    mutationFn: ({ groupId, networkId }: { groupId: string; networkId: string }) =>
-      api.post(`/api/v1/groups/${groupId}/networks`, { network_id: networkId }),
+    mutationFn: async ({ groupId, networkIds }: { groupId: string; networkIds: string[] }) => {
+      await Promise.all(networkIds.map(id => api.post(`/api/v1/groups/${groupId}/networks`, { network_id: id })))
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['groups'] })
       setShowAddNetwork(false)
-      setSelectedNetworkId(null)
-      toast.success('Network assigned to group')
+      setSelectedNetworkIds(new Set())
+      setSearchQuery('')
+      toast.success('Networks assigned to group')
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -227,15 +232,33 @@ function GroupsPage() {
     setForm({ name: g.name, description: g.description ?? '', vpn_subnet: g.vpn_subnet ?? '' })
   }
 
-  // Filter users that are not already in the group
-  const availableUsers = allUsers.filter(
-    u => !groupDetail?.members.some(m => m.id === u.id)
+  // Filter users that are not already in the group and match search
+  const availableUsers = allUsers.filter(u => 
+    !groupDetail?.members.some(m => m.id === u.id) &&
+    (u.username.toLowerCase().includes(searchQuery.toLowerCase()) || 
+     (u.email && u.email.toLowerCase().includes(searchQuery.toLowerCase())))
   )
 
-  // Filter networks that are not already assigned to the group
-  const availableNetworks = allNetworks.filter(
-    n => !groupDetail?.networks.some(net => net.id === n.id)
+  // Filter networks that are not already assigned to the group and match search
+  const availableNetworks = allNetworks.filter(n => 
+    !groupDetail?.networks.some(net => net.id === n.id) &&
+    (n.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+     n.cidr.toLowerCase().includes(searchQuery.toLowerCase()))
   )
+
+  const toggleUserId = (id: string) => {
+    const newSelected = new Set(selectedUserIds)
+    if (newSelected.has(id)) newSelected.delete(id)
+    else newSelected.add(id)
+    setSelectedUserIds(newSelected)
+  }
+
+  const toggleNetworkId = (id: string) => {
+    const newSelected = new Set(selectedNetworkIds)
+    if (newSelected.has(id)) newSelected.delete(id)
+    else newSelected.add(id)
+    setSelectedNetworkIds(newSelected)
+  }
 
   return (
     <div className="space-y-6">
@@ -359,51 +382,48 @@ function GroupsPage() {
         {/* Detail panel */}
         {detailGroup && groupDetail && (
           <div className="space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b">
+              <h3 className="font-semibold text-lg">{groupDetail.name} Details</h3>
+              <Button variant="ghost" size="icon" onClick={() => setDetailGroup(null)} className="h-8 w-8">
+                <span className="sr-only">Close</span>
+                <Trash2 className="h-4 w-4 hidden" /> {/* Dummy icon so imports don't break, we'll just use an X text or lucide X */}
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-x h-4 w-4"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              </Button>
+            </div>
+
             <Card>
               <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Users className="h-4 w-4" />
-                  Members
-                  <Badge className="ml-2">{groupDetail.members.length}</Badge>
+                  <Network className="h-4 w-4" />
+                  Networks
+                  <Badge className="ml-2">{groupDetail.networks.length}</Badge>
                 </CardTitle>
                 <Button
                   size="sm"
                   variant="outline"
                   className="h-7"
-                  onClick={() => setShowAddMember(true)}
-                  disabled={availableUsers.length === 0}
+                  onClick={() => { setShowAddNetwork(true); setSearchQuery('') }}
                 >
-                  <UserPlus className="h-3.5 w-3.5 mr-1" />
+                  <NetworkIcon className="h-3.5 w-3.5 mr-1" />
                   Add
                 </Button>
               </CardHeader>
               <CardContent className="p-0">
-                {groupDetail.members.length === 0 ? (
-                  <p className="p-4 text-sm text-muted-foreground">No members yet.</p>
+                {groupDetail.networks.length === 0 ? (
+                  <p className="p-4 text-sm text-muted-foreground">No networks assigned.</p>
                 ) : (
-                  <div className="divide-y">
-                    {groupDetail.members.map(m => (
-                      <div key={m.id} className="flex items-center gap-3 px-4 py-2.5">
-                        <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
-                          {m.username[0]?.toUpperCase()}
-                        </div>
+                  <div className="divide-y max-h-[400px] overflow-y-auto">
+                    {groupDetail.networks.map(n => (
+                      <div key={n.id} className="flex items-center gap-3 px-4 py-2.5">
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{m.username}</p>
-                          <p className="text-xs text-muted-foreground truncate">{m.email ?? '—'}</p>
+                          <p className="text-sm font-medium">{n.name}</p>
+                          <code className="text-xs text-muted-foreground">{n.cidr}</code>
                         </div>
-                        {m.vpn_ip && (
-                          <code className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-100 px-1.5 py-0.5 rounded">
-                            {m.vpn_ip}
-                          </code>
-                        )}
-                        <Badge variant={m.is_active ? 'default' : 'secondary'} className="text-xs">
-                          {m.is_active ? 'active' : 'inactive'}
-                        </Badge>
                         <Button
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50"
-                          onClick={() => removeMemberMutation.mutate({ groupId: detailGroup, userId: m.id })}
+                          onClick={() => removeNetworkMutation.mutate({ groupId: detailGroup, networkId: n.id })}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
@@ -417,37 +437,47 @@ function GroupsPage() {
             <Card>
               <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Network className="h-4 w-4" />
-                  Networks
-                  <Badge className="ml-2">{groupDetail.networks.length}</Badge>
+                  <Users className="h-4 w-4" />
+                  Members
+                  <Badge className="ml-2">{groupDetail.members.length}</Badge>
                 </CardTitle>
                 <Button
                   size="sm"
                   variant="outline"
                   className="h-7"
-                  onClick={() => setShowAddNetwork(true)}
-                  disabled={availableNetworks.length === 0}
+                  onClick={() => { setShowAddMember(true); setSearchQuery('') }}
                 >
-                  <NetworkIcon className="h-3.5 w-3.5 mr-1" />
+                  <UserPlus className="h-3.5 w-3.5 mr-1" />
                   Add
                 </Button>
               </CardHeader>
               <CardContent className="p-0">
-                {groupDetail.networks.length === 0 ? (
-                  <p className="p-4 text-sm text-muted-foreground">No networks assigned.</p>
+                {groupDetail.members.length === 0 ? (
+                  <p className="p-4 text-sm text-muted-foreground">No members yet.</p>
                 ) : (
-                  <div className="divide-y">
-                    {groupDetail.networks.map(n => (
-                      <div key={n.id} className="flex items-center gap-3 px-4 py-2.5">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium">{n.name}</p>
-                          <code className="text-xs text-muted-foreground">{n.cidr}</code>
+                  <div className="divide-y max-h-[500px] overflow-y-auto">
+                    {groupDetail.members.map(m => (
+                      <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/30 transition-colors">
+                        <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
+                          {m.username[0]?.toUpperCase()}
                         </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{m.username}</p>
+                          <p className="text-xs text-muted-foreground truncate">{m.email ?? '—'}</p>
+                        </div>
+                        {m.vpn_ip && (
+                          <code className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-100 px-1.5 py-0.5 rounded hidden sm:inline-block">
+                            {m.vpn_ip}
+                          </code>
+                        )}
+                        <Badge variant={m.is_active ? 'default' : 'secondary'} className="text-xs hidden md:inline-flex">
+                          {m.is_active ? 'active' : 'inactive'}
+                        </Badge>
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50"
-                          onClick={() => removeNetworkMutation.mutate({ groupId: detailGroup, networkId: n.id })}
+                          className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50 shrink-0"
+                          onClick={() => removeMemberMutation.mutate({ groupId: detailGroup, userId: m.id })}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
@@ -561,76 +591,135 @@ function GroupsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Add Member Dialog */}
+      {/* Add Member Dialog (Multi-Select) */}
       <Dialog open={showAddMember} onOpenChange={setShowAddMember}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[450px]">
           <DialogHeader>
-            <DialogTitle>Add Member to Group</DialogTitle>
+            <DialogTitle>Add Members to {groupDetail?.name}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="select-user">Select User</Label>
-              <Select value={selectedUserId ?? undefined} onValueChange={(value) => setSelectedUserId(value ?? null)}>
-                <SelectTrigger id="select-user">
-                  <SelectValue placeholder="Choose a user..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableUsers.map(u => (
-                    <SelectItem key={u.id} value={u.id}>
-                      {u.username} {u.email ? `(${u.email})` : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="space-y-3">
+              <Input
+                placeholder="Search by username or email..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                autoFocus
+              />
+              <div className="max-h-60 overflow-y-auto space-y-1 pr-1">
+                {availableUsers.length === 0 ? (
+                   <div className="p-4 text-center text-sm text-muted-foreground border rounded-lg border-dashed">
+                     No users found to add.
+                   </div>
+                ) : (
+                  availableUsers.map(u => (
+                    <div 
+                      key={u.id} 
+                      className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer select-none transition-colors hover:bg-muted/50 ${selectedUserIds.has(u.id) ? 'border-primary bg-primary/5 ring-1 ring-primary/20' : 'border-border'}`}
+                      onClick={() => toggleUserId(u.id)}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedUserIds.has(u.id)}
+                        onChange={() => {}} // handled by parent div click
+                        className="rounded border-input text-emerald-600 focus:ring-emerald-500 h-4 w-4 shrink-0 transition-opacity"
+                      />
+                      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary shrink-0">
+                        {u.username[0]?.toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{u.username}</p>
+                        {u.email && <p className="text-xs text-muted-foreground truncate">{u.email}</p>}
+                      </div>
+                      <Badge variant="outline" className="text-[10px] uppercase font-semibold text-muted-foreground">
+                        {u.role}
+                      </Badge>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setShowAddMember(false); setSelectedUserId(null) }}>
-              Cancel
-            </Button>
-            <Button
-              disabled={!selectedUserId || addMemberMutation.isPending}
-              onClick={() => detailGroup && selectedUserId && addMemberMutation.mutate({ groupId: detailGroup, userId: selectedUserId })}
-            >
-              {addMemberMutation.isPending ? 'Adding...' : 'Add Member'}
-            </Button>
+          <DialogFooter className="flex items-center sm:justify-between w-full">
+             <div className="text-sm text-muted-foreground hidden sm:block">
+               {selectedUserIds.size} user(s) selected
+             </div>
+             <div className="flex gap-2">
+               <Button variant="outline" onClick={() => { setShowAddMember(false); setSelectedUserIds(new Set()) }}>
+                 Cancel
+               </Button>
+               <Button
+                 disabled={selectedUserIds.size === 0 || addMemberMutation.isPending}
+                 onClick={() => detailGroup && addMemberMutation.mutate({ groupId: detailGroup, userIds: Array.from(selectedUserIds) })}
+                 className={selectedUserIds.size > 0 ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}
+               >
+                 {addMemberMutation.isPending ? 'Adding...' : `Add ${selectedUserIds.size || ''} Member(s)`}
+               </Button>
+             </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Add Network Dialog */}
+      {/* Add Network Dialog (Multi-Select) */}
       <Dialog open={showAddNetwork} onOpenChange={setShowAddNetwork}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[450px]">
           <DialogHeader>
-            <DialogTitle>Assign Network to Group</DialogTitle>
+            <DialogTitle>Assign Networks to {groupDetail?.name}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="select-network">Select Network</Label>
-              <Select value={selectedNetworkId ?? undefined} onValueChange={(value) => setSelectedNetworkId(value ?? null)}>
-                <SelectTrigger id="select-network">
-                  <SelectValue placeholder="Choose a network..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableNetworks.map(n => (
-                    <SelectItem key={n.id} value={n.id}>
-                      {n.name} ({n.cidr})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="space-y-3">
+              <Input
+                placeholder="Search network name or CIDR..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                autoFocus
+              />
+              <div className="max-h-60 overflow-y-auto space-y-1 pr-1">
+                {availableNetworks.length === 0 ? (
+                   <div className="p-4 text-center text-sm text-muted-foreground border rounded-lg border-dashed">
+                     No networks found to assign.
+                   </div>
+                ) : (
+                  availableNetworks.map(n => (
+                    <div 
+                      key={n.id} 
+                      className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer select-none transition-colors hover:bg-muted/50 ${selectedNetworkIds.has(n.id) ? 'border-primary bg-primary/5 ring-1 ring-primary/20' : 'border-border'}`}
+                      onClick={() => toggleNetworkId(n.id)}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedNetworkIds.has(n.id)}
+                        onChange={() => {}} // handled by parent div click
+                        className="rounded border-input text-emerald-600 focus:ring-emerald-500 h-4 w-4 shrink-0 transition-opacity"
+                      />
+                      <div className="h-8 w-8 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
+                        <NetworkIcon className="h-4 w-4 text-emerald-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{n.name}</p>
+                        <p className="text-xs font-mono text-muted-foreground truncate">{n.cidr}</p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setShowAddNetwork(false); setSelectedNetworkId(null) }}>
-              Cancel
-            </Button>
-            <Button
-              disabled={!selectedNetworkId || addNetworkMutation.isPending}
-              onClick={() => detailGroup && selectedNetworkId && addNetworkMutation.mutate({ groupId: detailGroup, networkId: selectedNetworkId })}
-            >
-              {addNetworkMutation.isPending ? 'Assigning...' : 'Assign Network'}
-            </Button>
+          <DialogFooter className="flex items-center sm:justify-between w-full">
+             <div className="text-sm text-muted-foreground hidden sm:block">
+               {selectedNetworkIds.size} network(s) selected
+             </div>
+             <div className="flex gap-2">
+               <Button variant="outline" onClick={() => { setShowAddNetwork(false); setSelectedNetworkIds(new Set()) }}>
+                 Cancel
+               </Button>
+               <Button
+                 disabled={selectedNetworkIds.size === 0 || addNetworkMutation.isPending}
+                 onClick={() => detailGroup && addNetworkMutation.mutate({ groupId: detailGroup, networkIds: Array.from(selectedNetworkIds) })}
+                 className={selectedNetworkIds.size > 0 ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}
+               >
+                 {addNetworkMutation.isPending ? 'Assigning...' : `Assign ${selectedNetworkIds.size || ''} Network(s)`}
+               </Button>
+             </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

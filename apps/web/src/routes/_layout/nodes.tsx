@@ -296,7 +296,16 @@ function NodesPage() {
                     <div className={`w-2.5 h-2.5 rounded-full mt-0.5 ${node.status === 'online' ? 'bg-emerald-500 shadow-sm shadow-emerald-200' : 'bg-gray-300'
                       }`} />
                     <div>
-                      <p className="font-semibold text-foreground">{node.hostname}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold text-foreground">{node.hostname}</p>
+                        <span className={`px-1.5 py-0.5 text-[0.65rem] font-bold rounded ring-1 ring-inset ${
+                          node.vpn_type === 'wireguard' 
+                            ? 'bg-amber-50 text-amber-700 ring-amber-600/20' 
+                            : 'bg-orange-50 text-orange-700 ring-orange-600/20'
+                        }`}>
+                          {node.vpn_type === 'wireguard' ? 'WG' : 'OVPN'}
+                        </span>
+                      </div>
                       <p className="text-xs font-mono text-muted-foreground/70 mt-0.5">{node.ip_address}</p>
                     </div>
                   </div>

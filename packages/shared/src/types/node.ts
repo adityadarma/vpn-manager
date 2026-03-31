@@ -11,4 +11,8 @@ export interface VpnNode {
   last_seen: string | null
   created_at: string
   active_sessions?: number
+  vpn_type: 'openvpn' | 'wireguard'
+  public_key?: string | null
+  private_key?: string | null
+  endpoint_port?: number | null
 }

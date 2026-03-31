@@ -306,6 +306,13 @@ const userRoutes: FastifyPluginAsync = async (app) => {
             })
           }
 
+          // Important for WireGuard: We must inject the newly generated peer to the server config!
+          if (user.vpn_ip) {
+            // Find netmask to pass to enqueueCcdTask
+            const netmask = node.vpn_netmask || '255.255.255.0'
+            await enqueueCcdTask(app, user.username, user.vpn_ip, netmask, id)
+          }
+
           return reply.send({
             message: 'Certificate generated successfully',
             expiresAt: result.expiresAt,
@@ -690,8 +697,12 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(400).send({ error: 'Bad Request', message: 'Node not found' })
       }
 
-      if (!node.ca_cert || !node.ta_key) {
+      if (node.vpn_type !== 'wireguard' && (!node.ca_cert || !node.ta_key)) {
         return reply.status(400).send({ error: 'Bad Request', message: 'Node has not uploaded certificates yet (CA cert and TLS key required)' })
+      }
+
+      if (node.vpn_type === 'wireguard' && !node.public_key) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Node WireGuard public key is missing' })
       }
 
       // Update download tracking
@@ -726,7 +737,12 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         .where({ user_id: id })
         .pluck('group_id') as string[]
 
+      let splitCidrs: string[] = []
       let routeLines = ''
+      
+      const vpnPrefixTemp = node.vpn_netmask === '255.255.255.0' ? '24' : '16'
+      splitCidrs.push(`${node.vpn_network}/${vpnPrefixTemp}`)
+
       if (userGroupIds.length > 0) {
         const networks = await app.db('group_networks as gn')
           .join('networks as n', 'gn.network_id', 'n.id')
@@ -734,6 +750,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
           .select('n.cidr', 'n.name')
           .distinct('n.cidr')
         if (networks.length > 0) {
+          splitCidrs.push(...networks.map((n: { cidr: string }) => n.cidr))
           const routeComments = networks.map((n: { cidr: string; name: string }) =>
             `# ${n.name}: ${n.cidr}\n${cidrToRoute(n.cidr)}`
           ).join('\n')
@@ -741,6 +758,32 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         }
       }
 
+      // WIRE GUARD CONFIGURATION
+      if (node.vpn_type === 'wireguard') {
+        let allowedIps = '0.0.0.0/0, ::/0' // Full mode
+        
+        if (node.tunnel_mode === 'split') {
+          allowedIps = splitCidrs.join(', ')
+        }
+
+        const endpoint = `${node.ip_address}:${node.endpoint_port || node.port || 51820}`
+        const wgConfig = `[Interface]
+PrivateKey = ${certificate.client_key.trim()}
+Address = ${user.vpn_ip || '10.8.0.2'}/32
+${node.dns_servers ? `DNS = ${node.dns_servers}` : ''}
+
+[Peer]
+PublicKey = ${node.public_key}
+Endpoint = ${endpoint}
+AllowedIPs = ${allowedIps}
+PersistentKeepalive = 25
+`
+        reply.header('Content-Disposition', `attachment; filename="${user.username}-${node.hostname}.conf"`)
+        reply.type('text/plain')
+        return reply.send(wgConfig)
+      }
+
+      // OPENVPN CONFIGURATION
       // Build config with node-specific settings
       const protoClient = protocol === 'tcp' ? 'tcp-client' : protocol
 
@@ -771,7 +814,7 @@ setenv opt block-outside-dns
 verb 3
 ${routeLines}
 <ca>
-${node.ca_cert.trim()}
+${node.ca_cert?.trim() ?? ''}
 </ca>
 
 <cert>
@@ -783,7 +826,7 @@ ${certificate.client_key.trim()}
 </key>
 
 <tls-crypt>
-${node.ta_key.trim()}
+${node.ta_key?.trim() ?? ''}
 </tls-crypt>
 `
       reply.header('Content-Disposition', `attachment; filename="${user.username}-${node.hostname}.ovpn"`)
@@ -843,14 +886,29 @@ async function enqueueCcdTask(
     }
   }
 
-  const tasks = onlineNodes.map((node: { id: string }) => ({
-    id: crypto.randomUUID(),
-    node_id: node.id,
-    action: 'write_client_ccd',
-    payload: JSON.stringify({ username, vpn_ip: vpnIp, netmask, extra_lines: extraLines }),
-    status: 'pending',
-    created_at: new Date(),
-  }))
+  const tasks = []
+  
+  for (const node of onlineNodes) {
+    // For wireguard support, fetch the user's generated public key if available
+    let publicKey = undefined
+    if (userId) {
+      const cert = await app.db('user_node_certificates')
+        .where({ user_id: userId, node_id: node.id })
+        .first()
+      if (cert && cert.client_cert) {
+        publicKey = cert.client_cert // Note: Wireguard public key is stored in client_cert field
+      }
+    }
+
+    tasks.push({
+      id: crypto.randomUUID(),
+      node_id: node.id,
+      action: 'write_client_ccd',
+      payload: JSON.stringify({ username, vpn_ip: vpnIp, netmask, extra_lines: extraLines, public_key: publicKey }),
+      status: 'pending',
+      created_at: new Date(),
+    })
+  }
 
   await app.db('tasks').insert(tasks)
   app.log.info(`[ip-pool] Queued write_client_ccd for ${username} → ${vpnIp} on ${tasks.length} node(s)`)

@@ -2,10 +2,10 @@
 # ============================================================
 # VPN Manager - Uninstaller
 # ============================================================
-# Removes OpenVPN + Agent completely
+# Removes OpenVPN, WireGuard + Agent completely
 #
 # Usage:
-#   sudo bash uninstall.sh
+#   sudo bash scripts/uninstall-node.sh
 # ============================================================
 
 set -e
@@ -21,7 +21,23 @@ echo -e "${Y}============================================================"
 echo "  VPN Manager - Uninstaller"
 echo "============================================================${NC}"
 echo ""
-warn "This will remove OpenVPN, Agent, and all certificates!"
+# Attempt to detect VPN engine from agent environment
+DETECTED_VPN="Unknown"
+if [ -f "/opt/vpn-agent/.env" ]; then
+    VPN_TYPE=$(grep -e "^VPN_TYPE=" /opt/vpn-agent/.env | cut -d '=' -f2 | tr -d '"' | tr -d "'" || echo "openvpn")
+    [ -z "$VPN_TYPE" ] && VPN_TYPE="openvpn"
+    if [ "$VPN_TYPE" = "wireguard" ]; then
+        DETECTED_VPN="WireGuard"
+    elif [ "$VPN_TYPE" = "openvpn" ]; then
+        DETECTED_VPN="OpenVPN"
+    fi
+else
+    VPN_TYPE="both"
+    DETECTED_VPN="OpenVPN & WireGuard (Force Purge All)"
+fi
+
+warn "Detected Engine: $DETECTED_VPN"
+warn "This will remove $DETECTED_VPN, the Agent, and all matching certificates/keys!"
 echo ""
 read -p "Continue? [y/N]: " confirm
 [[ "$confirm" != "y" && "$confirm" != "Y" ]] && { echo "Aborted."; exit 0; }
@@ -39,28 +55,48 @@ if [ -d "/opt/vpn-agent" ]; then
     ok "Agent stopped"
 fi
 
-# Stop OpenVPN
-systemctl stop openvpn-server@server.service 2>/dev/null || true
-systemctl stop openvpn@server.service 2>/dev/null || true
-systemctl disable openvpn-server@server.service 2>/dev/null || true
-systemctl disable openvpn@server.service 2>/dev/null || true
-ok "OpenVPN stopped"
+if [ "$VPN_TYPE" = "openvpn" ] || [ "$VPN_TYPE" = "both" ]; then
+    # Stop OpenVPN
+    systemctl stop openvpn-server@server.service 2>/dev/null || true
+    systemctl stop openvpn@server.service 2>/dev/null || true
+    systemctl disable openvpn-server@server.service 2>/dev/null || true
+    systemctl disable openvpn@server.service 2>/dev/null || true
+    
+    # Stop iptables service (legacy wrapper)
+    systemctl stop openvpn-iptables.service 2>/dev/null || true
+    systemctl disable openvpn-iptables.service 2>/dev/null || true
+    rm -f /etc/systemd/system/openvpn-iptables.service
+    
+    systemctl daemon-reload
+    ok "OpenVPN services stopped"
+fi
 
-# Stop iptables service
-systemctl stop openvpn-iptables.service 2>/dev/null || true
-systemctl disable openvpn-iptables.service 2>/dev/null || true
-rm -f /etc/systemd/system/openvpn-iptables.service
-systemctl daemon-reload
-ok "NAT rules removed"
+if [ "$VPN_TYPE" = "wireguard" ] || [ "$VPN_TYPE" = "both" ]; then
+    # Stop WireGuard
+    systemctl stop wg-quick@wg0 2>/dev/null || true
+    systemctl disable wg-quick@wg0 2>/dev/null || true
+    ok "WireGuard stopped"
+fi
+
+
 
 echo ""
 echo "Removing packages..."
 
-if [[ "$OS" =~ ^(ubuntu|debian)$ ]]; then
-    apt-get purge -y openvpn easy-rsa 2>/dev/null || true
+    if [ "$VPN_TYPE" = "openvpn" ] || [ "$VPN_TYPE" = "both" ]; then
+        apt-get purge -y openvpn easy-rsa 2>/dev/null || true
+    fi
+    if [ "$VPN_TYPE" = "wireguard" ] || [ "$VPN_TYPE" = "both" ]; then
+        apt-get purge -y wireguard-tools 2>/dev/null || true
+    fi
     apt-get autoremove -y 2>/dev/null || true
 elif [[ "$OS" =~ ^(centos|rhel|fedora|rocky|almalinux)$ ]]; then
-    yum remove -y openvpn easy-rsa 2>/dev/null || true
+    if [ "$VPN_TYPE" = "openvpn" ] || [ "$VPN_TYPE" = "both" ]; then
+        yum remove -y openvpn easy-rsa 2>/dev/null || true
+    fi
+    if [ "$VPN_TYPE" = "wireguard" ] || [ "$VPN_TYPE" = "both" ]; then
+        yum remove -y wireguard-tools 2>/dev/null || true
+    fi
 fi
 
 ok "Packages removed"
@@ -68,8 +104,15 @@ ok "Packages removed"
 echo ""
 echo "Cleaning up files..."
 
-rm -rf /etc/openvpn
-rm -rf /var/log/openvpn*
+if [ "$VPN_TYPE" = "openvpn" ] || [ "$VPN_TYPE" = "both" ]; then
+    rm -rf /etc/openvpn
+    rm -rf /var/log/openvpn*
+fi
+
+if [ "$VPN_TYPE" = "wireguard" ] || [ "$VPN_TYPE" = "both" ]; then
+    rm -rf /etc/wireguard
+fi
+
 rm -rf /opt/vpn-agent
 
 ok "Files removed"

@@ -46,7 +46,10 @@ async function checkCertificatesSync(env: ReturnType<typeof loadAgentEnv>): Prom
       return false
     }
 
-    const node = await response.json() as { ca_cert?: string; ta_key?: string }
+    const node = await response.json() as { ca_cert?: string; ta_key?: string; vpn_type?: string; public_key?: string; private_key?: string }
+    if (node.vpn_type === 'wireguard') {
+      return !!(node.public_key && node.private_key)
+    }
     return !!(node.ca_cert && node.ta_key)
   } catch (error) {
     console.warn('[startup] Failed to check certificates:', (error as Error).message)
