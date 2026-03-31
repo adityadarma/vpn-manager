@@ -421,6 +421,8 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       
       // If WireGuard, sync sessions manually via stateless heartbeat poll
       if (currentNode?.vpn_type === 'wireguard') {
+        app.log.info(`[heartbeat] Processing WireGuard heartbeat. Found ${clients?.length || 0} clients.`)
+        
         // 1. Get all currently active sessions for this node
         const activeSessions = await app.db('vpn_sessions')
           .where({ node_id: nodeId })
@@ -435,6 +437,8 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
             .where({ node_id: nodeId })
             .select('user_id', 'client_cert')
           
+          app.log.info(`[heartbeat] Found ${nodeCerts.length} certificates registered for this node.`)
+          
           // Map truncated public key (16 chars) to user_id
           const pubKeyToUser = new Map(
             nodeCerts
@@ -444,12 +448,16 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
 
           for (const client of clients) {
             const userId = pubKeyToUser.get(client.commonName)
-            if (!userId) continue // skip unknown guests
+            if (!userId) {
+              app.log.warn(`[heartbeat] Unmapped WG key: ${client.commonName}. Known prefixes: ${Array.from(pubKeyToUser.keys()).join(',')}`)
+              continue // skip unknown guests
+            }
             
             reportedClientMap.set(userId, client)
             const existingSession = activeSessionMap.get(userId)
             
             if (!existingSession) {
+              app.log.info(`[heartbeat] Creating new session for user ${userId} via WireGuard heartbeat`)
               // New session! Create it via vpn_sessions
               await app.db('vpn_sessions').insert({
                 id: crypto.randomUUID(),
@@ -477,6 +485,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         // 2. Disconnect sessions that dropped entirely from the wg interface dump
         for (const session of activeSessions) {
           if (!reportedClientMap.has(session.user_id)) {
+            app.log.info(`[heartbeat] Disconnecting stale session for user ${session.user_id} via WG timeout`)
             const now = new Date()
             const duration = Math.floor((now.getTime() - new Date(session.connected_at).getTime()) / 1000)
             await app.db('vpn_sessions').where({ id: session.id }).update({
