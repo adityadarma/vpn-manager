@@ -83,6 +83,7 @@ fi
 echo ""
 echo "Removing packages..."
 
+if [[ "$OS" =~ ^(ubuntu|debian)$ ]]; then
     if [ "$VPN_TYPE" = "openvpn" ] || [ "$VPN_TYPE" = "both" ]; then
         apt-get purge -y openvpn easy-rsa 2>/dev/null || true
     fi
