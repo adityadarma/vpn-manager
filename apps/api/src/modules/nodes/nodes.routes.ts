@@ -408,7 +408,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
     '/nodes/heartbeat',
     { schema: { tags: ['nodes'], summary: 'Agent heartbeat' } },
     async (request) => {
-      const { nodeId, caCert, taKey } = HeartbeatSchema.parse(request.body)
+      const { nodeId, caCert, taKey, clients } = HeartbeatSchema.parse(request.body)
       
       // Get current node status
       const currentNode = await app.db('vpn_nodes').where({ id: nodeId }).first()
@@ -419,6 +419,75 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       if (taKey) updates.ta_key = taKey
       await app.db('vpn_nodes').where({ id: nodeId }).update(updates)
       
+      // If WireGuard, sync sessions manually via stateless heartbeat poll
+      if (currentNode?.vpn_type === 'wireguard') {
+        // 1. Get all currently active sessions for this node
+        const activeSessions = await app.db('vpn_sessions')
+          .where({ node_id: nodeId })
+          .whereNull('disconnected_at')
+        
+        const activeSessionMap = new Map(activeSessions.map((s: any) => [s.user_id, s]))
+        const reportedClientMap = new Map()
+
+        if (clients && clients.length > 0) {
+          // Fetch certificates for mapping public key -> user
+          const nodeCerts = await app.db('user_node_certificates')
+            .where({ node_id: nodeId })
+            .select('user_id', 'client_cert')
+          
+          // Map truncated public key (16 chars) to user_id
+          const pubKeyToUser = new Map(
+            nodeCerts
+              .filter((c: any) => c.client_cert)
+              .map((c: any) => [c.client_cert.trim().substring(0, 16), c.user_id])
+          )
+
+          for (const client of clients) {
+            const userId = pubKeyToUser.get(client.commonName)
+            if (!userId) continue // skip unknown guests
+            
+            reportedClientMap.set(userId, client)
+            const existingSession = activeSessionMap.get(userId)
+            
+            if (!existingSession) {
+              // New session! Create it via vpn_sessions
+              await app.db('vpn_sessions').insert({
+                id: crypto.randomUUID(),
+                user_id: userId,
+                node_id: nodeId,
+                vpn_ip: client.virtualAddress,
+                real_ip: client.realAddress,
+                client_version: 'WireGuard',
+                device_name: 'WireGuard Client',
+                bytes_sent: client.bytesSent,
+                bytes_received: client.bytesReceived,
+                connected_at: new Date(client.connectedSince),
+              })
+            } else {
+              // Update existing session bytes
+              await app.db('vpn_sessions').where({ id: existingSession.id }).update({
+                bytes_sent: client.bytesSent,
+                bytes_received: client.bytesReceived,
+                last_activity_at: new Date(),
+              })
+            }
+          }
+        }
+        
+        // 2. Disconnect sessions that dropped entirely from the wg interface dump
+        for (const session of activeSessions) {
+          if (!reportedClientMap.has(session.user_id)) {
+            const now = new Date()
+            const duration = Math.floor((now.getTime() - new Date(session.connected_at).getTime()) / 1000)
+            await app.db('vpn_sessions').where({ id: session.id }).update({
+              disconnected_at: now,
+              disconnect_reason: 'timeout',
+              connection_duration_seconds: duration
+            })
+          }
+        }
+      }
+
       // If node was offline and now online, trigger syncs
       if (wasOffline) {
         const tasksToCreate = []
