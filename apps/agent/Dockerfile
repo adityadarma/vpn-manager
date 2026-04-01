@@ -31,7 +31,7 @@ FROM node:24-alpine AS runner
 WORKDIR /app
 
 # Install OpenSSL, Easy-RSA, and WireGuard tools
-RUN apk add --no-cache bash openssl wireguard-tools iptables iproute2
+RUN apk add --no-cache bash openssl easy-rsa wireguard-tools iptables iproute2
 
 COPY --from=builder /prod/agent /app
 # Copy built dist from builder
