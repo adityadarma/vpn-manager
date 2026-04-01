@@ -22,6 +22,10 @@ COPY apps/agent/tsup.config.ts ./apps/agent/tsup.config.ts
 # Build the bundled Javascript code via tsup
 RUN pnpm --filter @vpn/agent build
 
+# Isolate app with only its required dependencies for a leaner image
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
+    pnpm deploy --filter @vpn/agent --prod /prod/agent
+
 # Final minimal runner stage
 FROM node:24-alpine AS runner
 WORKDIR /app
@@ -29,7 +33,8 @@ WORKDIR /app
 # Install OpenSSL, Easy-RSA, and WireGuard tools
 RUN apk add --no-cache bash openssl easy-rsa wireguard-tools iptables iproute2
 
-# Copy ONLY the built, standalone dist folder from builder!
+COPY --from=builder /prod/agent /app
+# Copy built dist from builder
 COPY --from=builder /app/apps/agent/dist /app/dist
 
 ENV NODE_ENV=production
