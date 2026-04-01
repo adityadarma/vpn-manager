@@ -490,7 +490,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
             const duration = Math.floor((now.getTime() - new Date(session.connected_at).getTime()) / 1000)
             await app.db('vpn_sessions').where({ id: session.id }).update({
               disconnected_at: now,
-              disconnect_reason: 'timeout',
+              disconnect_reason: 'normal',
               connection_duration_seconds: duration
             })
           }

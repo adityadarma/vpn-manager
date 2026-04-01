@@ -71,11 +71,6 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         }
       }
 
-      if (!vpnIp) {
-        const usedIps = await app.db('users').whereNotNull('vpn_ip').pluck('vpn_ip') as string[]
-        vpnIp = nextAvailableIp('10.8.0.0/24', usedIps) || '10.8.0.2'
-      }
-
       await app.db('users').insert({
         id,
         username: input.username,
@@ -237,13 +232,30 @@ const userRoutes: FastifyPluginAsync = async (app) => {
 
       // Ensure user has a VPN IP before configuring WireGuard/OpenVPN
       if (!user.vpn_ip) {
-        let subnetToUse = '10.8.0.0/24'
+        let subnetToUse = ''
+        
         if (user.vpn_group_id) {
           const group = await app.db('groups').where({ id: user.vpn_group_id }).first()
           if (group?.vpn_subnet) subnetToUse = group.vpn_subnet
         }
+        
+        // Dynamic fallback to node's configured network instead of hardcoded 10.8.0.0/24
+        if (!subnetToUse) {
+          const network = node.vpn_network || '10.8.0.0'
+          let prefixLen = 24
+          if (node.vpn_netmask) {
+            const parts = node.vpn_netmask.split('.').map(Number)
+            if (parts.length === 4) {
+               const intMask = (parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]
+               prefixLen = 32 - Math.log2((~intMask >>> 0) + 1)
+               if (isNaN(prefixLen) || prefixLen < 8 || prefixLen > 30) prefixLen = 24
+            }
+          }
+          subnetToUse = `${network}/${prefixLen}`
+        }
+
         const usedIps = await app.db('users').whereNotNull('vpn_ip').pluck('vpn_ip') as string[]
-        const newIp = nextAvailableIp(subnetToUse, usedIps) || '10.8.0.2'
+        const newIp = nextAvailableIp(subnetToUse, usedIps) || `${node.vpn_network ? node.vpn_network.substring(0, node.vpn_network.lastIndexOf('.')) : '10.8.0'}.2`
         
         await app.db('users').where({ id }).update({ vpn_ip: newIp })
         user.vpn_ip = newIp
@@ -413,8 +425,43 @@ const userRoutes: FastifyPluginAsync = async (app) => {
             continue
           }
 
+          // Ensure user has a VPN IP before generating cert
+          if (!user.vpn_ip) {
+            let subnetToUse = ''
+            
+            if (user.vpn_group_id) {
+              const group = await app.db('groups').where({ id: user.vpn_group_id }).first()
+              if (group?.vpn_subnet) subnetToUse = group.vpn_subnet
+            }
+            
+            // Dynamic fallback to node's configured network
+            if (!subnetToUse) {
+              const network = node.vpn_network || '10.8.0.0'
+              let prefixLen = 24
+              if (node.vpn_netmask) {
+                const parts = node.vpn_netmask.split('.').map(Number)
+                if (parts.length === 4) {
+                   const intMask = (parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]
+                   prefixLen = 32 - Math.log2((~intMask >>> 0) + 1)
+                   if (isNaN(prefixLen) || prefixLen < 8 || prefixLen > 30) prefixLen = 24
+                }
+              }
+              subnetToUse = `${network}/${prefixLen}`
+            }
+
+            const usedIps = await app.db('users').whereNotNull('vpn_ip').pluck('vpn_ip') as string[]
+            const newIp = nextAvailableIp(subnetToUse, usedIps) || `${node.vpn_network ? node.vpn_network.substring(0, node.vpn_network.lastIndexOf('.')) : '10.8.0'}.2`
+            
+            await app.db('users').where({ id: userId }).update({ vpn_ip: newIp })
+            user.vpn_ip = newIp
+          }
+
+          const existingCert = await app.db('user_node_certificates')
+            .where({ user_id: userId, node_id: nodeId })
+            .first()
+
           // Revoke existing certificate
-          if (user.client_cert) {
+          if (existingCert && !existingCert.is_revoked && existingCert.client_cert) {
             try {
               // Verify node exists before inserting
               const nodeExists = await app.db('vpn_nodes').where({ id: nodeId }).first()
@@ -423,7 +470,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
                   id: crypto.randomUUID(),
                   user_id: userId,
                   node_id: nodeId,
-                  revoked_cert: user.client_cert,
+                  revoked_cert: existingCert.client_cert,
                   reason: 'Bulk certificate generation',
                   revoked_by: authUser.id,
                   revoked_at: new Date()
@@ -458,17 +505,50 @@ const userRoutes: FastifyPluginAsync = async (app) => {
           while (Date.now() - startTime < maxWait) {
             const task = await app.db('tasks').where({ id: taskId }).first()
             
-            if (task.status === 'success') {
+            if (task.status === 'done') {
               const result = JSON.parse(task.result || '{}')
-              await app.db('users').where({ id: userId }).update({
-                client_cert: result.clientCert,
-                client_key: result.clientKey,
-                cert_password_protected: result.passwordProtected,
-                cert_generated_at: new Date(),
-                cert_expires_at: new Date(result.expiresAt),
-                cert_last_renewed_at: new Date(),
-                cert_renewal_count: app.db.raw('cert_renewal_count + 1')
-              })
+              
+              if (existingCert) {
+                await app.db('user_node_certificates')
+                  .where({ user_id: userId, node_id: nodeId })
+                  .update({
+                    client_cert: result.clientCert,
+                    client_key: result.clientKey,
+                    password_protected: result.passwordProtected,
+                    generated_at: new Date(),
+                    expires_at: result.expiresAt ? new Date(result.expiresAt) : null,
+                    is_revoked: false,
+                    revoked_at: null,
+                    revoked_by: null,
+                    revoke_reason: null,
+                    updated_at: new Date()
+                  })
+              } else {
+                await app.db('user_node_certificates').insert({
+                  id: crypto.randomUUID(),
+                  user_id: userId,
+                  node_id: nodeId,
+                  client_cert: result.clientCert,
+                  client_key: result.clientKey,
+                  password_protected: result.passwordProtected,
+                  generated_at: new Date(),
+                  expires_at: result.expiresAt ? new Date(result.expiresAt) : null,
+                  is_revoked: false,
+                  created_at: new Date(),
+                  updated_at: new Date()
+                })
+              }
+
+              // Important for WireGuard: We must inject the newly generated peer to the server config!
+              if (user.vpn_ip) {
+                let netmask = '255.255.255.0'
+                if (user.vpn_group_id) {
+                  const group = await app.db('groups').where({ id: user.vpn_group_id }).first()
+                  if (group?.vpn_subnet) netmask = getNetmask(group.vpn_subnet)
+                }
+                await enqueueCcdTask(app, user.username, user.vpn_ip, netmask, userId)
+              }
+
               success = true
               break
             }

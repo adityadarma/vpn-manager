@@ -13,6 +13,7 @@ import { OpenVpnManagementDriver, WireGuardDriver, type VpnDriver } from './driv
 import { handleSyncCertificates } from './handlers/sync-certificates'
 import { handleSyncServerConfig } from './handlers/sync-server-config'
 import { startStatusMonitor } from './services/status-monitor'
+import { startEventMonitor } from './services/event-monitor'
 
 /**
  * Create VPN driver based on configuration
@@ -135,8 +136,13 @@ async function main() {
   startHeartbeat(env, driver)
   startPoller(env, driver)
   
-  // Start status monitor for realtime VPN events (supports all VPN types)
-  startStatusMonitor(env)
+  if (env.VPN_TYPE === 'openvpn') {
+    // OpenVPN supports rich realtime events via Management Interface (includes Device Info from IV_PLAT)
+    startEventMonitor(env, driver)
+  } else {
+    // WireGuard uses interval polling to simulate realtime events
+    startStatusMonitor(env)
+  }
 
   // Graceful shutdown
   const shutdown = async () => {
