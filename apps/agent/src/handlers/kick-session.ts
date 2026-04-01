@@ -3,6 +3,7 @@ import { execSync } from 'node:child_process'
 import path from 'node:path'
 import net from 'node:net'
 import type { VpnDriver } from '../drivers'
+import { loadAgentEnv } from '../config/env'
 
 /**
  * kick_vpn_session handler
@@ -132,6 +133,56 @@ export async function handleKickSession(
     kill_response: null,
   }
 
+  const env = loadAgentEnv()
+
+  // ── WIRE GUARD LOGIC ─────────────────────────────────────────────────────
+  if (env.VPN_TYPE === 'wireguard') {
+    const { public_key, vpn_ip } = payload as any
+    if (!public_key) {
+      console.warn(`[kick-session] Missing public_key for WireGuard peer ${common_name}`)
+      result.error = 'missing_public_key'
+      return result
+    }
+
+    const iface = env.WIREGUARD_INTERFACE || 'wg0'
+    try {
+      if (permanent) {
+        // PERMANENT: Remove peer from wg0 and save config
+        execSync(`wg set ${iface} peer ${public_key} remove`)
+        execSync(`wg-quick save ${iface}`)
+        console.log(`[kick-session] ✓ WireGuard peer ${common_name} PERMANENTLY removed from ${iface}`)
+        result.kicked = true
+        result.kill_method = 'wg_remove'
+        result.ccd_disabled = true
+      } else {
+        // TEMPORARY KICK: Drop connection by removing and re-adding peer
+        if (vpn_ip) {
+          execSync(`wg set ${iface} peer ${public_key} remove`)
+          // Delay to drop connection, then add back
+          setTimeout(() => {
+            try {
+              execSync(`wg set ${iface} peer ${public_key} allowed-ips ${vpn_ip}/32`)
+              console.log(`[kick-session] ✓ WireGuard peer ${common_name} restored after temporary kick`)
+            } catch(e: any) {
+              console.error(`[kick-session] Failed to restore peer:`, e.message)
+            }
+          }, 2000)
+          console.log(`[kick-session] ✓ WireGuard peer ${common_name} temporarily kicked from ${iface}`)
+          result.kicked = true
+          result.kill_method = 'wg_temp_remove'
+        } else {
+          console.warn(`[kick-session] Missing vpn_ip for temporary kick of WireGuard peer ${common_name}`)
+        }
+      }
+      return result
+    } catch (err: any) {
+      console.error(`[kick-session] WireGuard kill failed:`, err.message)
+      throw new Error(`WireGuard kill failed: ${err.message}`)
+    }
+  }
+
+  // ── OPENVPN LOGIC ────────────────────────────────────────────────────────
+  
   // ── CCD management ───────────────────────────────────────────────────────
   if (permanent) {
     // Write disable → blocks all future reconnects via TLS handshake rejection

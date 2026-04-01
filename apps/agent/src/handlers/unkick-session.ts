@@ -1,6 +1,8 @@
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'node:fs'
+import { execSync } from 'node:child_process'
 import path from 'node:path'
 import type { VpnDriver } from '../drivers'
+import { loadAgentEnv } from '../config/env'
 
 /**
  * unkick_vpn_session handler
@@ -23,6 +25,30 @@ export async function handleUnkickSession(
     throw new Error('unkick_vpn_session: common_name is required in payload')
   }
 
+  const env = loadAgentEnv()
+
+  // WIRE GUARD LOGIC
+  if (env.VPN_TYPE === 'wireguard') {
+    const { public_key, vpn_ip } = payload as any
+    if (!public_key || !vpn_ip) {
+      console.warn(`[unkick-session] Missing public_key or vpn_ip for WireGuard peer ${common_name}`)
+      return { unkicked: false, common_name, error: 'missing_payload_data' }
+    }
+
+    const iface = env.WIREGUARD_INTERFACE || 'wg0'
+    try {
+      // Re-inject the peer that was removed during permanent kick
+      execSync(`wg set ${iface} peer ${public_key} allowed-ips ${vpn_ip}/32`)
+      execSync(`wg-quick save ${iface}`)
+      console.log(`[unkick-session] ✓ WireGuard peer ${common_name} restored to ${iface}`)
+      return { unkicked: true, common_name, method: 'wg_restore' }
+    } catch (err: any) {
+      console.error(`[unkick-session] Failed to restore WireGuard peer:`, err.message)
+      throw new Error(`WireGuard peer restore failed: ${err.message}`)
+    }
+  }
+
+  // OPENVPN LOGIC
   const ccdFile = path.join(CCD_DIR, common_name)
 
   if (!existsSync(ccdFile)) {

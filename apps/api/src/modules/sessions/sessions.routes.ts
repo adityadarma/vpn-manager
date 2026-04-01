@@ -274,6 +274,17 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
       const kickedUser = await app.db('users').where({ id: session.user_id }).first()
       const commonName = kickedUser?.username ?? null
 
+      // Query for additional payload data needed by WireGuard
+      let publicKey: string | null = null
+      if (session.user_id && session.node_id) {
+        const cert = await app.db('user_node_certificates')
+          .where({ user_id: session.user_id, node_id: session.node_id })
+          .first()
+        if (cert && cert.client_cert) {
+          publicKey = cert.client_cert.trim()
+        }
+      }
+
       // Dispatch kick task to the node agent so the VPN tunnel is actually dropped
       if (commonName) {
         try {
@@ -281,7 +292,12 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
             id: crypto.randomUUID(),
             node_id: session.node_id,
             action: 'kick_vpn_session',
-            payload: JSON.stringify({ common_name: commonName, permanent }),
+            payload: JSON.stringify({ 
+              common_name: commonName, 
+              permanent,
+              public_key: publicKey,
+              vpn_ip: kickedUser?.vpn_ip
+            }),
             status: 'pending',
             result: null,
             error_message: null,
@@ -332,13 +348,39 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(422).send({ error: 'Could not resolve username for this session' })
       }
 
+      // Query for additional payload data needed by WireGuard
+      let publicKey: string | null = null
+      if (session.user_id && session.node_id) {
+        const cert = await app.db('user_node_certificates')
+          .where({ user_id: session.user_id, node_id: session.node_id })
+          .first()
+        if (cert && cert.client_cert) {
+          publicKey = cert.client_cert.trim()
+        }
+      }
+
+      // If user has a group, fetch netmask for restore
+      let netmask = '255.255.255.0'
+      if (kickedUser?.vpn_group_id) {
+        const group = await app.db('groups').where({ id: kickedUser.vpn_group_id }).first()
+        if (group && group.vpn_subnet) {
+          const { getNetmask } = await import('../../services/ip-pool.service')
+          netmask = getNetmask(group.vpn_subnet)
+        }
+      }
+
       // Dispatch unkick task to agent on the node
       try {
         await app.db('tasks').insert({
           id: crypto.randomUUID(),
           node_id: session.node_id,
           action: 'unkick_vpn_session',
-          payload: JSON.stringify({ common_name: commonName }),
+          payload: JSON.stringify({ 
+            common_name: commonName,
+            public_key: publicKey,
+            vpn_ip: kickedUser?.vpn_ip,
+            netmask
+          }),
           status: 'pending',
           result: null,
           error_message: null,
