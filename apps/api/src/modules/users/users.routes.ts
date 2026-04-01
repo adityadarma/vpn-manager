@@ -71,6 +71,11 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         }
       }
 
+      if (!vpnIp) {
+        const usedIps = await app.db('users').whereNotNull('vpn_ip').pluck('vpn_ip') as string[]
+        vpnIp = nextAvailableIp('10.8.0.0/24', usedIps) || '10.8.0.2'
+      }
+
       await app.db('users').insert({
         id,
         username: input.username,
@@ -90,9 +95,12 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       }
 
       // Enqueue write_client_ccd task to all online nodes (if IP was assigned)
-      if (vpnIp && resolvedGroupId) {
-        const group = await app.db('groups').where({ id: resolvedGroupId }).first()
-        const netmask = group?.vpn_subnet ? getNetmask(group.vpn_subnet) : '255.255.255.0'
+      if (vpnIp) {
+        let netmask = '255.255.255.0'
+        if (resolvedGroupId) {
+          const group = await app.db('groups').where({ id: resolvedGroupId }).first()
+          if (group?.vpn_subnet) netmask = getNetmask(group.vpn_subnet)
+        }
         await enqueueCcdTask(app, input.username, vpnIp, netmask, id)
       }
 
@@ -227,6 +235,20 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(400).send({ error: 'Bad Request', message: 'Node not found or offline' })
       }
 
+      // Ensure user has a VPN IP before configuring WireGuard/OpenVPN
+      if (!user.vpn_ip) {
+        let subnetToUse = '10.8.0.0/24'
+        if (user.vpn_group_id) {
+          const group = await app.db('groups').where({ id: user.vpn_group_id }).first()
+          if (group?.vpn_subnet) subnetToUse = group.vpn_subnet
+        }
+        const usedIps = await app.db('users').whereNotNull('vpn_ip').pluck('vpn_ip') as string[]
+        const newIp = nextAvailableIp(subnetToUse, usedIps) || '10.8.0.2'
+        
+        await app.db('users').where({ id }).update({ vpn_ip: newIp })
+        user.vpn_ip = newIp
+      }
+
       // Check if certificate already exists for this user-node combination
       const existingCert = await app.db('user_node_certificates')
         .where({ user_id: id, node_id: nodeId })
@@ -309,7 +331,11 @@ const userRoutes: FastifyPluginAsync = async (app) => {
           // Important for WireGuard: We must inject the newly generated peer to the server config!
           if (user.vpn_ip) {
             // Find netmask to pass to enqueueCcdTask
-            const netmask = node.vpn_netmask || '255.255.255.0'
+            let netmask = '255.255.255.0'
+            if (user.vpn_group_id) {
+              const group = await app.db('groups').where({ id: user.vpn_group_id }).first()
+              if (group?.vpn_subnet) netmask = getNetmask(group.vpn_subnet)
+            }
             await enqueueCcdTask(app, user.username, user.vpn_ip, netmask, id)
           }
 
