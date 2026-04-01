@@ -19,7 +19,6 @@ import nodeRoutes from './modules/nodes/nodes.routes'
 import sessionRoutes from './modules/sessions/sessions.routes'
 import policyRoutes from './modules/policies/policies.routes'
 import taskRoutes from './modules/tasks/tasks.routes'
-import settingsRoutes from './modules/settings/settings.routes'
 import vpnRoutes from './modules/vpn/vpn.routes'
 import groupRoutes from './modules/groups/groups.routes'
 import networkRoutes from './modules/networks/networks.routes'
@@ -56,7 +55,6 @@ export async function buildApp(env: Env) {
       await v1.register(sessionRoutes)
       await v1.register(policyRoutes)
       await v1.register(taskRoutes)
-      await v1.register(settingsRoutes)
       await v1.register(vpnRoutes)
       await v1.register(groupRoutes)
       await v1.register(networkRoutes)

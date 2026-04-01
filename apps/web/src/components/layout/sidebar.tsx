@@ -8,7 +8,6 @@ import {
   Server,
   Activity,
   Shield,
-  Settings,
   LogOut,
   Network,
   UsersRound,
@@ -46,7 +45,6 @@ const NAV_ITEMS = [
   { href: '/policies', label: 'Policies', icon: Shield },
   { href: '/tasks', label: 'Tasks', icon: ListTodo },
   { href: '/audit', label: 'Audit Logs', icon: FileText, adminOnly: true },
-  { href: '/settings', label: 'Settings', icon: Settings },
 ] as const
 
 export function AppSidebar() {
