@@ -5,7 +5,7 @@ export async function up(knex: Knex): Promise<void> {
     table.string('id', 36).primary().notNullable()
     table.string('username', 64).notNullable().unique()
     table.string('email', 255).nullable()
-    table.string('password', 255).notNullable()
+    table.string('password', 255).nullable()
     table.enu('role', ['admin', 'user']).notNullable().defaultTo('user')
     table.boolean('is_active').notNullable().defaultTo(true)
     table.timestamp('valid_from').nullable()

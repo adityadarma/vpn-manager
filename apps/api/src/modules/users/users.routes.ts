@@ -48,7 +48,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(409).send({ error: 'Conflict', message: 'Username already exists' })
       }
 
-      const passwordHash = await bcrypt.hash(input.password, 10)
+      const passwordHash = input.password ? await bcrypt.hash(input.password, 10) : null
       const id = crypto.randomUUID()
 
       // --- Auto-assign VPN IP from group subnet ---

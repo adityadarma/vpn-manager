@@ -564,13 +564,15 @@ function UsersPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1.5">Password <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-foreground mb-1.5">
+                  Password {form.role === 'admin' && <span className="text-red-500">*</span>}
+                </label>
                 <input
                   type="password"
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  placeholder="Min. 8 characters"
-                  required
+                  placeholder={form.role === 'admin' ? "Min. 8 characters" : "Optional for standard VPN users"}
+                  required={form.role === 'admin'}
                   minLength={8}
                   className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
@@ -822,48 +824,66 @@ function UsersPage() {
                 </p>
               </div>
 
-              <div className="border border-border rounded-lg p-4 space-y-3">
-                <div className="flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    id="passwordProtected"
-                    checked={certForm.passwordProtected}
-                    onChange={(e) => setCertForm({ ...certForm, passwordProtected: e.target.checked, password: '' })}
-                    className="mt-1 rounded border-input text-blue-600 focus:ring-blue-500"
-                  />
-                  <div className="flex-1">
-                    <label htmlFor="passwordProtected" className="block text-sm font-medium text-foreground cursor-pointer">
-                      <div className="flex items-center gap-2">
-                        <Lock className="h-4 w-4 text-muted-foreground/70" />
-                        Password-protect private key
+              {(() => {
+                const selectedNode = nodes?.find((n: any) => n.id === certForm.nodeId)
+                if (selectedNode?.vpn_type === 'wireguard') {
+                  return (
+                    <div className="bg-muted border border-border rounded-lg p-4">
+                      <div className="flex gap-2 items-start text-sm">
+                        <Lock className="h-4 w-4 text-muted-foreground mt-0.5" />
+                        <div>
+                          <p className="font-medium text-foreground">Password Protection Unavailable</p>
+                          <p className="text-muted-foreground mt-0.5">WireGuard configuration profiles do not support password-protected private keys natively.</p>
+                        </div>
                       </div>
-                    </label>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      User will need to enter password when connecting to VPN
-                    </p>
-                  </div>
-                </div>
+                    </div>
+                  )
+                }
+                return (
+                  <div className="border border-border rounded-lg p-4 space-y-3">
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        id="passwordProtected"
+                        checked={certForm.passwordProtected}
+                        onChange={(e) => setCertForm({ ...certForm, passwordProtected: e.target.checked, password: '' })}
+                        className="mt-1 rounded border-input text-blue-600 focus:ring-blue-500"
+                      />
+                      <div className="flex-1">
+                        <label htmlFor="passwordProtected" className="block text-sm font-medium text-foreground cursor-pointer">
+                          <div className="flex items-center gap-2">
+                            <Lock className="h-4 w-4 text-muted-foreground/70" />
+                            Password-protect private key
+                          </div>
+                        </label>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          User will need to enter password when connecting to VPN
+                        </p>
+                      </div>
+                    </div>
 
-                {certForm.passwordProtected && (
-                  <div className="pl-7">
-                    <label className="block text-sm font-medium text-foreground mb-1.5">
-                      Key Password <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="password"
-                      value={certForm.password}
-                      onChange={(e) => setCertForm({ ...certForm, password: e.target.value })}
-                      placeholder="Enter password for private key"
-                      required={certForm.passwordProtected}
-                      minLength={8}
-                      className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Min. 8 characters. User must remember this password.
-                    </p>
+                    {certForm.passwordProtected && (
+                      <div className="pl-7">
+                        <label className="block text-sm font-medium text-foreground mb-1.5">
+                          Key Password <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="password"
+                          value={certForm.password}
+                          onChange={(e) => setCertForm({ ...certForm, password: e.target.value })}
+                          placeholder="Enter password for private key"
+                          required={certForm.passwordProtected}
+                          minLength={8}
+                          className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-card text-card-foreground"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Min. 8 characters. User must remember this password.
+                        </p>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                )
+              })()}
 
               <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
                 <p className="text-xs text-blue-800">
