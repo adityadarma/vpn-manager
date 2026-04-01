@@ -6,7 +6,7 @@ export default defineConfig({
   ],
   format: ['esm'],
   target: 'node24',
-  noExternal: ['@vpn/shared'],
+  noExternal: [/(.*)/], // Bundle all dependencies into one file to eliminate node_modules
   clean: true,
   outExtension() {
     return {

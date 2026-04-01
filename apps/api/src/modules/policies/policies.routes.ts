@@ -93,6 +93,8 @@ async function enqueueApplyPolicies(app: any) {
       'p.target_network',
       'p.target_port',
       'p.priority',
+      'p.user_id',
+      'p.group_id',
       'u.vpn_ip as user_ip',
       'g.vpn_subnet as group_subnet'
     )

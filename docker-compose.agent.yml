@@ -17,10 +17,10 @@
 #   - Agent needs to connect to Manager API on external server
 #   - No network isolation needed for standalone agent
 #
+#
 # Security:
-#   - Agent does NOT require NET_ADMIN capability
-#   - Agent does NOT require /dev/net/tun access
-#   - Agent communicates via OpenVPN Management Interface only
+#   - Agent communicates via OpenVPN Management Interface
+#   - Agent requires NET_ADMIN capability to configure iptables firewall policies
 #
 # ============================================================
 
@@ -48,8 +48,13 @@ services:
       # WireGuard Interface
       WIREGUARD_INTERFACE: ${WIREGUARD_INTERFACE:-wg0}
 
-    # Use host network for direct access to host VPN management interface
+    # Use host network for direct access to host VPN management interface and iptables bindings
     network_mode: host
+
+    # Required for the agent to modify IP tables
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
 
     # Volumes for VPN config and certificates
     volumes:

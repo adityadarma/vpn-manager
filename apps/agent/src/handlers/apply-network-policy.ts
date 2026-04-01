@@ -25,6 +25,8 @@ interface PolicyPayload {
   priority: number
   user_ip: string | null
   group_subnet: string | null
+  user_id: string | null
+  group_id: string | null
 }
 
 export async function handleApplyNetworkPolicy(
@@ -77,12 +79,20 @@ async function applyIptablesPolicies(policies: PolicyPayload[]) {
         let rule = `iptables -A VPN_FWWD`
 
         // Source IP / Subnet
-        if (p.user_ip) {
+        if (p.user_id) {
+          if (!p.user_ip) {
+            console.warn(`[firewall] Policy ${p.id} targets user ${p.user_id} but user has no VPN IP. Skipping.`)
+            continue
+          }
           rule += ` -s ${p.user_ip}/32`
-        } else if (p.group_subnet) {
+        } else if (p.group_id) {
+          if (!p.group_subnet) {
+            console.warn(`[firewall] Policy ${p.id} targets group ${p.group_id} but group has no VPN Subnet. Skipping.`)
+            continue
+          }
           rule += ` -s ${p.group_subnet}`
         }
-        // if neither -> applies to all VPN sources
+        // if neither user_id nor group_id is set -> applies to all VPN sources globally
 
         // Target Network
         rule += ` -d ${p.target_network}`
@@ -141,9 +151,17 @@ async function applyNftablesPolicies(policies: PolicyPayload[]) {
       try {
         let rule = `nft add rule inet filter VPN_FWWD`
 
-        if (p.user_ip) {
+        if (p.user_id) {
+          if (!p.user_ip) {
+            console.warn(`[firewall] Policy ${p.id} targets user ${p.user_id} but user has no VPN IP. Skipping.`)
+            continue
+          }
           rule += ` ip saddr ${p.user_ip}`
-        } else if (p.group_subnet) {
+        } else if (p.group_id) {
+          if (!p.group_subnet) {
+            console.warn(`[firewall] Policy ${p.id} targets group ${p.group_id} but group has no VPN Subnet. Skipping.`)
+            continue
+          }
           rule += ` ip saddr ${p.group_subnet}`
         }
 

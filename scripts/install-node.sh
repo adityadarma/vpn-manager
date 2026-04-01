@@ -501,13 +501,6 @@ install_agent() {
     
     # Adjust Docker Compose based on VPN Type
     if [ "$ENV_VPN_TYPE" = "wireguard" ] && [ -f "docker-compose.yml" ]; then
-        # Add elevated privileges for WireGuard
-        if ! grep -q "cap_add:" docker-compose.yml; then
-            sed -i '/logging:/i \    cap_add:\n      - NET_ADMIN\n' docker-compose.yml
-        elif ! grep -q "NET_ADMIN" docker-compose.yml; then
-            sed -i '/cap_add:/a \      - NET_ADMIN' docker-compose.yml
-        fi
-        
         # Add WireGuard volume
         if ! grep -q "/etc/wireguard" docker-compose.yml; then
             sed -i '/volumes:/a \      - /etc/wireguard:/etc/wireguard' docker-compose.yml
