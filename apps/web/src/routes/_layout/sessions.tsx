@@ -120,7 +120,7 @@ function KickDropdown({ sessionId, username, onKick, isPending }: KickDropdownPr
           }}
           disabled={isPending}
           title="Kick session"
-          className="h-8 px-2 flex items-center gap-1 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-l-md border border-red-200 text-xs font-medium transition-colors disabled:opacity-50"
+          className="h-8 px-2.5 flex items-center gap-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-l-md border border-border text-xs font-medium transition-colors disabled:opacity-50"
         >
           <UserX className="h-3.5 w-3.5" />
           Kick
@@ -131,7 +131,7 @@ function KickDropdown({ sessionId, username, onKick, isPending }: KickDropdownPr
           ref={triggerRef}
           onClick={openMenu}
           disabled={isPending}
-          className="h-8 px-1 flex items-center text-red-600 hover:text-red-700 hover:bg-red-50 rounded-r-md border border-l-0 border-red-200 transition-colors disabled:opacity-50"
+          className="h-8 px-1.5 flex items-center text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-r-md border border-l-0 border-border transition-colors disabled:opacity-50"
         >
           <ChevronDown className="h-3 w-3" />
         </button>
@@ -141,10 +141,10 @@ function KickDropdown({ sessionId, username, onKick, isPending }: KickDropdownPr
       {open && (
         <div
           style={{ position: 'fixed', top: menuPos.top, right: menuPos.right, zIndex: 9999 }}
-          className="w-48 bg-card text-card-foreground rounded-lg shadow-xl border border-border py-1 text-sm"
+          className="w-52 bg-card text-card-foreground rounded-lg shadow-xl border border-border py-1.5 text-sm"
         >
           <button
-            className="w-full text-left px-3 py-2 hover:bg-muted/50 flex items-center gap-2 text-foreground"
+            className="w-full text-left px-3 py-2 hover:bg-muted/50 flex items-center gap-3 text-foreground transition-colors"
             onClick={() => {
               setOpen(false)
               if (confirm(`Disconnect ${username}?\n\nUser will be able to reconnect after.`)) {
@@ -152,15 +152,15 @@ function KickDropdown({ sessionId, username, onKick, isPending }: KickDropdownPr
               }
             }}
           >
-            <UserX className="h-4 w-4 text-red-500" />
+            <UserX className="h-4 w-4 text-muted-foreground" />
             <div>
               <div className="font-medium">Kick</div>
               <div className="text-xs text-muted-foreground/70">Disconnect, allow reconnect</div>
             </div>
           </button>
-          <div className="my-1 border-t border-border/50" />
+          <div className="my-1.5 border-t border-border/50" />
           <button
-            className="w-full text-left px-3 py-2 hover:bg-red-50 flex items-center gap-2 text-red-700"
+            className="w-full text-left px-3 py-2 hover:bg-red-500/10 flex items-center gap-3 text-red-500/90 transition-colors"
             onClick={() => {
               setOpen(false)
               if (confirm(`Permanently block ${username}?\n\nUser will NOT be able to reconnect until an admin unkicks them.`)) {
@@ -168,10 +168,10 @@ function KickDropdown({ sessionId, username, onKick, isPending }: KickDropdownPr
               }
             }}
           >
-            <ShieldOff className="h-4 w-4 text-red-600" />
+            <ShieldOff className="h-4 w-4" />
             <div>
-              <div className="font-medium">Kick & Block</div>
-              <div className="text-xs text-red-400">Disconnect + block reconnect</div>
+              <div className="font-medium text-red-500">Kick & Block</div>
+              <div className="text-xs text-red-500/60">Disconnect + block reconnect</div>
             </div>
           </button>
         </div>
@@ -187,10 +187,10 @@ function DisconnectReasonBadge({ reason }: { reason?: string }) {
 
   const map: Record<string, { label: string; className: string }> = {
     normal:               { label: 'Disconnected',   className: 'bg-muted text-muted-foreground' },
-    admin_kick:           { label: 'Kicked',          className: 'bg-red-100 text-red-700' },
-    admin_kick_permanent: { label: 'Blocked',         className: 'bg-red-200 text-red-800 font-semibold' },
-    timeout:              { label: 'Timeout',         className: 'bg-yellow-100 text-yellow-700' },
-    reconnect:            { label: 'Reconnected',     className: 'bg-blue-100 text-blue-700' },
+    admin_kick:           { label: 'Kicked',          className: 'bg-red-500/10 text-red-600 dark:text-red-400' },
+    admin_kick_permanent: { label: 'Blocked',         className: 'bg-red-500/20 text-red-700 dark:text-red-400 font-semibold border border-red-500/20' },
+    timeout:              { label: 'Timeout',         className: 'bg-amber-500/10 text-amber-600 dark:text-amber-400' },
+    reconnect:            { label: 'Reconnected',     className: 'bg-blue-500/10 text-blue-600 dark:text-blue-400' },
   }
 
   const style = map[reason] ?? { label: reason, className: 'bg-muted text-muted-foreground' }

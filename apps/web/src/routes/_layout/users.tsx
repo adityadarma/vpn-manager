@@ -966,99 +966,108 @@ function UsersPage() {
                   {userCertificates.map((cert: any) => (
                     <div
                       key={cert.id}
-                      className={`border rounded-lg p-4 ${
-                        cert.is_revoked 
-                          ? 'border-red-200 bg-red-50' 
+                      className={`relative border rounded-xl p-5 overflow-hidden transition-all duration-200 hover:shadow-md ${
+                        !!cert.is_revoked 
+                          ? 'border-red-500/20 bg-red-500/5' 
                           : cert.node_status === 'online'
-                          ? 'border-emerald-200 bg-emerald-50/30'
-                          : 'border-border bg-card text-card-foreground'
+                          ? 'border-emerald-500/30 bg-emerald-500/[0.03]'
+                          : 'border-border/60 bg-muted/20'
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start justify-between gap-6">
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-2">
-                            <h3 className="font-semibold text-foreground">
+                          {/* Header section with badges */}
+                          <div className="flex flex-wrap items-center gap-3 mb-4">
+                            <h3 className="text-lg font-bold text-foreground">
                               {cert.node_hostname}
                             </h3>
-                            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${
-                              cert.node_status === 'online'
-                                ? 'bg-emerald-100 text-emerald-700'
-                                : 'bg-muted text-muted-foreground'
-                            }`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${
-                                cert.node_status === 'online' ? 'bg-emerald-500' : 'bg-gray-400'
-                              }`} />
-                              {cert.node_status}
-                            </span>
-                            {cert.is_revoked && (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
-                                <X className="h-3 w-3" />
-                                Revoked
+                            
+                            <div className="flex items-center gap-2">
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider ${
+                                cert.node_status === 'online'
+                                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                                  : 'bg-muted text-muted-foreground border border-border'
+                              }`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${cert.node_status === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
+                                {cert.node_status}
                               </span>
-                            )}
-                            {cert.password_protected && (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700" title="Password protected">
-                                <Lock className="h-3 w-3" />
-                              </span>
-                            )}
-                          </div>
 
-                          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                            <div className="text-muted-foreground">
-                              <span className="font-medium">IP:</span> {cert.node_ip}
-                            </div>
-                            <div className="text-muted-foreground" >
-                              <span className="font-medium">Generated:</span>{' '}
-                              {cert.generated_at ? new Date(cert.generated_at).toLocaleDateString() : 'N/A'}
-                            </div>
-                            <div className="text-muted-foreground" >
-                              <span className="font-medium">Expires:</span>{' '}
-                              {cert.expires_at ? (
-                                <>
-                                  {new Date(cert.expires_at).toLocaleDateString()}
-                                  {(() => {
-                                    const days = Math.floor((new Date(cert.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-                                    if (days < 0) {
-                                      return <span className="text-red-600 ml-1">(Expired)</span>
-                                    } else if (days < 30) {
-                                      return <span className="text-amber-600 ml-1">({days} days left)</span>
-                                    }
-                                    return null
-                                  })()}
-                                </>
-                              ) : (
-                                <span className="text-emerald-600">Never</span>
+                              {!!cert.is_revoked && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20">
+                                  <X className="h-3 w-3" />
+                                  Revoked
+                                </span>
+                              )}
+
+                              {!!cert.password_protected && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20" title="Password protected">
+                                  <Lock className="h-3 w-3" />
+                                  Protected
+                                </span>
                               )}
                             </div>
-                            <div className="text-muted-foreground">
-                              <span className="font-medium">Downloads:</span> {cert.download_count}
+                          </div>
+
+                          {/* Data Grid */}
+                          <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+                            <div className="flex flex-col">
+                              <span className="text-xs font-semibold text-muted-foreground/70 uppercase tracking-widest mb-0.5">IP Address</span>
+                              <span className="font-mono text-foreground">{cert.node_ip || 'N/A'}</span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-xs font-semibold text-muted-foreground/70 uppercase tracking-widest mb-0.5">Downloads</span>
+                              <span className="text-foreground font-medium">{cert.download_count} times</span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-xs font-semibold text-muted-foreground/70 uppercase tracking-widest mb-0.5">Generated</span>
+                              <span className="text-foreground">
+                                {cert.generated_at ? new Date(cert.generated_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}
+                              </span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-xs font-semibold text-muted-foreground/70 uppercase tracking-widest mb-0.5">Expires</span>
+                              {cert.expires_at ? (
+                                <span className="text-foreground">
+                                  {new Date(cert.expires_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                                  {(() => {
+                                    const days = Math.floor((new Date(cert.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+                                    if (days < 0) return <span className="text-red-500 ml-1.5 font-medium">(Expired)</span>
+                                    if (days < 30) return <span className="text-amber-500 ml-1.5 font-medium">({days} days left)</span>
+                                    return null
+                                  })()}
+                                </span>
+                              ) : (
+                                <span className="text-emerald-600 dark:text-emerald-400 font-medium">Never</span>
+                              )}
                             </div>
                           </div>
 
-                          {cert.is_revoked && cert.revoke_reason && (
-                            <div className="mt-2 text-sm text-red-700 bg-red-100 rounded px-2 py-1">
-                              <span className="font-medium">Reason:</span> {cert.revoke_reason}
+                          {!!cert.is_revoked && cert.revoke_reason && (
+                            <div className="mt-4 flex items-start gap-2 text-sm text-red-700 dark:text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+                              <div className="font-semibold shrink-0 uppercase tracking-wider text-xs mt-0.5">Reason:</div>
+                              <div>{cert.revoke_reason}</div>
                             </div>
                           )}
                         </div>
 
-                        <div className="flex flex-col gap-2">
+                        {/* Actions Sidebar */}
+                        <div className="flex flex-col gap-2 shrink-0 border-l border-border/50 pl-6 my-2">
                           {!cert.is_revoked ? (
                             <>
                               <Button
                                 size="sm"
                                 onClick={() => handleDownloadConfig(selectedUserForCertList, cert.id)}
                                 disabled={isDownloading === cert.id}
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm w-32 justify-start"
                               >
-                                <Download className={`mr-2 h-4 w-4 ${isDownloading === cert.id ? 'animate-pulse' : ''}`} />
+                                <Download className={`mr-2 h-4 w-4 ${isDownloading === cert.id ? 'animate-bounce' : ''}`} />
                                 Download
                               </Button>
                               <Button
                                 size="sm"
                                 variant="outline"
                                 onClick={() => setRevokingCertId(cert.id)}
-                                className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                                className="w-32 justify-start border-red-500/30 hover:bg-red-500/10 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:border-red-500/50"
                               >
                                 <Trash2 className="mr-2 h-4 w-4" />
                                 Revoke
@@ -1072,7 +1081,7 @@ function UsersPage() {
                                 handleOpenCertModal(selectedUserForCertList)
                                 setCertForm(prev => ({ ...prev, nodeId: cert.node_id }))
                               }}
-                              className="bg-blue-600 hover:bg-blue-700 text-white"
+                              className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm w-32 justify-start"
                             >
                               <RefreshCw className="mr-2 h-4 w-4" />
                               Regenerate
