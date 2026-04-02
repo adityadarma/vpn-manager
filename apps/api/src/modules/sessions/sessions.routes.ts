@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import crypto from 'node:crypto'
+import { logAudit } from '../../utils/audit'
 
 const sessionRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/v1/sessions  — active sessions with enhanced details
@@ -253,21 +254,19 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
         })
 
       // Log audit
-      await app.db('audit_logs').insert({
-        id: crypto.randomUUID(),
-        user_id: adminUser.id,
+      await logAudit(app, {
+        userId: adminUser.id,
         username: adminUser.username,
         action: permanent ? 'session_kick_permanent' : 'session_kick',
-        resource_type: 'vpn_session',
-        resource_id: id,
-        session_id: id,
-        ip_address: request.ip,
-        metadata: JSON.stringify({
+        resourceType: 'vpn_session',
+        resourceId: id,
+        ipAddress: request.ip,
+        metadata: {
           kicked_user_id: session.user_id,
           node_id: session.node_id,
           permanent,
-        }),
-        created_at: new Date(),
+          session_id: id
+        }
       })
 
       // Look up the kicked user's username for the agent payload
@@ -394,17 +393,14 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
       }
 
       // Log audit
-      await app.db('audit_logs').insert({
-        id: crypto.randomUUID(),
-        user_id: user.id,
+      await logAudit(app, {
+        userId: user.id,
         username: user.username,
         action: 'session_unkick',
-        resource_type: 'vpn_session',
-        resource_id: id,
-        session_id: id,
-        ip_address: request.ip,
-        metadata: JSON.stringify({ unkicked_user: commonName, node_id: session.node_id }),
-        created_at: new Date(),
+        resourceType: 'vpn_session',
+        resourceId: id,
+        ipAddress: request.ip,
+        metadata: { unkicked_user: commonName, node_id: session.node_id, session_id: id }
       })
 
       return { ok: true, message: `Reconnect access restored for ${commonName}` }

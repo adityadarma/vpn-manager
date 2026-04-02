@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import crypto from 'node:crypto'
-import bcrypt from 'bcryptjs'
+import { logAudit } from '../../utils/audit'
 
 /**
  * VPN Hooks API — called by vpn-client agent living on the VPN server.
@@ -149,23 +149,21 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
       app.log.info(`[vpn/connect] ${username} connected — session ${sessionId}, IP ${vpn_ip}, device: ${device_name ?? 'unknown'}`)
 
       // Log successful connection audit
-      await app.db('audit_logs').insert({
-        id: crypto.randomUUID(),
-        user_id: user.id,
+      await logAudit(app, {
+        userId: user.id,
         username: user.username,
         action: 'vpn_connect',
-        resource_type: 'vpn_session',
-        resource_id: sessionId,
-        session_id: sessionId,
-        ip_address: clientIp,
-        metadata: JSON.stringify({
+        resourceType: 'vpn_session',
+        resourceId: sessionId,
+        ipAddress: clientIp,
+        metadata: {
           vpn_ip,
           node_hostname: node.hostname,
           client_version,
           device_name,
-        }),
-        created_at: new Date(),
-      }).catch(() => { /* non-fatal */ })
+          session_id: sessionId
+        }
+      })
 
       // Get user's policy networks for route push (response to agent)
       const networks = await app.db('vpn_policies as p')
@@ -232,23 +230,21 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
         app.log.info(`[vpn/disconnect] ${username} disconnected — session ${session.id}, duration: ${durationSeconds}s, reason: ${disconnect_reason}`)
 
         // Log audit
-        await app.db('audit_logs').insert({
-          id: crypto.randomUUID(),
-          user_id: user.id,
+        await logAudit(app, {
+          userId: user.id,
           username: user.username,
           action: 'vpn_disconnect',
-          resource_type: 'vpn_session',
-          resource_id: session.id,
-          session_id: session.id,
-          ip_address: session.real_ip,
-          metadata: JSON.stringify({
+          resourceType: 'vpn_session',
+          resourceId: session.id,
+          ipAddress: session.real_ip,
+          metadata: {
             duration_seconds: durationSeconds,
             bytes_sent,
             bytes_received,
             disconnect_reason,
-          }),
-          created_at: new Date(),
-        }).catch(() => { /* non-fatal */ })
+            session_id: session.id
+          }
+        })
       }
 
       return reply.status(200).send({ ok: true, sessions_closed: session ? 1 : 0 })

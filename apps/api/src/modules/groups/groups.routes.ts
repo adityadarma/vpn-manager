@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import crypto from 'node:crypto'
 import { nextAvailableIp, getNetmask, parseCidr, cidrsToPushRoutes } from '../../services/ip-pool.service'
-
+import { logAudit } from '../../utils/audit'
 interface Group {
   id: string
   name: string
@@ -84,6 +84,18 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
         vpn_subnet: vpn_subnet.trim(),
       })
       const created = await app.db('groups').where({ id }).first()
+
+      const userObj = request.user as { id: string; username: string }
+      await logAudit(app, {
+        userId: userObj.id,
+        username: userObj.username,
+        action: 'group_create',
+        resourceType: 'group',
+        resourceId: id,
+        ipAddress: request.ip,
+        metadata: { name: created.name, vpn_subnet }
+      })
+
       return reply.status(201).send(created)
     },
   )
@@ -120,7 +132,20 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
           ...(vpn_subnet !== undefined ? { vpn_subnet: vpn_subnet?.trim() ?? null } : {}),
           updated_at: new Date(),
         })
-      return app.db('groups').where({ id: request.params.id }).first()
+      const updatedGroup = await app.db('groups').where({ id: request.params.id }).first()
+
+      const userObj = request.user as { id: string; username: string }
+      await logAudit(app, {
+        userId: userObj.id,
+        username: userObj.username,
+        action: 'group_update',
+        resourceType: 'group',
+        resourceId: request.params.id,
+        ipAddress: request.ip,
+        metadata: { updated_fields: Object.keys(request.body) }
+      })
+
+      return updatedGroup
     },
   )
 
@@ -131,6 +156,17 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
     async (request, reply) => {
       const deleted = await app.db('groups').where({ id: request.params.id }).delete()
       if (!deleted) return reply.status(404).send({ error: 'Group not found' })
+
+      const userObj = request.user as { id: string; username: string }
+      await logAudit(app, {
+        userId: userObj.id,
+        username: userObj.username,
+        action: 'group_delete',
+        resourceType: 'group',
+        resourceId: request.params.id,
+        ipAddress: request.ip,
+      })
+
       return reply.status(204).send()
     },
   )
@@ -162,6 +198,17 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
         }
       }
 
+      const userObj = request.user as { id: string; username: string }
+      await logAudit(app, {
+        userId: userObj.id,
+        username: userObj.username,
+        action: 'group_member_add',
+        resourceType: 'group',
+        resourceId: request.params.id,
+        ipAddress: request.ip,
+        metadata: { target_user_id: user_id, assigned_vpn_ip: assignedIp }
+      })
+
       return reply.status(201).send({ ok: true, assigned_vpn_ip: assignedIp })
     },
   )
@@ -171,7 +218,19 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
     '/groups/:id/members/:userId',
     { onRequest: [app.authenticateAdmin], schema: { tags: ['groups'], summary: 'Remove user from group', security: [{ bearerAuth: [] }] } },
     async (request, reply) => {
-      await app.db('user_groups').where({ group_id: request.params.id, user_id: request.params.userId }).delete()
+      const deleted = await app.db('user_groups').where({ group_id: request.params.id, user_id: request.params.userId }).delete()
+      if (deleted) {
+        const userObj = request.user as { id: string; username: string }
+        await logAudit(app, {
+          userId: userObj.id,
+          username: userObj.username,
+          action: 'group_member_remove',
+          resourceType: 'group',
+          resourceId: request.params.id,
+          ipAddress: request.ip,
+          metadata: { target_user_id: request.params.userId }
+        })
+      }
       return reply.status(204).send()
     },
   )
@@ -190,6 +249,17 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
       // Re-enqueue CCD tasks so members get updated push routes
       await reenqueueGroupCcdTasks(app, request.params.id)
 
+      const userObj = request.user as { id: string; username: string }
+      await logAudit(app, {
+        userId: userObj.id,
+        username: userObj.username,
+        action: 'group_network_add',
+        resourceType: 'group',
+        resourceId: request.params.id,
+        ipAddress: request.ip,
+        metadata: { network_id }
+      })
+
       return reply.status(201).send({ ok: true })
     },
   )
@@ -205,6 +275,17 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
 
       // Re-enqueue CCD tasks so members lose the removed route
       await reenqueueGroupCcdTasks(app, request.params.id)
+
+      const userObj = request.user as { id: string; username: string }
+      await logAudit(app, {
+        userId: userObj.id,
+        username: userObj.username,
+        action: 'group_network_remove',
+        resourceType: 'group',
+        resourceId: request.params.id,
+        ipAddress: request.ip,
+        metadata: { network_id: request.params.networkId }
+      })
 
       return reply.status(204).send()
     },

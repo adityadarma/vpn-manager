@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import crypto from 'node:crypto'
 import { CreatePolicySchema } from '@vpn/shared'
+import { logAudit } from '../../utils/audit'
 
 const policyRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/v1/policies
@@ -56,6 +57,23 @@ const policyRoutes: FastifyPluginAsync = async (app) => {
       // Sync policies to agent
       await enqueueApplyPolicies(app)
 
+      const userObj = request.user as { id: string; username: string }
+      await logAudit(app, {
+        userId: userObj.id,
+        username: userObj.username,
+        action: 'policy_create',
+        resourceType: 'policy',
+        resourceId: id,
+        ipAddress: request.ip,
+        metadata: {
+          target_network: input.targetNetwork,
+          action: input.action ?? 'allow',
+          protocol: input.protocol,
+          user_id: input.userId,
+          group_id: input.groupId
+        }
+      })
+
       return reply.status(201).send(await app.db('vpn_policies').where({ id }).first())
     },
   )
@@ -70,6 +88,16 @@ const policyRoutes: FastifyPluginAsync = async (app) => {
 
       // Sync policies to agent
       await enqueueApplyPolicies(app)
+
+      const userObj = request.user as { id: string; username: string }
+      await logAudit(app, {
+        userId: userObj.id,
+        username: userObj.username,
+        action: 'policy_delete',
+        resourceType: 'policy',
+        resourceId: request.params.id,
+        ipAddress: request.ip,
+      })
 
       return reply.status(204).send()
     },

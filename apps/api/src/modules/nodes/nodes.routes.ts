@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import crypto from 'node:crypto'
 import { HeartbeatSchema } from '@vpn/shared'
+import { logAudit } from '../../utils/audit'
 
 interface NodeConfig {
   port: number
@@ -164,6 +165,17 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       const updated = await app.db('vpn_nodes').where({ id: request.params.id }).first()
       const { token: _token, ...safeNode } = updated
 
+      const userObj = request.user as { id: string; username: string }
+      await logAudit(app, {
+        userId: userObj.id,
+        username: userObj.username,
+        action: 'node_update',
+        resourceType: 'node',
+        resourceId: request.params.id,
+        ipAddress: request.ip,
+        metadata: { updated_fields: Object.keys(updates) }
+      })
+
       return safeNode
     },
   )
@@ -234,6 +246,16 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         payload: JSON.stringify(config),
         status: 'pending',
         created_at: new Date(),
+      })
+
+      const userObj = request.user as { id: string; username: string }
+      await logAudit(app, {
+        userId: userObj.id,
+        username: userObj.username,
+        action: 'node_config_update',
+        resourceType: 'node',
+        resourceId: request.params.id,
+        ipAddress: request.ip,
       })
 
       return { message: 'Configuration update scheduled', taskId }
@@ -475,22 +497,20 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
               
               // Get username for audit
               const userObj = await app.db('users').where('id', userId).first()
-              await app.db('audit_logs').insert({
-                id: crypto.randomUUID(),
-                user_id: userId,
+              await logAudit(app, {
+                userId: userId,
                 username: userObj?.username || 'unknown',
                 action: 'vpn_connect',
-                resource_type: 'vpn_session',
-                resource_id: newSessionId,
-                session_id: newSessionId,
-                ip_address: client.realAddress,
-                metadata: JSON.stringify({
+                resourceType: 'vpn_session',
+                resourceId: newSessionId,
+                ipAddress: client.realAddress,
+                metadata: {
                   vpn_ip: client.virtualAddress,
                   node_id: nodeId,
-                  client_version: 'WireGuard'
-                }),
-                created_at: new Date(),
-              }).catch(() => {})
+                  client_version: 'WireGuard',
+                  session_id: newSessionId
+                }
+              })
             } else {
               // Update existing session bytes
               await app.db('vpn_sessions').where({ id: existingSession.id }).update({
@@ -515,23 +535,21 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
             })
 
             const userObj = await app.db('users').where('id', session.user_id).first()
-            await app.db('audit_logs').insert({
-              id: crypto.randomUUID(),
-              user_id: session.user_id,
+            await logAudit(app, {
+              userId: session.user_id,
               username: userObj?.username || 'unknown',
               action: 'vpn_disconnect',
-              resource_type: 'vpn_session',
-              resource_id: session.id,
-              session_id: session.id,
-              ip_address: session.real_ip,
-              metadata: JSON.stringify({
+              resourceType: 'vpn_session',
+              resourceId: session.id,
+              ipAddress: session.real_ip,
+              metadata: {
                 duration_seconds: duration,
                 bytes_sent: session.bytes_sent,
                 bytes_received: session.bytes_received,
-                disconnect_reason: 'timeout'
-              }),
-              created_at: new Date()
-            }).catch(() => {})
+                disconnect_reason: 'timeout',
+                session_id: session.id
+              }
+            })
           }
         }
       }
@@ -607,6 +625,17 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
     async (request, reply) => {
       const deleted = await app.db('vpn_nodes').where({ id: request.params.id }).delete()
       if (!deleted) return reply.status(404).send({ error: 'Not Found', message: 'Node not found' })
+
+      const userObj = request.user as { id: string; username: string }
+      await logAudit(app, {
+        userId: userObj.id,
+        username: userObj.username,
+        action: 'node_delete',
+        resourceType: 'node',
+        resourceId: request.params.id,
+        ipAddress: request.ip,
+      })
+
       return reply.status(204).send()
     },
   )

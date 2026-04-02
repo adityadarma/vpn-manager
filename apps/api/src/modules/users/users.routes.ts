@@ -3,6 +3,7 @@ import crypto from 'node:crypto'
 import bcrypt from 'bcryptjs'
 import { CreateUserSchema, UpdateUserSchema } from '@vpn/shared'
 import { nextAvailableIp, getNetmask, cidrToRoute, cidrsToPushRoutes } from '../../services/ip-pool.service'
+import { logAudit } from '../../utils/audit'
 
 const userRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/v1/users
@@ -105,6 +106,17 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         .where('u.id', id)
         .first()
 
+      const userObj = request.user as { id: string; username: string }
+      await logAudit(app, {
+        userId: userObj.id,
+        username: userObj.username,
+        action: 'user_create',
+        resourceType: 'user',
+        resourceId: id,
+        ipAddress: request.ip,
+        metadata: { created_username: input.username, role: input.role }
+      })
+
       return reply.status(201).send(user)
     },
   )
@@ -182,6 +194,18 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       }
 
       await app.db('users').where({ id }).update(updates)
+      
+      const userObj = request.user as { id: string; username: string }
+      await logAudit(app, {
+        userId: userObj.id,
+        username: userObj.username,
+        action: 'user_update',
+        resourceType: 'user',
+        resourceId: id,
+        ipAddress: request.ip,
+        metadata: { updated_fields: Object.keys(updates) }
+      })
+
       return app.db('users as u')
         .leftJoin('groups as g', 'u.vpn_group_id', 'g.id')
         .select('u.id', 'u.username', 'u.email', 'u.role', 'u.is_active', 'u.vpn_ip', 'u.vpn_group_id', 'g.name as vpn_group_name', 'u.updated_at')
@@ -830,21 +854,18 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         })
 
         // Also push to audit_logs for visibility in global logs
-        await app.db('audit_logs').insert({
-          id: crypto.randomUUID(),
-          user_id: id,
+        await logAudit(app, {
+          userId: id,
           username: user.username,
           action: 'cert_download',
-          resource_type: 'certificate',
-          resource_id: certificate.id,
-          session_id: null,
-          ip_address: request.ip,
-          metadata: JSON.stringify({
+          resourceType: 'certificate',
+          resourceId: certificate.id,
+          ipAddress: request.ip,
+          metadata: {
             node_id: node.id,
             node_hostname: node.hostname,
             device_name: request.headers['user-agent'] || 'unknown'
-          }),
-          created_at: new Date()
+          }
         })
       } catch (err) {
         // Log but don't fail the download
@@ -983,6 +1004,16 @@ ${node.ta_key?.trim() ?? ''}
       const { id } = request.params
       const deleted = await app.db('users').where({ id }).delete()
       if (!deleted) return reply.status(404).send({ error: 'Not Found', message: 'User not found' })
+      const userObj = request.user as { id: string; username: string }
+      await logAudit(app, {
+        userId: userObj.id,
+        username: userObj.username,
+        action: 'user_delete',
+        resourceType: 'user',
+        resourceId: request.params.id,
+        ipAddress: request.ip,
+      })
+
       return reply.status(204).send()
     },
   )
