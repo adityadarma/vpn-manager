@@ -354,8 +354,13 @@ function GroupsPage() {
                           <Badge variant="outline">{g.network_count}</Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                            <Button variant="ghost" size="icon" id={`btn-edit-group-${g.id}`} onClick={() => openEdit(g)}>
+                          <div className="flex items-center justify-end gap-1">
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              id={`btn-edit-group-${g.id}`} 
+                              onClick={(e) => { e.stopPropagation(); openEdit(g); }}
+                            >
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
                             <Button
@@ -363,11 +368,11 @@ function GroupsPage() {
                               size="icon"
                               id={`btn-delete-group-${g.id}`}
                               className="text-red-500 hover:text-red-600 hover:bg-red-50"
-                              onClick={() => deleteMutation.mutate(g.id)}
+                              onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(g.id); }}
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
-                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                            <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${detailGroup === g.id ? 'rotate-90' : ''}`} />
                           </div>
                         </TableCell>
                       </TableRow>

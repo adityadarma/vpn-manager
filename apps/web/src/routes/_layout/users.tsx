@@ -600,7 +600,7 @@ function UsersPage() {
                 <Button
                   type="submit"
                   disabled={createMutation.isPending}
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                  className="flex-1 shadow-sm"
                 >
                   {createMutation.isPending ? 'Creating...' : 'Create User'}
                 </Button>
@@ -723,7 +723,7 @@ function UsersPage() {
                 <Button
                   type="submit"
                   disabled={updateMutation.isPending}
-                  className="flex-1 bg-violet-600 hover:bg-violet-700"
+                  className="flex-1 shadow-sm"
                 >
                   {updateMutation.isPending ? 'Updating...' : 'Update User'}
                 </Button>
@@ -801,44 +801,54 @@ function UsersPage() {
                 )}
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1.5">
-                  Certificate Validity Period
-                </label>
-                <select
-                  value={certForm.validDays}
-                  onChange={(e) => setCertForm({ ...certForm, validDays: parseInt(e.target.value) })}
-                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-card text-card-foreground"
-                >
-                  <option value="0">Unlimited (No expiration)</option>
-                  <option value="1">1 Day</option>
-                  <option value="7">1 Week (7 days)</option>
-                  <option value="14">2 Weeks (14 days)</option>
-                  <option value="30">1 Month (30 days)</option>
-                  <option value="90">3 Months (90 days)</option>
-                  <option value="180">6 Months (180 days)</option>
-                  <option value="365">1 Year (365 days)</option>
-                </select>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {certForm.validDays === 0 ? 'Certificate will never expire' : 'Shorter validity = better security if compromised'}
-                </p>
-              </div>
-
               {(() => {
                 const selectedNode = nodes?.find((n: any) => n.id === certForm.nodeId)
+                
                 if (selectedNode?.vpn_type === 'wireguard') {
                   return (
-                    <div className="bg-muted border border-border rounded-lg p-4">
+                    <div className="bg-muted/50 border border-border rounded-lg p-4">
                       <div className="flex gap-2 items-start text-sm">
                         <Lock className="h-4 w-4 text-muted-foreground mt-0.5" />
                         <div>
-                          <p className="font-medium text-foreground">Password Protection Unavailable</p>
-                          <p className="text-muted-foreground mt-0.5">WireGuard configuration profiles do not support password-protected private keys natively.</p>
+                          <p className="font-medium text-foreground">Static Keypair (WireGuard)</p>
+                          <p className="text-muted-foreground mt-0.5">WireGuard uses static asymmetric keys that do not have native X.509 expiration dates or passphrase combinations.</p>
                         </div>
                       </div>
                     </div>
                   )
                 }
+
+                return (
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">
+                      Certificate Validity Period
+                    </label>
+                    <select
+                      value={certForm.validDays}
+                      onChange={(e) => setCertForm({ ...certForm, validDays: parseInt(e.target.value) })}
+                      className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-card text-card-foreground"
+                    >
+                      <option value="0">Unlimited (No expiration)</option>
+                      <option value="1">1 Day</option>
+                      <option value="7">1 Week (7 days)</option>
+                      <option value="14">2 Weeks (14 days)</option>
+                      <option value="30">1 Month (30 days)</option>
+                      <option value="90">3 Months (90 days)</option>
+                      <option value="180">6 Months (180 days)</option>
+                      <option value="365">1 Year (365 days)</option>
+                    </select>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {certForm.validDays === 0 ? 'Certificate will never expire' : 'Shorter validity = better security if compromised'}
+                    </p>
+                  </div>
+                )
+              })()}
+
+              {/* OpenVPN Specific Settings */}
+              {(() => {
+                const selectedNode = nodes?.find((n: any) => n.id === certForm.nodeId)
+                if (selectedNode?.vpn_type === 'wireguard') return null
+
                 return (
                   <div className="border border-border rounded-lg p-4 space-y-3">
                     <div className="flex items-start gap-3">
@@ -908,7 +918,7 @@ function UsersPage() {
                 <Button
                   type="submit"
                   disabled={generateCertMutation.isPending || nodes.filter((n: any) => n.status === 'online').length === 0}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700"
+                  className="flex-1 shadow-sm"
                 >
                   {generateCertMutation.isPending ? 'Generating...' : 'Generate Certificate'}
                 </Button>
@@ -1058,7 +1068,7 @@ function UsersPage() {
                                 size="sm"
                                 onClick={() => handleDownloadConfig(selectedUserForCertList, cert.id)}
                                 disabled={isDownloading === cert.id}
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm w-32 justify-start"
+                                className="w-32 justify-start shadow-sm"
                               >
                                 <Download className={`mr-2 h-4 w-4 ${isDownloading === cert.id ? 'animate-bounce' : ''}`} />
                                 Download
@@ -1076,12 +1086,13 @@ function UsersPage() {
                           ) : (
                             <Button
                               size="sm"
+                              variant="default"
                               onClick={() => {
                                 setShowCertListModal(false)
                                 handleOpenCertModal(selectedUserForCertList)
                                 setCertForm(prev => ({ ...prev, nodeId: cert.node_id }))
                               }}
-                              className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm w-32 justify-start"
+                              className="w-32 justify-start shadow-sm"
                             >
                               <RefreshCw className="mr-2 h-4 w-4" />
                               Regenerate

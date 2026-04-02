@@ -346,6 +346,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
                 revoked_at: null,
                 revoked_by: null,
                 revoke_reason: null,
+                download_count: 0,
                 updated_at: new Date()
               })
           } else {
@@ -545,6 +546,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
                     revoked_at: null,
                     revoked_by: null,
                     revoke_reason: null,
+                    download_count: 0,
                     updated_at: new Date()
                   })
               } else {

@@ -20,18 +20,19 @@ function AuthenticatedLayout() {
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset>
-        {/* Header */}
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-2 h-4" />
-          <span className="text-sm text-muted-foreground">VPN Manager</span>
-          <div className="ml-auto flex items-center gap-2">
+        <header className="flex h-16 shrink-0 items-center justify-between gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 border-b border-border/50 px-4">
+          <div className="flex items-center gap-2">
+            <SidebarTrigger className="-ml-1 text-muted-foreground hover:text-foreground" />
+            <Separator orientation="vertical" className="mx-1 h-5" />
+            <span className="text-sm font-medium text-muted-foreground">VPN Manager</span>
+          </div>
+          <div className="flex items-center gap-2">
             <ThemeToggle />
           </div>
         </header>
 
-        {/* Page content */}
-        <div className="flex flex-1 flex-col gap-4 p-6">
+        {/* Page content wrapper like sidebar-08 */}
+        <div className="flex flex-1 flex-col gap-4 p-4">
           <Outlet />
         </div>
       </SidebarInset>
