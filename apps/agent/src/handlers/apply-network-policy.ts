@@ -35,23 +35,29 @@ export async function handleApplyNetworkPolicy(
 ): Promise<Record<string, unknown>> {
   const policies = (payload.policies || []) as PolicyPayload[]
   const firewallEngine = (payload.firewall_engine || 'iptables') as string
+  const vpnType = (payload.vpn_type || 'openvpn') as string
+
+  // Determine the network interface to match on:
+  // OpenVPN uses tun0/tun1/... → match with tun+
+  // WireGuard uses wg0/wg1/...  → match with wg+
+  const vpnInterface = vpnType === 'wireguard' ? 'wg+' : 'tun+'
 
   if (firewallEngine === 'none') {
     console.log('[firewall] Firewall engine set to NONE. Skipping policy application.')
     return { success: true, count: 0, skipped: true }
   }
 
-  console.log(`[firewall] Applying ${policies.length} policies using ${firewallEngine}.`)
+  console.log(`[firewall] Applying ${policies.length} policies using ${firewallEngine} on interface ${vpnInterface} (vpn_type: ${vpnType}).`)
 
   if (firewallEngine === 'nftables') {
-    return applyNftablesPolicies(policies)
+    return applyNftablesPolicies(policies, vpnInterface)
   }
 
   // Default: iptables / iptables-nft wrapper
-  return applyIptablesPolicies(policies)
+  return applyIptablesPolicies(policies, vpnInterface)
 }
 
-async function applyIptablesPolicies(policies: PolicyPayload[]) {
+async function applyIptablesPolicies(policies: PolicyPayload[], vpnInterface: string) {
   try {
     // 1. Ensure custom chain exists
     await execFirewall(`iptables -N VPN_FWWD`, 'iptables').catch(() => { /* ignore if already exists */ })
@@ -61,11 +67,11 @@ async function applyIptablesPolicies(policies: PolicyPayload[]) {
 
     // 3. Ensure FORWARD jumps to our custom chain BEFORE default accept
     try {
-      await execAsync(`iptables -C FORWARD -i tun+ -j VPN_FWWD`)
+      await execAsync(`iptables -C FORWARD -i ${vpnInterface} -j VPN_FWWD`)
     } catch (checkErr: any) {
       if (checkErr.message?.includes('not found') || checkErr.code === 1) { // code 1 = rule doesn't exist
-        await execFirewall(`iptables -I FORWARD 1 -i tun+ -j VPN_FWWD`, 'iptables')
-        console.log(`[firewall] Hooked VPN_FWWD into FORWARD chain.`)
+        await execFirewall(`iptables -I FORWARD 1 -i ${vpnInterface} -j VPN_FWWD`, 'iptables')
+        console.log(`[firewall] Hooked VPN_FWWD into FORWARD chain for interface ${vpnInterface}.`)
       } else if (!checkErr.message?.includes('not found')) {
          throw checkErr
       }
@@ -131,17 +137,17 @@ async function applyIptablesPolicies(policies: PolicyPayload[]) {
   }
 }
 
-async function applyNftablesPolicies(policies: PolicyPayload[]) {
+async function applyNftablesPolicies(policies: PolicyPayload[], vpnInterface: string) {
   try {
     // 1. Ensure table and chain exist
     await execFirewall(`nft add table inet filter`, 'nftables').catch(() => {})
     await execFirewall(`nft add chain inet filter VPN_FWWD`, 'nftables').catch(() => {})
     await execFirewall(`nft flush chain inet filter VPN_FWWD`, 'nftables').catch(() => {})
 
-    // 2. Hook into forward chain
+    // 2. Hook into forward chain if not already hooked
     const checkHook = await execAsync(`nft list chain inet filter FORWARD`).catch(() => ({ stdout: '' }))
     if (!checkHook.stdout?.includes('VPN_FWWD')) {
-      await execFirewall(`nft add rule inet filter FORWARD iifname "tun*" jump VPN_FWWD`, 'nftables').catch(err => {
+      await execFirewall(`nft add rule inet filter FORWARD iifname "${vpnInterface}" jump VPN_FWWD`, 'nftables').catch(err => {
         console.warn(`[firewall/dev] nft hook failed:`, err.message)
       })
     }
