@@ -1,0 +1,16 @@
+---
+title: Introduction
+description: Overview of the VPN Manager project.
+---
+
+Welcome to the **VPN Manager** documentation.
+
+## What is VPN Manager?
+
+VPN Manager is a modern, modular Software-as-a-Service (SaaS) platform built to handle enterprise OpenVPN deployment. Rather than manually configuring settings on individual servers via CLI, this platform lets you manage Nodes, Groups, Networks, and Users through a centralized dashboard.
+
+## Core Pillars
+
+1. **Central Control**: A Next.js/Vite frontend and Fastify API backend provide a single pane of glass into multiple Linux VPS nodes worldwide.
+2. **Agent-Based Execution**: Instead of establishing direct SSH rules, each server runs a secure Node.js `agent` that periodically pulls configuration tasks (like `restart`, `generate-cert`, `revoke`).
+3. **Advanced Routing**: Simplifies assigning `Split-Tunneling` and policy-based networking rules (via NFTables/IPTables) easily from the Web UI.

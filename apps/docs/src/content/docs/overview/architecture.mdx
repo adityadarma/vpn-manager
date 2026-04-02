@@ -1,0 +1,21 @@
+---
+title: Architecture
+description: The tech stack and design architecture.
+---
+
+## Tech Stack Overview
+
+VPN Manager is a full-stack, containerized application designed with scaling and simplicity in mind.
+
+| Component | Technology | Purpose |
+| --------- | ---------- | ------- |
+| **Frontend** | React, Vite, Tailwind CSS, Shadcn UI | Delivers a Single Page Application (SPA) dashboard. |
+| **Backend**  | Node.js, Fastify, Prisma | Handles API requests, database interactions, and serves the Vite static build. |
+| **Agent**    | Node.js | Runs on Linux host servers to execute VPN tasks and apply IPTables rules. |
+| **Docs**     | Astro, Starlight | Generates this high-performance static documentation site. |
+
+## Single-Container Execution
+
+The Fastify Backend is configured to also serve the compiled Vite Frontend frontend from `apps/web/dist`. 
+
+This architecture allows the platform to be deployed effortlessly inside **a single Docker container**, simplifying DevOps orchestration while maintaining clear project separation in the codebase.

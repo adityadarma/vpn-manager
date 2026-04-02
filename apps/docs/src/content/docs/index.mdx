@@ -1,0 +1,36 @@
+---
+title: VPN Manager
+description: A modern, automated VPN management platform.
+template: splash
+hero:
+  tagline: Seamless VPN provisioning, node management, and secure access for modern teams.
+  image:
+    html: "<div class='text-7xl'>🛡️</div>"
+  actions:
+    - text: Explore Documentation
+      link: /overview/introduction/
+      icon: right-arrow
+    - text: View on GitHub
+      link: https://github.com/adityadarma/ovpn-manager
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Features
+
+<CardGrid>
+	<Card title="Centralized Management" icon="laptop">
+		Manage VPN configurations, users, and networks across multiple servers worldwide from a single, sleek dashboard without touching the CLI.
+	</Card>
+	<Card title="Split Tunneling" icon="rocket">
+		Route specific IP blocks or domains seamlessly, optimizing traffic flow and preserving server bandwidth for internal net targeting.
+	</Card>
+	<Card title="Automated Provisioning" icon="setting">
+		An event-driven Node.js agent automatically manages `iptables` policies, generates certificates, and pulls config tasks in real-time.
+	</Card>
+	<Card title="Modern Aesthetics" icon="star">
+		Built top-to-bottom prioritizing visual excellence. Uses standard modern frameworks and a premium Zinc/Slate color palette.
+	</Card>
+</CardGrid>

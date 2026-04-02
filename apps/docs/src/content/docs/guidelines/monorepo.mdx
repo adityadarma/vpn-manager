@@ -1,0 +1,31 @@
+---
+title: Monorepo Setup
+description: How the workspace is structured.
+---
+
+This project uses **pnpm workspaces** and **Turborepo** to structure code efficiently.
+
+## Directory Structure
+
+```text
+vpn-manager/
+├── apps/
+│   ├── api/       # Fastify REST Backend
+│   ├── web/       # Web UI (Vite + React)
+│   ├── agent/     # Target Server Agent
+│   └── docs/      # Astro Starlight Docs (You are here)
+├── packages/
+│   └── database/  # Shared Prisma Database Client
+└── package.json
+```
+
+## Running the Project
+
+To start development everywhere:
+
+```bash
+pnpm install
+pnpm run dev
+```
+
+This leverages Turbo to simultaneously start the Vite server, Fastify backend, and the Astro Docs side-by-side using the `turbo run dev` command config in the root.

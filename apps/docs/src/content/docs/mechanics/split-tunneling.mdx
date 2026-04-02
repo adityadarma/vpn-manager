@@ -1,0 +1,26 @@
+---
+title: VPN Split Tunneling
+description: How split-tunneling is applied.
+---
+
+## What is Split Tunneling?
+
+In a standard VPN configuration, all network traffic from the client is forced through the VPN server. **Split-tunneling** allows you to exempt certain routes or only route specific IP addresses through the VPN connection.
+
+## Implementation Details
+
+The core VPN Manager platform implements split-tunneling policies at the **Agent level** through native Linux networking utilities:
+
+1. **iptables/nftables**: When a split-tunnel policy is created in the web UI, the payload is inserted into the task queue.
+2. **Polling**: The Node.js Agent installed on the Linux VPS pulls this `policy` task.
+3. **Execution**: The Agent executes shell commands (`ip route add ...`, `iptables -t nat -A POSTROUTING ...`) to ensure only packets designated for the remote networks traverse `tun0`.
+
+### Example Verification
+
+To verify if split-tunneling is working on the host, the Agent runs:
+
+```bash
+ip route | grep "tun0"
+```
+
+Traffic that does not match the specific `tun0` subnets will gracefully fall back to the default interface (e.g., `eth0`), preserving connection speeds for standard internet access.
