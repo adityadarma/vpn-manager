@@ -294,12 +294,12 @@ function GroupsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Groups table */}
         <div className={detailGroup ? 'lg:col-span-2' : 'lg:col-span-3'}>
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">All Groups</CardTitle>
-              <CardDescription>{groups.length} group{groups.length !== 1 ? 's' : ''}</CardDescription>
-            </CardHeader>
-            <CardContent className="p-0">
+          <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm overflow-hidden">
+            <div className="p-5 border-b border-border/50">
+              <h2 className="font-semibold text-foreground">All Groups</h2>
+              <p className="text-xs text-muted-foreground/70 mt-0.5">{groups.length} group{groups.length !== 1 ? 's' : ''}</p>
+            </div>
+            <div className="p-0">
               {isLoading ? (
                 <div className="p-8 text-center text-sm text-muted-foreground">Loading...</div>
               ) : groups.length === 0 ? (
@@ -380,8 +380,8 @@ function GroupsPage() {
                   </TableBody>
                 </Table>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
 
         {/* Detail panel */}
@@ -396,13 +396,13 @@ function GroupsPage() {
               </Button>
             </div>
 
-            <Card>
-              <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Network className="h-4 w-4" />
+            <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-border/50 flex flex-row items-center justify-between">
+                <div className="font-semibold text-foreground flex items-center gap-2">
+                  <Network className="h-4 w-4 text-emerald-500" />
                   Networks
-                  <Badge className="ml-2">{groupDetail.networks.length}</Badge>
-                </CardTitle>
+                  <Badge className="ml-2 bg-emerald-500 hover:bg-emerald-600 border-0 text-white">{groupDetail.networks.length}</Badge>
+                </div>
                 <Button
                   size="sm"
                   variant="outline"
@@ -412,8 +412,8 @@ function GroupsPage() {
                   <NetworkIcon className="h-3.5 w-3.5 mr-1" />
                   Add
                 </Button>
-              </CardHeader>
-              <CardContent className="p-0">
+              </div>
+              <div className="p-0">
                 {groupDetail.networks.length === 0 ? (
                   <p className="p-4 text-sm text-muted-foreground">No networks assigned.</p>
                 ) : (
@@ -436,16 +436,16 @@ function GroupsPage() {
                     ))}
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
-            <Card>
-              <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Users className="h-4 w-4" />
+            <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-border/50 flex flex-row items-center justify-between">
+                <div className="font-semibold text-foreground flex items-center gap-2">
+                  <Users className="h-4 w-4 text-emerald-500" />
                   Members
-                  <Badge className="ml-2">{groupDetail.members.length}</Badge>
-                </CardTitle>
+                  <Badge className="ml-2 bg-emerald-500 hover:bg-emerald-600 border-0 text-white">{groupDetail.members.length}</Badge>
+                </div>
                 <Button
                   size="sm"
                   variant="outline"
@@ -455,8 +455,8 @@ function GroupsPage() {
                   <UserPlus className="h-3.5 w-3.5 mr-1" />
                   Add
                 </Button>
-              </CardHeader>
-              <CardContent className="p-0">
+              </div>
+              <div className="p-0">
                 {groupDetail.members.length === 0 ? (
                   <p className="p-4 text-sm text-muted-foreground">No members yet.</p>
                 ) : (
@@ -490,8 +490,8 @@ function GroupsPage() {
                     ))}
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </div>
         )}
       </div>

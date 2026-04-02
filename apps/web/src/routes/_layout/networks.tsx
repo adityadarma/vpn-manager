@@ -124,12 +124,12 @@ function NetworksPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Networks table */}
         <div className={detailNetwork ? 'lg:col-span-2' : 'lg:col-span-3'}>
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Network Segments</CardTitle>
-              <CardDescription>{networks.length} network{networks.length !== 1 ? 's' : ''} defined</CardDescription>
-            </CardHeader>
-            <CardContent className="p-0">
+          <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm overflow-hidden">
+            <div className="p-5 border-b border-border/50">
+              <h2 className="font-semibold text-foreground">Network Segments</h2>
+              <p className="text-xs text-muted-foreground/70 mt-0.5">{networks.length} network{networks.length !== 1 ? 's' : ''} defined</p>
+            </div>
+            <div className="p-0">
               {isLoading ? (
                 <div className="p-8 text-center text-sm text-muted-foreground">Loading...</div>
               ) : networks.length === 0 ? (
@@ -185,24 +185,24 @@ function NetworksPage() {
                   </TableBody>
                 </Table>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
 
         {/* Detail panel */}
         {detailNetwork && networkDetail && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Users className="h-4 w-4" />
+          <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm overflow-hidden">
+            <div className="p-5 border-b border-border/50">
+              <div className="font-semibold text-foreground flex items-center gap-2">
+                <Users className="h-4 w-4 text-emerald-500" />
                 Assigned to Groups
-                <Badge className="ml-auto">{networkDetail.groups.length}</Badge>
-              </CardTitle>
-              <CardDescription>
-                <code className="text-xs">{networkDetail.cidr}</code>
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="p-0">
+                <Badge className="ml-auto bg-emerald-500 hover:bg-emerald-600 text-white border-0">{networkDetail.groups.length}</Badge>
+              </div>
+              <div className="mt-1.5">
+                <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono text-muted-foreground">{networkDetail.cidr}</code>
+              </div>
+            </div>
+            <div className="p-0">
               {networkDetail.groups.length === 0 ? (
                 <p className="p-4 text-sm text-muted-foreground">Not assigned to any group yet.</p>
               ) : (
@@ -220,8 +220,8 @@ function NetworksPage() {
                   ))}
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         )}
       </div>
 
