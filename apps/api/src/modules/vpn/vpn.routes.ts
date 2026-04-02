@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { v7 as uuidv7 } from 'uuid'
-import { logAudit } from '../../utils/audit'
+import { logAudit, getClientIp } from '../../utils/audit'
 
 /**
  * VPN Hooks API — called by vpn-client agent living on the VPN server.
@@ -58,7 +58,7 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
       const node = await app.db('vpn_nodes').where({ id: node_id }).first()
       if (!node) return reply.status(404).send({ error: 'Node not found' })
 
-      const clientIp = real_ip ?? request.ip
+      const clientIp = real_ip ?? getClientIp(request)
 
       // Validate user is active
       if (!user.is_active) {

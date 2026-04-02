@@ -35,6 +35,9 @@ export async function buildApp(env: Env) {
     logger: {
       level: env.NODE_ENV === 'development' ? 'info' : 'warn',
     },
+    // Trust reverse proxy headers (Cloudflare Tunnel, nginx, etc.)
+    // so request.ip reads from X-Forwarded-For instead of the Docker socket IP
+    trustProxy: true,
   })
 
   // Plugins

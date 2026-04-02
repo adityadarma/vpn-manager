@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { v7 as uuidv7 } from 'uuid'
 import { CreatePolicySchema } from '@vpn/shared'
-import { logAudit } from '../../utils/audit'
+import { logAudit, getClientIp } from '../../utils/audit'
 
 const policyRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/v1/policies
@@ -64,7 +64,7 @@ const policyRoutes: FastifyPluginAsync = async (app) => {
         action: 'policy_create',
         resourceType: 'policy',
         resourceId: id,
-        ipAddress: request.ip,
+        ipAddress: getClientIp(request),
         metadata: {
           target_network: input.targetNetwork,
           action: input.action ?? 'allow',
@@ -96,7 +96,7 @@ const policyRoutes: FastifyPluginAsync = async (app) => {
         action: 'policy_delete',
         resourceType: 'policy',
         resourceId: request.params.id,
-        ipAddress: request.ip,
+        ipAddress: getClientIp(request),
       })
 
       return reply.status(204).send()

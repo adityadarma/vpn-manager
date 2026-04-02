@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { v7 as uuidv7 } from 'uuid'
-import { logAudit } from '../../utils/audit'
+import { logAudit, getClientIp } from '../../utils/audit'
 
 const sessionRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/v1/sessions  — active sessions with enhanced details
@@ -260,7 +260,7 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
         action: permanent ? 'session_kick_permanent' : 'session_kick',
         resourceType: 'vpn_session',
         resourceId: id,
-        ipAddress: request.ip,
+        ipAddress: getClientIp(request),
         metadata: {
           kicked_user_id: session.user_id,
           node_id: session.node_id,
@@ -399,7 +399,7 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
         action: 'session_unkick',
         resourceType: 'vpn_session',
         resourceId: id,
-        ipAddress: request.ip,
+        ipAddress: getClientIp(request),
         metadata: { unkicked_user: commonName, node_id: session.node_id, session_id: id }
       })
 

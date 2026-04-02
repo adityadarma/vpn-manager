@@ -2,7 +2,7 @@ import { v7 as uuidv7 } from 'uuid'
 import type { FastifyPluginAsync } from 'fastify'
 import crypto from 'node:crypto'
 import { HeartbeatSchema } from '@vpn/shared'
-import { logAudit } from '../../utils/audit'
+import { logAudit, getClientIp } from '../../utils/audit'
 
 interface NodeConfig {
   port: number
@@ -173,7 +173,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         action: 'node_update',
         resourceType: 'node',
         resourceId: request.params.id,
-        ipAddress: request.ip,
+        ipAddress: getClientIp(request),
         metadata: { updated_fields: Object.keys(updates) }
       })
 
@@ -256,7 +256,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         action: 'node_config_update',
         resourceType: 'node',
         resourceId: request.params.id,
-        ipAddress: request.ip,
+        ipAddress: getClientIp(request),
       })
 
       return { message: 'Configuration update scheduled', taskId }
@@ -634,7 +634,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         action: 'node_delete',
         resourceType: 'node',
         resourceId: request.params.id,
-        ipAddress: request.ip,
+        ipAddress: getClientIp(request),
       })
 
       return reply.status(204).send()

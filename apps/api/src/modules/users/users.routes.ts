@@ -3,7 +3,7 @@ import { v7 as uuidv7 } from 'uuid'
 import bcrypt from 'bcryptjs'
 import { CreateUserSchema, UpdateUserSchema } from '@vpn/shared'
 import { nextAvailableIp, getNetmask, cidrToRoute, cidrsToPushRoutes } from '../../services/ip-pool.service'
-import { logAudit } from '../../utils/audit'
+import { logAudit, getClientIp } from '../../utils/audit'
 
 const userRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/v1/users
@@ -113,7 +113,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         action: 'user_create',
         resourceType: 'user',
         resourceId: id,
-        ipAddress: request.ip,
+        ipAddress: getClientIp(request),
         metadata: { created_username: input.username, role: input.role }
       })
 
@@ -202,7 +202,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         action: 'user_update',
         resourceType: 'user',
         resourceId: id,
-        ipAddress: request.ip,
+        ipAddress: getClientIp(request),
         metadata: { updated_fields: Object.keys(updates) }
       })
 
@@ -852,7 +852,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
           id: uuidv7(),
           user_id: id,
           node_id: node.id,
-          ip_address: request.ip,
+          ip_address: getClientIp(request),
           user_agent: request.headers['user-agent'] || null,
           downloaded_at: new Date()
         })
@@ -864,7 +864,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
           action: 'cert_download',
           resourceType: 'certificate',
           resourceId: certificate.id,
-          ipAddress: request.ip,
+          ipAddress: getClientIp(request),
           metadata: {
             node_id: node.id,
             node_hostname: node.hostname,
@@ -1021,7 +1021,7 @@ ${node.ta_key?.trim() ?? ''}
         action: 'user_delete',
         resourceType: 'user',
         resourceId: request.params.id,
-        ipAddress: request.ip,
+        ipAddress: getClientIp(request),
       })
 
       return reply.status(204).send()

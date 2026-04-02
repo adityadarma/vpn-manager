@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { v7 as uuidv7 } from 'uuid'
 import { nextAvailableIp, getNetmask, parseCidr, cidrsToPushRoutes } from '../../services/ip-pool.service'
-import { logAudit } from '../../utils/audit'
+import { logAudit, getClientIp } from '../../utils/audit'
 interface Group {
   id: string
   name: string
@@ -92,7 +92,7 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
         action: 'group_create',
         resourceType: 'group',
         resourceId: id,
-        ipAddress: request.ip,
+        ipAddress: getClientIp(request),
         metadata: { name: created.name, vpn_subnet }
       })
 
@@ -141,7 +141,7 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
         action: 'group_update',
         resourceType: 'group',
         resourceId: request.params.id,
-        ipAddress: request.ip,
+        ipAddress: getClientIp(request),
         metadata: { updated_fields: Object.keys(request.body) }
       })
 
@@ -164,7 +164,7 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
         action: 'group_delete',
         resourceType: 'group',
         resourceId: request.params.id,
-        ipAddress: request.ip,
+        ipAddress: getClientIp(request),
       })
 
       return reply.status(204).send()
@@ -205,7 +205,7 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
         action: 'group_member_add',
         resourceType: 'group',
         resourceId: request.params.id,
-        ipAddress: request.ip,
+        ipAddress: getClientIp(request),
         metadata: { target_user_id: user_id, assigned_vpn_ip: assignedIp }
       })
 
@@ -227,7 +227,7 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
           action: 'group_member_remove',
           resourceType: 'group',
           resourceId: request.params.id,
-          ipAddress: request.ip,
+          ipAddress: getClientIp(request),
           metadata: { target_user_id: request.params.userId }
         })
       }
@@ -256,7 +256,7 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
         action: 'group_network_add',
         resourceType: 'group',
         resourceId: request.params.id,
-        ipAddress: request.ip,
+        ipAddress: getClientIp(request),
         metadata: { network_id }
       })
 
@@ -283,7 +283,7 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
         action: 'group_network_remove',
         resourceType: 'group',
         resourceId: request.params.id,
-        ipAddress: request.ip,
+        ipAddress: getClientIp(request),
         metadata: { network_id: request.params.networkId }
       })
 
