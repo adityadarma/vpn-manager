@@ -508,7 +508,7 @@ function GroupsPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="group-subnet">VPN Subnet <span className="text-muted-foreground text-xs">(optional)</span></Label>
+              <Label htmlFor="group-subnet">VPN Subnet <span className="text-red-500">*</span></Label>
               <Input
                 id="group-subnet"
                 placeholder="e.g. 10.8.1.0/24"
@@ -533,7 +533,7 @@ function GroupsPage() {
             <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
             <Button
               id="btn-create-group-submit"
-              disabled={!form.name.trim() || createMutation.isPending}
+              disabled={!form.name.trim() || !form.vpn_subnet.trim() || createMutation.isPending}
               onClick={() => createMutation.mutate({ name: form.name, description: form.description, vpn_subnet: form.vpn_subnet || '' })}
             >
               {createMutation.isPending ? 'Adding...' : 'Add Group'}
@@ -558,7 +558,7 @@ function GroupsPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="edit-group-subnet">VPN Subnet <span className="text-muted-foreground text-xs">(optional)</span></Label>
+              <Label htmlFor="edit-group-subnet">VPN Subnet <span className="text-red-500">*</span></Label>
               <Input
                 id="edit-group-subnet"
                 placeholder="e.g. 10.8.1.0/24"
@@ -582,7 +582,7 @@ function GroupsPage() {
             <Button variant="outline" onClick={() => setEditGroup(null)}>Cancel</Button>
             <Button
               id="btn-edit-group-submit"
-              disabled={!form.name.trim() || updateMutation.isPending}
+              disabled={!form.name.trim() || !form.vpn_subnet.trim() || updateMutation.isPending}
               onClick={() => editGroup && updateMutation.mutate({ id: editGroup.id, data: { name: form.name, description: form.description, vpn_subnet: form.vpn_subnet || '' } })}
             >
               {updateMutation.isPending ? 'Saving...' : 'Save Changes'}

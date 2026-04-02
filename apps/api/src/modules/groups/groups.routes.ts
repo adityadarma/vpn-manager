@@ -56,15 +56,15 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
   )
 
   // POST /api/v1/groups
-  app.post<{ Body: { name: string; description?: string; vpn_subnet?: string } }>(
+  app.post<{ Body: { name: string; description?: string; vpn_subnet: string } }>(
     '/groups',
     { onRequest: [app.authenticateAdmin], schema: { tags: ['groups'], summary: 'Create a group', security: [{ bearerAuth: [] }] } },
     async (request, reply) => {
       const { name, description, vpn_subnet } = request.body
       if (!name?.trim()) return reply.status(400).send({ error: 'name is required' })
+      if (!vpn_subnet?.trim()) return reply.status(400).send({ error: 'vpn_subnet is required' })
 
-      // Validate subnet if provided
-      if (vpn_subnet) {
+      // Validate subnet
         try { parseCidr(vpn_subnet) } catch (e: any) {
           return reply.status(400).send({ error: `Invalid vpn_subnet: ${e.message}` })
         }
@@ -75,14 +75,13 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
         if (conflict) {
           return reply.status(409).send({ error: `Subnet ${vpn_subnet} is already assigned to group "${conflict.name}"` })
         }
-      }
 
       const id = crypto.randomUUID()
       await app.db('groups').insert({
         id,
         name: name.trim(),
         description: description?.trim() ?? null,
-        vpn_subnet: vpn_subnet?.trim() ?? null,
+        vpn_subnet: vpn_subnet.trim(),
       })
       const created = await app.db('groups').where({ id }).first()
       return reply.status(201).send(created)
