@@ -15,6 +15,8 @@ const policyRoutes: FastifyPluginAsync = async (app) => {
           'p.id',
           'p.user_id',
           'p.group_id',
+          app.db.raw('p.user_id as "userId"'),
+          app.db.raw('p.group_id as "groupId"'),
           'p.target_network',
           'p.protocol',
           'p.target_port',
