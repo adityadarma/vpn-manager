@@ -1,4 +1,4 @@
-import crypto from 'node:crypto'
+import { v7 as uuidv7 } from 'uuid'
 import type { FastifyInstance } from 'fastify'
 
 export async function logAudit(
@@ -16,7 +16,7 @@ export async function logAudit(
 ) {
   try {
     await app.db('audit_logs').insert({
-      id: crypto.randomUUID(),
+      id: uuidv7(),
       user_id: options.userId,
       username: options.username,
       action: options.action,

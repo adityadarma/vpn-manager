@@ -1,6 +1,6 @@
 import type { Knex } from 'knex'
 import bcrypt from 'bcryptjs'
-import { randomUUID } from 'crypto'
+import { v7 as uuidv7 } from 'uuid'
 
 export async function seed(knex: Knex): Promise<void> {
   // Check if admin user already exists
@@ -12,7 +12,7 @@ export async function seed(knex: Knex): Promise<void> {
     // Create default admin user
     const passwordHash = await bcrypt.hash('Admin@1234!', 10)
     await knex('users').insert({
-      id: randomUUID(),
+      id: uuidv7(),
       username: 'admin',
       email: 'admin@vpn.local',
       password: passwordHash,

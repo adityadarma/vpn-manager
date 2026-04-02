@@ -1,5 +1,5 @@
 import type { Knex } from 'knex'
-import { randomUUID } from 'crypto'
+import { v7 as uuidv7 } from 'uuid'
 
 interface RenewalResult {
   userId: string
@@ -49,7 +49,7 @@ export async function checkAndRenewCertificates(db: Knex): Promise<RenewalResult
         if (oldCertData?.client_cert) {
           try {
             await db('cert_revocations').insert({
-              id: randomUUID(),
+              id: uuidv7(),
               user_id: cert.user_id,
               node_id: cert.node_id,
               revoked_cert: oldCertData.client_cert,
@@ -64,7 +64,7 @@ export async function checkAndRenewCertificates(db: Knex): Promise<RenewalResult
         }
 
         // Create renewal task
-        const taskId = randomUUID()
+        const taskId = uuidv7()
         await db('tasks').insert({
           id: taskId,
           node_id: cert.node_id,

@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify'
-import crypto from 'node:crypto'
+import { v7 as uuidv7 } from 'uuid'
 import { nextAvailableIp, getNetmask, parseCidr, cidrsToPushRoutes } from '../../services/ip-pool.service'
 import { logAudit } from '../../utils/audit'
 interface Group {
@@ -76,7 +76,7 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
           return reply.status(409).send({ error: `Subnet ${vpn_subnet} is already assigned to group "${conflict.name}"` })
         }
 
-      const id = crypto.randomUUID()
+      const id = uuidv7()
       await app.db('groups').insert({
         id,
         name: name.trim(),
@@ -394,7 +394,7 @@ async function reenqueueGroupCcdTasks(app: any, groupId: string): Promise<void> 
 
     for (const node of onlineNodes) {
       tasks.push({
-        id: crypto.randomUUID(),
+        id: uuidv7(),
         node_id: node.id,
         action: 'write_client_ccd',
         payload: JSON.stringify({

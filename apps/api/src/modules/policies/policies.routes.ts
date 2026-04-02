@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify'
-import crypto from 'node:crypto'
+import { v7 as uuidv7 } from 'uuid'
 import { CreatePolicySchema } from '@vpn/shared'
 import { logAudit } from '../../utils/audit'
 
@@ -41,7 +41,7 @@ const policyRoutes: FastifyPluginAsync = async (app) => {
     async (request, reply) => {
       const input = CreatePolicySchema.parse(request.body)
       
-      const id = crypto.randomUUID()
+      const id = uuidv7()
       await app.db('vpn_policies').insert({
         id,
         user_id: input.userId ?? null,
@@ -134,7 +134,7 @@ async function enqueueApplyPolicies(app: any) {
   if (onlineNodes.length === 0) return
 
   const tasks = onlineNodes.map((node: { id: string, firewall_engine: string, vpn_type: string }) => ({
-    id: crypto.randomUUID(),
+    id: uuidv7(),
     node_id: node.id,
     action: 'apply_network_policy',
     payload: JSON.stringify({ policies, firewall_engine: node.firewall_engine, vpn_type: node.vpn_type }),

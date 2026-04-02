@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { buildApp } from '../src/app'
 import type { FastifyInstance } from 'fastify'
-import crypto from 'node:crypto'
+import { v7 as uuidv7 } from 'uuid'
 
 describe('VPN Agent API', () => {
   let app: FastifyInstance
@@ -22,7 +22,7 @@ describe('VPN Agent API', () => {
     await app.db.seed.run()
 
     // Create a mock node
-    nodeId = crypto.randomUUID()
+    nodeId = uuidv7()
     await app.db('vpn_nodes').insert({
       id: nodeId,
       hostname: 'Mock Node',

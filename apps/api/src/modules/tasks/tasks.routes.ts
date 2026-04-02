@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify'
-import crypto from 'node:crypto'
+import { v7 as uuidv7 } from 'uuid'
 import { TaskResultSchema } from '@vpn/shared'
 
 const taskRoutes: FastifyPluginAsync = async (app) => {
@@ -52,7 +52,7 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
       }
 
       // Create task
-      const taskId = crypto.randomUUID()
+      const taskId = uuidv7()
       await app.db('tasks').insert({
         id: taskId,
         node_id,

@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify'
-import crypto from 'node:crypto'
+import { v7 as uuidv7 } from 'uuid'
 import bcrypt from 'bcryptjs'
 import { CreateUserSchema, UpdateUserSchema } from '@vpn/shared'
 import { nextAvailableIp, getNetmask, cidrToRoute, cidrsToPushRoutes } from '../../services/ip-pool.service'
@@ -50,7 +50,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const passwordHash = input.password ? await bcrypt.hash(input.password, 10) : null
-      const id = crypto.randomUUID()
+      const id = uuidv7()
 
       // --- Auto-assign VPN IP from group subnet ---
       let vpnIp: string | null = null
@@ -294,7 +294,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       if (existingCert && !existingCert.is_revoked && existingCert.client_cert) {
         try {
           await app.db('cert_revocations').insert({
-            id: crypto.randomUUID(),
+            id: uuidv7(),
             user_id: id,
             node_id: nodeId,
             revoked_cert: existingCert.client_cert,
@@ -309,7 +309,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       }
 
       // Create task for agent to generate certificate
-      const taskId = crypto.randomUUID()
+      const taskId = uuidv7()
       await app.db('tasks').insert({
         id: taskId,
         node_id: nodeId,
@@ -352,7 +352,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
               })
           } else {
             await app.db('user_node_certificates').insert({
-              id: crypto.randomUUID(),
+              id: uuidv7(),
               user_id: id,
               node_id: nodeId,
               client_cert: result.clientCert,
@@ -493,7 +493,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
               const nodeExists = await app.db('vpn_nodes').where({ id: nodeId }).first()
               if (nodeExists) {
                 await app.db('cert_revocations').insert({
-                  id: crypto.randomUUID(),
+                  id: uuidv7(),
                   user_id: userId,
                   node_id: nodeId,
                   revoked_cert: existingCert.client_cert,
@@ -510,7 +510,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
           }
 
           // Create task
-          const taskId = crypto.randomUUID()
+          const taskId = uuidv7()
           await app.db('tasks').insert({
             id: taskId,
             node_id: nodeId,
@@ -553,7 +553,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
                   })
               } else {
                 await app.db('user_node_certificates').insert({
-                  id: crypto.randomUUID(),
+                  id: uuidv7(),
                   user_id: userId,
                   node_id: nodeId,
                   client_cert: result.clientCert,
@@ -735,7 +735,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       if (certificate.client_cert) {
         try {
           await app.db('cert_revocations').insert({
-            id: crypto.randomUUID(),
+            id: uuidv7(),
             user_id: id,
             node_id: certificate.node_id,
             revoked_cert: certificate.client_cert,
@@ -849,7 +849,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
           })
 
         await app.db('cert_download_history').insert({
-          id: crypto.randomUUID(),
+          id: uuidv7(),
           user_id: id,
           node_id: node.id,
           ip_address: request.ip,
@@ -1082,7 +1082,7 @@ async function enqueueCcdTask(
     }
 
     tasks.push({
-      id: crypto.randomUUID(),
+      id: uuidv7(),
       node_id: node.id,
       action: 'write_client_ccd',
       payload: JSON.stringify({ username, vpn_ip: vpnIp, netmask, extra_lines: extraLines, public_key: publicKey }),

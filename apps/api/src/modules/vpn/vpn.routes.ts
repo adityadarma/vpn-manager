@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify'
-import crypto from 'node:crypto'
+import { v7 as uuidv7 } from 'uuid'
 import { logAudit } from '../../utils/audit'
 
 /**
@@ -65,7 +65,7 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
         app.log.warn(`[vpn/connect] Inactive user attempted connection: ${username} from ${clientIp}`)
         
         await app.db('connection_attempts').insert({
-          id: crypto.randomUUID(),
+          id: uuidv7(),
           user_id: user.id,
           node_id: node_id ?? null,
           username,
@@ -82,7 +82,7 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
       const now = new Date()
       if (user.valid_from && new Date(user.valid_from) > now) {
         await app.db('connection_attempts').insert({
-          id: crypto.randomUUID(),
+          id: uuidv7(),
           user_id: user.id,
           node_id: node_id ?? null,
           username,
@@ -97,7 +97,7 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
       
       if (user.valid_to && new Date(user.valid_to) < now) {
         await app.db('connection_attempts').insert({
-          id: crypto.randomUUID(),
+          id: uuidv7(),
           user_id: user.id,
           node_id: node_id ?? null,
           username,
@@ -131,7 +131,7 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
         }
       }
 
-      const sessionId = crypto.randomUUID()
+      const sessionId = uuidv7()
       await app.db('vpn_sessions').insert({
         id: sessionId,
         user_id: user.id,
@@ -302,7 +302,7 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
 
       // Record activity snapshot
       await app.db('session_activities').insert({
-        id: crypto.randomUUID(),
+        id: uuidv7(),
         session_id,
         recorded_at: now,
         bytes_sent_delta: bytesSentDelta,

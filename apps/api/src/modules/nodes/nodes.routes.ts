@@ -1,3 +1,4 @@
+import { v7 as uuidv7 } from 'uuid'
 import type { FastifyPluginAsync } from 'fastify'
 import crypto from 'node:crypto'
 import { HeartbeatSchema } from '@vpn/shared'
@@ -238,7 +239,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       })
 
       // Create task to update server config
-      const taskId = crypto.randomUUID()
+      const taskId = uuidv7()
       await app.db('tasks').insert({
         id: taskId,
         node_id: request.params.id,
@@ -344,7 +345,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
 
       // Generate secure token for agent
       const token = crypto.randomBytes(32).toString('hex')
-      const id = crypto.randomUUID()
+      const id = uuidv7()
 
       // Determine dynamic vpn network (10.8.X.0)
       let nextNetwork = '10.8.0.0'
@@ -481,7 +482,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
             if (!existingSession) {
               app.log.info(`[heartbeat] Creating new session for user ${userId} via WireGuard heartbeat`)
               // New session! Create it via vpn_sessions
-              const newSessionId = crypto.randomUUID()
+              const newSessionId = uuidv7()
               await app.db('vpn_sessions').insert({
                 id: newSessionId,
                 user_id: userId,
@@ -562,7 +563,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         if (currentNode?.vpn_type !== 'wireguard' && (!currentNode?.ca_cert || !currentNode?.ta_key)) {
           app.log.info(`Node ${nodeId} came online without certificates, creating sync task`)
           tasksToCreate.push({
-            id: crypto.randomUUID(),
+            id: uuidv7(),
             node_id: nodeId,
             action: 'sync_certificates',
             payload: JSON.stringify({}),
@@ -574,7 +575,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         // Always sync server config on first connection to ensure database matches actual config
         app.log.info(`Node ${nodeId} came online, creating config sync task`)
         tasksToCreate.push({
-          id: crypto.randomUUID(),
+          id: uuidv7(),
           node_id: nodeId,
           action: 'sync_server_config',
           payload: JSON.stringify({}),

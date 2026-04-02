@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify'
-import crypto from 'node:crypto'
+import { v7 as uuidv7 } from 'uuid'
 import { logAudit } from '../../utils/audit'
 
 const sessionRoutes: FastifyPluginAsync = async (app) => {
@@ -288,7 +288,7 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
       if (commonName) {
         try {
           await app.db('tasks').insert({
-            id: crypto.randomUUID(),
+            id: uuidv7(),
             node_id: session.node_id,
             action: 'kick_vpn_session',
             payload: JSON.stringify({ 
@@ -371,7 +371,7 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
       // Dispatch unkick task to agent on the node
       try {
         await app.db('tasks').insert({
-          id: crypto.randomUUID(),
+          id: uuidv7(),
           node_id: session.node_id,
           action: 'unkick_vpn_session',
           payload: JSON.stringify({ 

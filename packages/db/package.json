@@ -15,16 +15,17 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "knex": "^3.1.0",
+    "bcryptjs": "^3.0.2",
     "better-sqlite3": "^11.9.1",
-    "pg": "^8.13.3",
+    "knex": "^3.1.0",
     "mysql2": "^3.13.0",
-    "bcryptjs": "^3.0.2"
+    "pg": "^8.13.3",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@types/better-sqlite3": "^7.6.12",
     "@types/pg": "^8.11.11",
-    "@types/bcryptjs": "^2.4.6",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.3"
   }
