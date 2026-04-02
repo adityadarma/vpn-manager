@@ -850,6 +850,19 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       splitCidrs.push(`${node.vpn_network}/${vpnPrefixTemp}`)
 
       if (userGroupIds.length > 0) {
+        // 1. Add Group VPN Subnets
+        const groupSubnets = await app.db('groups')
+          .whereIn('id', userGroupIds)
+          .whereNotNull('vpn_subnet')
+          .select('vpn_subnet')
+        
+        for (const grp of groupSubnets) {
+          if (grp.vpn_subnet) {
+            splitCidrs.push(grp.vpn_subnet)
+          }
+        }
+
+        // 2. Add explicit target Networks
         const networks = await app.db('group_networks as gn')
           .join('networks as n', 'gn.network_id', 'n.id')
           .whereIn('gn.group_id', userGroupIds)
@@ -869,10 +882,13 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         let allowedIps = '0.0.0.0/0, ::/0' // Full mode
         
         if (node.tunnel_mode === 'split') {
-          allowedIps = splitCidrs.join(', ')
+          allowedIps = [...new Set(splitCidrs)].join(', ')
         }
 
-        const endpoint = `${node.ip_address}:${node.endpoint_port || node.port || 51820}`
+        // For WireGuard: prioritise explicit endpoint_port, then custom port, then fallback to standard 51820.
+        // It's likely node.port is 1194 from default OpenVPN seeds, so ignore 1194 for WG.
+        const actualPort = node.endpoint_port || (node.port && node.port !== 1194 ? node.port : 51820)
+        const endpoint = `${node.ip_address}:${actualPort}`
         const wgConfig = `[Interface]
 PrivateKey = ${certificate.client_key.trim()}
 Address = ${user.vpn_ip || '10.8.0.2'}/32
