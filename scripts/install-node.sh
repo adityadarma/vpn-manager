@@ -523,6 +523,7 @@ install_agent() {
     ENV_NODE_ID="${AGENT_NODE_ID}"
     ENV_SECRET_TOKEN="${AGENT_SECRET_TOKEN}"
     ENV_FIREWALL_ENGINE="${FIREWALL_ENGINE}"
+    ENV_VPN_CIDR="${VPN_SUBNET}"
     
     # Determine registration mode
     AUTO_REGISTER=false
@@ -555,6 +556,10 @@ install_agent() {
         if [ "$reg_mode" = "1" ]; then
             read -p "Node registration key: " REG_KEY </dev/tty
             ENV_REG_KEY="$REG_KEY"
+
+            read -p "VPN Subnet CIDR (e.g. 10.8.1.0/24) [default: 10.8.1.0/24]: " VPN_CIDR_INPUT </dev/tty
+            ENV_VPN_CIDR="${VPN_CIDR_INPUT:-10.8.1.0/24}"
+
             AUTO_REGISTER=true
         else
             read -p "Node ID: " NODE_ID </dev/tty
@@ -562,6 +567,21 @@ install_agent() {
             read -p "Secret Token: " SECRET_TOKEN </dev/tty
             ENV_SECRET_TOKEN="$SECRET_TOKEN"
             MANUAL_REGISTER=true
+        fi
+    fi
+    
+    # Parse VPN CIDR if auto registering
+    if [ "$AUTO_REGISTER" = true ]; then
+        ENV_VPN_CIDR="${ENV_VPN_CIDR:-10.8.1.0/24}"
+        VPN_NETWORK="${ENV_VPN_CIDR%/*}"
+        VPN_PREFIX="${ENV_VPN_CIDR#*/}"
+        
+        if [ "$VPN_PREFIX" = "16" ]; then
+            VPN_NETMASK="255.255.0.0"
+        elif [ "$VPN_PREFIX" = "8" ]; then
+            VPN_NETMASK="255.0.0.0"
+        else
+            VPN_NETMASK="255.255.255.0"
         fi
     fi
     
@@ -607,10 +627,12 @@ EOF
             JSON_PAYLOAD="$JSON_PAYLOAD, \"vpnType\":\"wireguard\", \"publicKey\":\"$wg_pub\", \"privateKey\":\"$wg_priv\""
         fi
         
+        # Construct config object
+        JSON_PAYLOAD="$JSON_PAYLOAD, \"config\":{\"vpn_network\":\"$VPN_NETWORK\", \"vpn_netmask\":\"$VPN_NETMASK\""
         if [ -n "$ENV_FIREWALL_ENGINE" ]; then
-            JSON_PAYLOAD="$JSON_PAYLOAD, \"config\":{\"firewall_engine\":\"$ENV_FIREWALL_ENGINE\"}"
+            JSON_PAYLOAD="$JSON_PAYLOAD, \"firewall_engine\":\"$ENV_FIREWALL_ENGINE\""
         fi
-        JSON_PAYLOAD="$JSON_PAYLOAD}"
+        JSON_PAYLOAD="$JSON_PAYLOAD}}"
 
         RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${ENV_MANAGER_URL}/api/v1/nodes/register" \
             -H "Content-Type: application/json" \

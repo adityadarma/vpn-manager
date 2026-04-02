@@ -885,8 +885,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       let splitCidrs: string[] = []
       let routeLines = ''
       
-      const vpnPrefixTemp = node.vpn_netmask === '255.255.255.0' ? '24' : '16'
-      splitCidrs.push(`${node.vpn_network}/${vpnPrefixTemp}`)
+      let hasGroupSubnet = false
 
       if (userGroupIds.length > 0) {
         // 1. Add Group VPN Subnets
@@ -898,6 +897,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         for (const grp of groupSubnets) {
           if (grp.vpn_subnet) {
             splitCidrs.push(grp.vpn_subnet)
+            hasGroupSubnet = true
           }
         }
 
@@ -914,6 +914,12 @@ const userRoutes: FastifyPluginAsync = async (app) => {
           ).join('\n')
           routeLines = `\n# Split-tunnel routes (from group network assignments)\n${routeComments}\n`
         }
+      }
+
+      // Fallback to node's default VPN network if no group VPN subnet is assigned
+      if (!hasGroupSubnet && node.vpn_network) {
+        const vpnPrefixTemp = node.vpn_netmask === '255.255.255.0' ? '24' : '16'
+        splitCidrs.push(`${node.vpn_network}/${vpnPrefixTemp}`)
       }
 
       // WIRE GUARD CONFIGURATION
