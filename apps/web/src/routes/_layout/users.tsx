@@ -328,7 +328,7 @@ function UsersPage() {
                   <span key={cert.id} className="inline-flex items-center gap-1 px-2 py-1 bg-card text-card-foreground border border-amber-200 rounded text-xs text-amber-800">
                     {cert.username}
                     <span className="text-amber-600">
-                      ({getDaysUntilExpiry(cert.certExpiresAt)} days)
+                      ({getDaysUntilExpiry(cert.expires_at)} days)
                     </span>
                   </span>
                 ))}

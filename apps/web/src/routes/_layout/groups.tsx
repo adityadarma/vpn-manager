@@ -330,9 +330,9 @@ function GroupsPage() {
                     {groups.map((g) => (
                       <TableRow
                         key={g.id}
-                        className={`cursor-pointer hover:bg-muted/50 ${detailGroup === g.id ? 'bg-muted' : ''}`}
+                        className={`hover:bg-muted/50 ${detailGroup === g.id ? 'bg-muted' : ''}`}
                       >
-                        <TableCell onClick={(e) => e.stopPropagation()}>
+                        <TableCell>
                           <input
                             type="checkbox"
                             checked={selectedGroups.has(g.id)}
@@ -340,17 +340,17 @@ function GroupsPage() {
                             className="rounded border-input text-emerald-600 focus:ring-emerald-500"
                           />
                         </TableCell>
-                        <TableCell className="font-medium" onClick={() => setDetailGroup(detailGroup === g.id ? null : g.id)}>{g.name}</TableCell>
-                        <TableCell onClick={() => setDetailGroup(detailGroup === g.id ? null : g.id)}>
+                        <TableCell className="font-medium">{g.name}</TableCell>
+                        <TableCell>
                           {g.vpn_subnet
                             ? <code className="text-xs bg-blue-50 text-blue-700 border border-blue-100 px-1.5 py-0.5 rounded">{g.vpn_subnet}</code>
                             : <span className="text-muted-foreground text-xs">—</span>}
                         </TableCell>
-                        <TableCell className="text-muted-foreground text-sm" onClick={() => setDetailGroup(detailGroup === g.id ? null : g.id)}>{g.description ?? '—'}</TableCell>
-                        <TableCell className="text-center" onClick={() => setDetailGroup(detailGroup === g.id ? null : g.id)}>
+                        <TableCell className="text-muted-foreground text-sm">{g.description ?? '—'}</TableCell>
+                        <TableCell className="text-center">
                           <Badge variant="secondary">{g.member_count}</Badge>
                         </TableCell>
-                        <TableCell className="text-center" onClick={() => setDetailGroup(detailGroup === g.id ? null : g.id)}>
+                        <TableCell className="text-center">
                           <Badge variant="outline">{g.network_count}</Badge>
                         </TableCell>
                         <TableCell className="text-right">
@@ -372,7 +372,13 @@ function GroupsPage() {
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
-                            <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${detailGroup === g.id ? 'rotate-90' : ''}`} />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setDetailGroup(detailGroup === g.id ? null : g.id)}
+                            >
+                              <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${detailGroup === g.id ? 'rotate-90' : ''}`} />
+                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>

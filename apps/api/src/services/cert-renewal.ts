@@ -58,7 +58,8 @@ export async function checkAndRenewCertificates(db: Knex): Promise<RenewalResult
               revoked_at: new Date()
             })
           } catch (err: any) {
-            console.error(`[cert-renewal] Failed to add revocation for ${cert.username}:`, err.message)
+            const errMsg = err.message || 'Unknown error';
+            console.error(`[cert-renewal] Failed to add revocation for ${cert.username}:`, errMsg.includes('Certificate:') ? errMsg.split('Certificate:')[0] + '[CERTIFICATE REDACTED]' : errMsg)
           }
         }
 

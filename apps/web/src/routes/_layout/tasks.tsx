@@ -23,7 +23,7 @@ interface Task {
   id: string
   node_id: string
   node_hostname: string
-  type: string
+  action: string
   payload: string
   status: 'pending' | 'done' | 'failed'
   result: string | null
@@ -70,7 +70,7 @@ function TasksPage() {
     const query = searchQuery.toLowerCase()
     return taskList.filter(t => 
       t.node_hostname.toLowerCase().includes(query) ||
-      t.type.toLowerCase().includes(query) ||
+      t.action.toLowerCase().includes(query) ||
       (t.error_message?.toLowerCase().includes(query))
     )
   }
@@ -100,7 +100,7 @@ function TasksPage() {
               </h3>
               <div className="mt-2">
                 <Badge variant="outline" className="text-[10px] font-mono tracking-wider uppercase bg-background">
-                  {task.type}
+                  {task.action}
                 </Badge>
               </div>
             </div>

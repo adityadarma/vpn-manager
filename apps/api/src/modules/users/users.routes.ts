@@ -303,7 +303,8 @@ const userRoutes: FastifyPluginAsync = async (app) => {
             revoked_at: new Date()
           })
         } catch (err: any) {
-          console.error('Failed to add to revocation list:', err.message)
+          const errMsg = err.message || 'Unknown error';
+          console.error('Failed to add to revocation list:', errMsg.includes('Certificate:') ? errMsg.split('Certificate:')[0] + '[CERTIFICATE REDACTED]' : errMsg);
         }
       }
 
@@ -502,7 +503,8 @@ const userRoutes: FastifyPluginAsync = async (app) => {
                 })
               }
             } catch (err: any) {
-              console.warn(`[bulk-gen] Failed to add revocation for user ${userId}:`, err.message)
+              const errMsg = err.message || 'Unknown error';
+              console.warn(`[bulk-gen] Failed to add revocation for user ${userId}:`, errMsg.includes('Certificate:') ? errMsg.split('Certificate:')[0] + '[CERTIFICATE REDACTED]' : errMsg);
               // Continue with certificate generation even if revocation logging fails
             }
           }
