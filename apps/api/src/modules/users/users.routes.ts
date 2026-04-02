@@ -828,6 +828,24 @@ const userRoutes: FastifyPluginAsync = async (app) => {
           user_agent: request.headers['user-agent'] || null,
           downloaded_at: new Date()
         })
+
+        // Also push to audit_logs for visibility in global logs
+        await app.db('audit_logs').insert({
+          id: crypto.randomUUID(),
+          user_id: id,
+          username: user.username,
+          action: 'cert_download',
+          resource_type: 'certificate',
+          resource_id: certificate.id,
+          session_id: null,
+          ip_address: request.ip,
+          metadata: JSON.stringify({
+            node_id: node.id,
+            node_hostname: node.hostname,
+            device_name: request.headers['user-agent'] || 'unknown'
+          }),
+          created_at: new Date()
+        })
       } catch (err) {
         // Log but don't fail the download
         console.error('Failed to track download:', err)

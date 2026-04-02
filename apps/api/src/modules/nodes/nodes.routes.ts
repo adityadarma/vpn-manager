@@ -459,8 +459,9 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
             if (!existingSession) {
               app.log.info(`[heartbeat] Creating new session for user ${userId} via WireGuard heartbeat`)
               // New session! Create it via vpn_sessions
+              const newSessionId = crypto.randomUUID()
               await app.db('vpn_sessions').insert({
-                id: crypto.randomUUID(),
+                id: newSessionId,
                 user_id: userId,
                 node_id: nodeId,
                 vpn_ip: client.virtualAddress,
@@ -471,6 +472,25 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
                 bytes_received: client.bytesReceived,
                 connected_at: new Date(client.connectedSince),
               })
+              
+              // Get username for audit
+              const userObj = await app.db('users').where('id', userId).first()
+              await app.db('audit_logs').insert({
+                id: crypto.randomUUID(),
+                user_id: userId,
+                username: userObj?.username || 'unknown',
+                action: 'vpn_connect',
+                resource_type: 'vpn_session',
+                resource_id: newSessionId,
+                session_id: newSessionId,
+                ip_address: client.realAddress,
+                metadata: JSON.stringify({
+                  vpn_ip: client.virtualAddress,
+                  node_id: nodeId,
+                  client_version: 'WireGuard'
+                }),
+                created_at: new Date(),
+              }).catch(() => {})
             } else {
               // Update existing session bytes
               await app.db('vpn_sessions').where({ id: existingSession.id }).update({
@@ -493,6 +513,25 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
               disconnect_reason: 'normal',
               connection_duration_seconds: duration
             })
+
+            const userObj = await app.db('users').where('id', session.user_id).first()
+            await app.db('audit_logs').insert({
+              id: crypto.randomUUID(),
+              user_id: session.user_id,
+              username: userObj?.username || 'unknown',
+              action: 'vpn_disconnect',
+              resource_type: 'vpn_session',
+              resource_id: session.id,
+              session_id: session.id,
+              ip_address: session.real_ip,
+              metadata: JSON.stringify({
+                duration_seconds: duration,
+                bytes_sent: session.bytes_sent,
+                bytes_received: session.bytes_received,
+                disconnect_reason: 'timeout'
+              }),
+              created_at: new Date()
+            }).catch(() => {})
           }
         }
       }

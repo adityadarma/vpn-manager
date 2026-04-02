@@ -34,7 +34,7 @@ interface AuditLog {
   action: string
   resource_type: string
   resource_id: string | null
-  details: string | null
+  metadata: string | null
   ip_address: string | null
   user_agent: string | null
   created_at: string
@@ -79,7 +79,7 @@ function AuditPage() {
       })
       if (actionFilter !== 'all') params.append('action', actionFilter)
       if (resourceFilter !== 'all') params.append('resourceType', resourceFilter)
-      return api.get(`/api/v1/audit?${params}`)
+      return api.get(`/api/v1/audit/logs?${params}`).then((res: any) => res.logs || [])
     },
   })
 
@@ -205,13 +205,13 @@ function AuditPage() {
                       {log.ip_address ?? '—'}
                     </TableCell>
                     <TableCell>
-                      {log.details ? (
+                      {log.metadata ? (
                         <details className="text-xs">
                           <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
                             View
                           </summary>
                           <pre className="mt-2 p-2 bg-muted rounded text-xs overflow-x-auto max-w-md">
-                            {JSON.stringify(JSON.parse(log.details), null, 2)}
+                            {JSON.stringify(JSON.parse(log.metadata), null, 2)}
                           </pre>
                         </details>
                       ) : (

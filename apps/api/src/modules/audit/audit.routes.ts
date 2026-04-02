@@ -58,8 +58,9 @@ const auditRoutes: FastifyPluginAsync = async (app) => {
         .limit(limit)
         .offset(offset)
 
-      // Get total count
-      const countResult = await app.db('audit_logs')
+      // Get total count (apply same filters)
+      const countResult = await queryBuilder.clone()
+        .clearSelect()
         .count('* as count')
         .first()
 
