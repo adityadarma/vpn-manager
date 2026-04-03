@@ -238,13 +238,20 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         firewall_engine: config.firewall_engine,
       })
 
+      // Collect all group subnets so the agent can generate route directives
+      // for CCD-assigned IPs that fall outside the main server pool.
+      const allGroups = await app.db('groups').whereNotNull('vpn_subnet').select('name', 'vpn_subnet')
+      const groupSubnets = allGroups
+        .map((g: { name: string; vpn_subnet: string }) => g.vpn_subnet)
+        .filter(Boolean)
+
       // Create task to update server config
       const taskId = uuidv7()
       await app.db('tasks').insert({
         id: taskId,
         node_id: request.params.id,
         action: 'update_server_config',
-        payload: JSON.stringify(config),
+        payload: JSON.stringify({ ...config, group_subnets: groupSubnets }),
         status: 'pending',
         created_at: new Date(),
       })
