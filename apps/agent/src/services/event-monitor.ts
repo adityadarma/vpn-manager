@@ -105,28 +105,10 @@ async function handleConnect(
 ): Promise<void> {
   const vars = event.envVars ?? {}
   const username = vars.common_name
-  let vpnIp = vars.ifconfig_pool_remote_ip
-  let realIp = vars.trusted_ip
-
-  if (!username) {
-    console.warn(`[event-monitor] Connect event missing common_name — skipping`)
-    return
-  }
-
-  if (!vpnIp) {
-    // Wait a brief moment for IP to be allocated and appear in status log
-    await new Promise(resolve => setTimeout(resolve, 1500))
-    const details = await getClientDetailsByUsername(_driver, username)
-    if (details) {
-      vpnIp = details.vpnIp
-      if (!realIp) realIp = details.realIp
-    }
-  }
-
-  if (!vpnIp) {
-    console.warn(`[event-monitor] Connect event could not determine vpnIp for ${username} — skipping`)
-    return
-  }
+  // vpn_ip may be missing when client uses static CCD (ifconfig-push).
+  // In that case, send without it — the API server will resolve it from users.vpn_ip.
+  const vpnIp = vars.ifconfig_pool_remote_ip ?? null
+  const realIp = vars.trusted_ip ?? null
 
   const deviceName = buildDeviceName(vars)
   const clientVersion = vars.IV_VER ?? null

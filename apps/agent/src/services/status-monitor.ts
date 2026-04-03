@@ -163,18 +163,30 @@ async function handleConnect(env: AgentEnv, client: StatusClient): Promise<void>
     console.log(`[status-monitor]    Node ID: ${env.AGENT_NODE_ID}`)
     console.log(`[status-monitor]    API URL: ${env.AGENT_MANAGER_URL}/api/v1/vpn/connect`)
     
+    // WireGuard identifies peers by public key (stored as commonName prefix).
+    // OpenVPN identifies peers by username (common_name in cert).
+    const isWireGuard = env.VPN_TYPE === 'wireguard'
+    const body = isWireGuard
+      ? {
+          public_key: client.commonName,  // first 16 chars of WG public key
+          vpn_ip: client.virtualAddress,
+          real_ip: client.realAddress.split(':')[0],
+          node_id: env.AGENT_NODE_ID,
+        }
+      : {
+          username: client.commonName,
+          vpn_ip: client.virtualAddress,
+          real_ip: client.realAddress.split(':')[0],
+          node_id: env.AGENT_NODE_ID,
+        }
+
     const response = await fetch(`${env.AGENT_MANAGER_URL}/api/v1/vpn/connect`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-VPN-Token': env.VPN_TOKEN,
       },
-      body: JSON.stringify({
-        username: client.commonName,
-        vpn_ip: client.virtualAddress,
-        real_ip: client.realAddress.split(':')[0], // Remove port
-        node_id: env.AGENT_NODE_ID,
-      }),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(5000),
     })
     

@@ -34,8 +34,9 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
    */
   app.post<{
     Body: { 
-      username: string
-      vpn_ip: string
+      username?: string    // OpenVPN: common_name = username
+      public_key?: string  // WireGuard: first 16 chars of peer public key
+      vpn_ip?: string      // optional — may be absent when client uses static CCD ifconfig-push
       node_id: string
       common_name?: string
       real_ip?: string
@@ -46,14 +47,39 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
     '/vpn/connect',
     { schema: { tags: ['vpn'], summary: 'Record VPN client connect event' } },
     async (request, reply) => {
-      const { username, vpn_ip, node_id, real_ip, client_version, device_name } = request.body
+      const { node_id, real_ip, client_version, device_name } = request.body
+      let { vpn_ip } = request.body
 
-      if (!username || !vpn_ip || !node_id) {
-        return reply.status(400).send({ error: 'username, vpn_ip and node_id required' })
+      if (!node_id) {
+        return reply.status(400).send({ error: 'node_id required' })
+      }
+      if (!request.body.username && !request.body.public_key) {
+        return reply.status(400).send({ error: 'username or public_key required' })
       }
 
-      const user = await app.db('users').where({ username }).first()
+      // Resolve user — OpenVPN sends username, WireGuard sends public_key prefix
+      let user: any
+      if (request.body.username) {
+        user = await app.db('users').where({ username: request.body.username }).first()
+      }
+      if (!user && request.body.public_key) {
+        // WireGuard: lookup via user_node_certificates using public key prefix (16 chars)
+        const keyPrefix = request.body.public_key.substring(0, 16)
+        const cert = await app.db('user_node_certificates as c')
+          .join('users as u', 'c.user_id', 'u.id')
+          .where('c.node_id', node_id)
+          .whereRaw(`substr(c.client_cert, 1, 16) = ?`, [keyPrefix])
+          .select('u.*')
+          .first()
+        user = cert
+      }
       if (!user) return reply.status(404).send({ error: 'User not found' })
+
+      // Resolve vpn_ip — absent for static CCD (OpenVPN) or static WG peers
+      if (!vpn_ip) vpn_ip = user.vpn_ip
+      if (!vpn_ip) {
+        return reply.status(400).send({ error: 'vpn_ip could not be determined for this user' })
+      }
 
       const node = await app.db('vpn_nodes').where({ id: node_id }).first()
       if (!node) return reply.status(404).send({ error: 'Node not found' })
@@ -62,13 +88,13 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
 
       // Validate user is active
       if (!user.is_active) {
-        app.log.warn(`[vpn/connect] Inactive user attempted connection: ${username} from ${clientIp}`)
+        app.log.warn(`[vpn/connect] Inactive user attempted connection: ${user.username} from ${clientIp}`)
         
         await app.db('connection_attempts').insert({
           id: uuidv7(),
           user_id: user.id,
           node_id: node_id ?? null,
-          username,
+          username: user.username,
           real_ip: clientIp,
           failure_reason: 'account_disabled',
           error_details: 'User account is disabled',
@@ -85,7 +111,7 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
           id: uuidv7(),
           user_id: user.id,
           node_id: node_id ?? null,
-          username,
+          username: user.username,
           real_ip: clientIp,
           failure_reason: 'account_not_active',
           error_details: `Account not active until ${user.valid_from}`,
@@ -100,7 +126,7 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
           id: uuidv7(),
           user_id: user.id,
           node_id: node_id ?? null,
-          username,
+          username: user.username,
           real_ip: clientIp,
           failure_reason: 'account_expired',
           error_details: `Account expired on ${user.valid_to}`,
@@ -146,7 +172,7 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
         last_activity_at: new Date(),
       })
 
-      app.log.info(`[vpn/connect] ${username} connected — session ${sessionId}, IP ${vpn_ip}, device: ${device_name ?? 'unknown'}`)
+      app.log.info(`[vpn/connect] ${user.username} connected — session ${sessionId}, IP ${vpn_ip}, device: ${device_name ?? 'unknown'}`)
 
       // Log successful connection audit
       await logAudit(app, {

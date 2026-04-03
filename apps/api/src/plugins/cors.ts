@@ -9,7 +9,7 @@ export default fp(async (app) => {
       ? false
       : (process.env['WEB_URL'] ?? 'http://localhost:3000'),
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-VPN-Token', 'X-Forwarded-For', 'X-Real-IP'],
     // credentials: true is required to allow cookies in cross-origin requests (dev only)
     credentials: true,
   })
