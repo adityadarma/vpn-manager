@@ -555,6 +555,98 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         }
       }
 
+      // OpenVPN: sync sessions via heartbeat (commonName = username in certificate)
+      // This is the fallback for when event-monitor misses CLIENT:CONNECT events,
+      // e.g. when clients were already connected before the agent started.
+      if (currentNode?.vpn_type === 'openvpn' && clients && clients.length >= 0) {
+        app.log.info(`[heartbeat] Processing OpenVPN heartbeat. Found ${clients.length} clients.`)
+
+        const activeSessions = await app.db('vpn_sessions')
+          .where({ node_id: nodeId })
+          .whereNull('disconnected_at')
+
+        const activeSessionMap = new Map(activeSessions.map((s: any) => [s.user_id, s]))
+        const reportedUserMap = new Map<string, any>()
+
+        for (const client of clients) {
+          const username = client.commonName
+          if (!username) continue
+
+          const user = await app.db('users').where({ username }).first()
+          if (!user) {
+            app.log.warn(`[heartbeat] OpenVPN client "${username}" not found in users table — skipping`)
+            continue
+          }
+
+          reportedUserMap.set(user.id, client)
+          const existingSession = activeSessionMap.get(user.id)
+
+          if (!existingSession) {
+            app.log.info(`[heartbeat] Creating OpenVPN session for ${username} (${client.virtualAddress})`)
+            const newSessionId = uuidv7()
+            await app.db('vpn_sessions').insert({
+              id: newSessionId,
+              user_id: user.id,
+              node_id: nodeId,
+              vpn_ip: client.virtualAddress || user.vpn_ip,
+              real_ip: client.realAddress?.split(':')[0] ?? null,
+              client_version: 'OpenVPN',
+              device_name: null,
+              bytes_sent: client.bytesSent ?? 0,
+              bytes_received: client.bytesReceived ?? 0,
+              connected_at: client.connectedSince ? new Date(client.connectedSince) : new Date(),
+              last_activity_at: new Date(),
+            })
+            await logAudit(app, {
+              userId: user.id,
+              username,
+              action: 'vpn_connect',
+              resourceType: 'vpn_session',
+              resourceId: newSessionId,
+              ipAddress: client.realAddress?.split(':')[0] ?? null,
+              metadata: { vpn_ip: client.virtualAddress, node_id: nodeId, via: 'heartbeat' }
+            })
+          } else {
+            // Update traffic bytes on existing session
+            await app.db('vpn_sessions').where({ id: existingSession.id }).update({
+              bytes_sent: client.bytesSent ?? existingSession.bytes_sent,
+              bytes_received: client.bytesReceived ?? existingSession.bytes_received,
+              last_activity_at: new Date(),
+            })
+          }
+        }
+
+        // Close sessions for users no longer in OpenVPN status
+        for (const session of activeSessions) {
+          if (!reportedUserMap.has(session.user_id)) {
+            app.log.info(`[heartbeat] Closing stale OpenVPN session for user ${session.user_id}`)
+            const now = new Date()
+            const duration = Math.floor((now.getTime() - new Date(session.connected_at).getTime()) / 1000)
+            await app.db('vpn_sessions').where({ id: session.id }).update({
+              disconnected_at: now,
+              disconnect_reason: 'normal',
+              connection_duration_seconds: duration,
+            })
+            const userObj = await app.db('users').where('id', session.user_id).first()
+            await logAudit(app, {
+              userId: session.user_id,
+              username: userObj?.username || 'unknown',
+              action: 'vpn_disconnect',
+              resourceType: 'vpn_session',
+              resourceId: session.id,
+              ipAddress: session.real_ip,
+              metadata: {
+                duration_seconds: duration,
+                bytes_sent: session.bytes_sent,
+                bytes_received: session.bytes_received,
+                disconnect_reason: 'heartbeat_timeout',
+              }
+            })
+          }
+        }
+      }
+
+
       // If node was offline and now online, trigger syncs
       if (wasOffline) {
         const tasksToCreate = []

@@ -206,12 +206,67 @@ async function handleDisconnect(
 }
 
 /**
+ * Sync clients already connected before agent started (or after reconnection).
+ * Calls /vpn/connect for each active client so sessions are recorded in DB.
+ */
+async function syncExistingClients(env: AgentEnv, driver: VpnDriver): Promise<void> {
+  try {
+    const existingClients = await driver.getClients()
+    if (existingClients.length === 0) {
+      console.log('[event-monitor] No pre-existing clients to sync')
+      return
+    }
+
+    console.log(`[event-monitor] 🔄 Syncing ${existingClients.length} pre-existing client(s)...`)
+    for (const client of existingClients) {
+      console.log(`[event-monitor]    → ${client.commonName} (${client.virtualAddress})`)
+      try {
+        const response = await fetch(`${env.AGENT_MANAGER_URL}/api/v1/vpn/connect`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-VPN-Token': env.VPN_TOKEN,
+          },
+          body: JSON.stringify({
+            username: client.commonName,
+            vpn_ip: client.virtualAddress ?? null,
+            real_ip: client.realAddress?.split(':')[0] ?? null,
+            node_id: env.AGENT_NODE_ID,
+          }),
+          signal: AbortSignal.timeout(5000),
+        })
+        if (response.ok) {
+          const data = await response.json() as { session_id: string }
+          console.log(`[event-monitor] ✓ Synced ${client.commonName} → session ${data.session_id}`)
+        } else {
+          const text = await response.text()
+          console.warn(`[event-monitor] ✗ Sync failed for ${client.commonName}: ${response.status} ${text}`)
+        }
+      } catch (err) {
+        console.error(`[event-monitor] ✗ Sync error for ${client.commonName}:`, (err as Error).message)
+      }
+    }
+  } catch (err) {
+    console.warn('[event-monitor] Could not query existing clients:', (err as Error).message)
+  }
+}
+
+/**
  * Start event monitoring for VPN driver.
+ *
+ * IMPORTANT: driver.connect() must already be resolved before calling this
+ * function. The 'connected' event fires inside driver.connect(), so in index.ts
+ * the call order is:
+ *   await driver.connect()   ← 'connected' fires here
+ *   startEventMonitor(...)   ← we register handlers here (too late for 'connected')
+ *
+ * We therefore run the initial sync immediately and use 'connected' only for
+ * subsequent reconnect events.
  */
 export function startEventMonitor(env: AgentEnv, driver: VpnDriver): void {
   console.log('📡 Event monitor started (realtime VPN events via management interface)')
-  console.log('   Device info: captured from IV_PLAT / IV_GUI_VER env vars (no external scripts needed)')
 
+  // ── Realtime event handlers ──────────────────────────────────────────────
   driver.on('client-connect', (event: ClientConnectEvent) => {
     console.log(`[event-monitor] 🔔 client-connect CID=${event.clientId}`)
     void handleConnect(env, event, driver)
@@ -226,55 +281,17 @@ export function startEventMonitor(env: AgentEnv, driver: VpnDriver): void {
     console.log(`[event-monitor] 🔔 client-reauth CID=${event.clientId}`)
   })
 
+  // On reconnection (e.g. OpenVPN restarted), re-sync existing clients
   driver.on('connected', () => {
-    console.log('[event-monitor] Driver connected')
-
-    // Sync any clients that were already connected before the agent started.
-    // We query status 3 via the management interface and fire a synthetic connect
-    // event for each active client so their sessions get recorded in the database.
-    setTimeout(async () => {
-      try {
-        const existingClients = await driver.getClients()
-        if (existingClients.length === 0) {
-          console.log('[event-monitor] No pre-existing clients to sync')
-          return
-        }
-
-        console.log(`[event-monitor] 🔄 Syncing ${existingClients.length} pre-existing client(s)...`)
-        for (const client of existingClients) {
-          console.log(`[event-monitor]    → ${client.commonName} (${client.virtualAddress})`)
-          // Call /vpn/connect directly — no ENV vars available for pre-existing clients
-          try {
-            const response = await fetch(`${env.AGENT_MANAGER_URL}/api/v1/vpn/connect`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'X-VPN-Token': env.VPN_TOKEN,
-              },
-              body: JSON.stringify({
-                username: client.commonName,
-                vpn_ip: client.virtualAddress,
-                real_ip: client.realAddress?.split(':')[0] ?? null,
-                node_id: env.AGENT_NODE_ID,
-              }),
-              signal: AbortSignal.timeout(5000),
-            })
-            if (response.ok) {
-              const data = await response.json() as { session_id: string }
-              console.log(`[event-monitor] ✓ Synced ${client.commonName} → session ${data.session_id}`)
-            } else {
-              const text = await response.text()
-              console.warn(`[event-monitor] ✗ Sync failed for ${client.commonName}: ${response.status} ${text}`)
-            }
-          } catch (err) {
-            console.error(`[event-monitor] ✗ Sync error for ${client.commonName}:`, (err as Error).message)
-          }
-        }
-      } catch (err) {
-        console.warn('[event-monitor] Could not query existing clients:', (err as Error).message)
-      }
-    }, 1000) // Brief delay to let management interface settle after connection
+    console.log('[event-monitor] Driver reconnected — syncing clients...')
+    setTimeout(() => void syncExistingClients(env, driver), 1000)
   })
 
-  driver.on('disconnected', () => console.log('[event-monitor] Driver disconnected'))
+  driver.on('disconnected', () => console.log('[event-monitor] Driver disconnected — will reconnect...'))
+
+  // ── Initial sync ──────────────────────────────────────────────────────────
+  // Runs once at agent startup to pick up clients that were already connected
+  // before this agent process started (driver is already connected at this point).
+  console.log('[event-monitor] Running initial client sync...')
+  setTimeout(() => void syncExistingClients(env, driver), 500)
 }
