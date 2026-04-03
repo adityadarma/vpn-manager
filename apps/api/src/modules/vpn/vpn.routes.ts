@@ -42,12 +42,14 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
       real_ip?: string
       client_version?: string
       device_name?: string
+      connected_at?: string // ISO string — actual connection time from VPN status (for sync)
     }
   }>(
     '/vpn/connect',
     { schema: { tags: ['vpn'], summary: 'Record VPN client connect event' } },
     async (request, reply) => {
       const { node_id, real_ip, client_version, device_name } = request.body
+      const connectedAtOverride = request.body.connected_at ? new Date(request.body.connected_at) : null
       let { vpn_ip } = request.body
 
       if (!node_id) {
@@ -168,7 +170,7 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
         device_name: device_name ?? null,
         bytes_sent: 0,
         bytes_received: 0,
-        connected_at: new Date(),
+        connected_at: connectedAtOverride ?? new Date(),
         last_activity_at: new Date(),
       })
 

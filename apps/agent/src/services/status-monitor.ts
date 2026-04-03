@@ -45,7 +45,9 @@ function parseOpenVpnStatusFile(filePath: string): StatusClient[] {
             virtualAddress: parts[3],
             bytesReceived: parseInt(parts[5], 10) || 0,
             bytesSent: parseInt(parts[6], 10) || 0,
-            connectedSince: new Date(parseInt(parts[7], 10) * 1000),
+            // parts[7] = human-readable date string (e.g. "2026-04-03 09:41:51")
+            // parts[8] = Unix timestamp in seconds ← use this
+            connectedSince: new Date(parseInt(parts[8], 10) * 1000),
           })
         }
       }

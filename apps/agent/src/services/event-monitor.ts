@@ -232,6 +232,12 @@ async function syncExistingClients(env: AgentEnv, driver: VpnDriver): Promise<vo
             vpn_ip: client.virtualAddress ?? null,
             real_ip: client.realAddress?.split(':')[0] ?? null,
             node_id: env.AGENT_NODE_ID,
+            // Pass the actual connection time from OpenVPN status so the
+            // session reflects when the client really connected, not when
+            // the agent synced.
+            connected_at: client.connectedSince instanceof Date
+              ? client.connectedSince.toISOString()
+              : null,
           }),
           signal: AbortSignal.timeout(5000),
         })
