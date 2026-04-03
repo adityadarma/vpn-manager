@@ -226,6 +226,55 @@ export function startEventMonitor(env: AgentEnv, driver: VpnDriver): void {
     console.log(`[event-monitor] 🔔 client-reauth CID=${event.clientId}`)
   })
 
-  driver.on('connected', () => console.log('[event-monitor] Driver connected'))
+  driver.on('connected', () => {
+    console.log('[event-monitor] Driver connected')
+
+    // Sync any clients that were already connected before the agent started.
+    // We query status 3 via the management interface and fire a synthetic connect
+    // event for each active client so their sessions get recorded in the database.
+    setTimeout(async () => {
+      try {
+        const existingClients = await driver.getClients()
+        if (existingClients.length === 0) {
+          console.log('[event-monitor] No pre-existing clients to sync')
+          return
+        }
+
+        console.log(`[event-monitor] 🔄 Syncing ${existingClients.length} pre-existing client(s)...`)
+        for (const client of existingClients) {
+          console.log(`[event-monitor]    → ${client.commonName} (${client.virtualAddress})`)
+          // Call /vpn/connect directly — no ENV vars available for pre-existing clients
+          try {
+            const response = await fetch(`${env.AGENT_MANAGER_URL}/api/v1/vpn/connect`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-VPN-Token': env.VPN_TOKEN,
+              },
+              body: JSON.stringify({
+                username: client.commonName,
+                vpn_ip: client.virtualAddress,
+                real_ip: client.realAddress?.split(':')[0] ?? null,
+                node_id: env.AGENT_NODE_ID,
+              }),
+              signal: AbortSignal.timeout(5000),
+            })
+            if (response.ok) {
+              const data = await response.json() as { session_id: string }
+              console.log(`[event-monitor] ✓ Synced ${client.commonName} → session ${data.session_id}`)
+            } else {
+              const text = await response.text()
+              console.warn(`[event-monitor] ✗ Sync failed for ${client.commonName}: ${response.status} ${text}`)
+            }
+          } catch (err) {
+            console.error(`[event-monitor] ✗ Sync error for ${client.commonName}:`, (err as Error).message)
+          }
+        }
+      } catch (err) {
+        console.warn('[event-monitor] Could not query existing clients:', (err as Error).message)
+      }
+    }, 1000) // Brief delay to let management interface settle after connection
+  })
+
   driver.on('disconnected', () => console.log('[event-monitor] Driver disconnected'))
 }

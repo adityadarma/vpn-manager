@@ -22,7 +22,7 @@ export class OpenVpnManagementDriver extends EventEmitter implements VpnDriver {
   private socket: net.Socket | null = null
   private connected = false
   private buffer = ''
-  private commandQueue: Array<{ command: string; resolve: (value: string) => void; reject: (error: Error) => void }> = []
+  private commandQueue: Array<{ command: string; resolve: (value: string) => void; reject: (error: Error) => void; buffer: string }> = []
   private isProcessing = false
   private reconnectAttempts = 0
   private maxReconnectAttempts = 10
@@ -194,12 +194,18 @@ export class OpenVpnManagementDriver extends EventEmitter implements VpnDriver {
         
         if (line.startsWith('ERROR:')) {
           current.reject(new Error(line.substring(6)))
+        } else if (line === 'END') {
+          // Resolve with all accumulated lines (multi-line response like status 3)
+          current.resolve(current.buffer)
         } else {
           current.resolve(line)
         }
         
         this.isProcessing = false
         this.processNextCommand()
+      } else {
+        // Accumulate response lines into the buffer
+        current.buffer += line + '\n'
       }
     }
   }
@@ -337,6 +343,7 @@ export class OpenVpnManagementDriver extends EventEmitter implements VpnDriver {
 
       this.commandQueue.push({
         command,
+        buffer: '',
         resolve: (value) => {
           clearTimeout(timeout)
           resolve(value)
