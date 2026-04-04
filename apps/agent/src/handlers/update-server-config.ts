@@ -277,6 +277,7 @@ topology subnet
     newConfig += `
 # Connection Settings
 keepalive ${keepalivePing} ${keepaliveTimeout}
+explicit-exit-notify 1
 cipher ${cipher}
 ncp-ciphers ${cipher}
 auth SHA256

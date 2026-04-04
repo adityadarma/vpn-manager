@@ -28,7 +28,7 @@ export async function up(knex: Knex): Promise<void> {
     table.string('auth_digest', 20).defaultTo('SHA256').comment('Auth digest algorithm')
     table.string('compression', 20).defaultTo('lz4-v2').comment('Compression algorithm')
     table.integer('keepalive_ping').defaultTo(10).comment('Keepalive ping interval (seconds)')
-    table.integer('keepalive_timeout').defaultTo(120).comment('Keepalive timeout (seconds)')
+    table.integer('keepalive_timeout').defaultTo(60).comment('Keepalive timeout (seconds)')
     table.integer('max_clients').defaultTo(100).comment('Maximum concurrent clients')
     table.text('custom_push_directives').nullable().comment('Custom push directives (one per line)')
     

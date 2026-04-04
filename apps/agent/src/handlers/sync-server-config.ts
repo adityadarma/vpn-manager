@@ -83,7 +83,7 @@ function parseServerConfig(content: string): Record<string, any> {
     customPushDirectives: '',
     compression: 'none',
     keepalivePing: 10,
-    keepaliveTimeout: 120,
+    keepaliveTimeout: 60,
     maxClients: 100,
     tunnelMode: 'full'
   }

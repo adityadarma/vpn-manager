@@ -188,7 +188,7 @@ GET /nodes/:id/config
   "auth_digest": "SHA256",
   "compression": "lz4-v2",
   "keepalive_ping": 10,
-  "keepalive_timeout": 120,
+  "keepalive_timeout": 60,
   "max_clients": 100
 }
 ```
@@ -217,7 +217,7 @@ PUT /nodes/:id/config
   "auth_digest": "SHA256",
   "compression": "lz4-v2",
   "keepalive_ping": 10,
-  "keepalive_timeout": 120,
+  "keepalive_timeout": 60,
   "max_clients": 100
 }
 ```

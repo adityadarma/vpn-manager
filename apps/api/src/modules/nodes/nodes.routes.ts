@@ -466,7 +466,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         nodeData.auth_digest = 'SHA256'
         nodeData.compression = 'lz4-v2'
         nodeData.keepalive_ping = 10
-        nodeData.keepalive_timeout = 120
+        nodeData.keepalive_timeout = 60
         nodeData.max_clients = 100
         nodeData.firewall_engine = 'iptables'
       }

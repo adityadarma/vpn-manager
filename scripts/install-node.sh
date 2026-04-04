@@ -370,7 +370,8 @@ push "dhcp-option DNS 8.8.8.8"
 push "dhcp-option DNS 1.1.1.1"
 push "redirect-gateway def1 bypass-dhcp"
 
-keepalive 10 120
+keepalive 10 60
+explicit-exit-notify 1
 cipher AES-128-GCM
 ncp-ciphers AES-128-GCM
 auth SHA256
