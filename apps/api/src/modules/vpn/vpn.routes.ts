@@ -174,6 +174,9 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
         last_activity_at: new Date(),
       })
 
+      // Update user's last_login time to reflect VPN usage
+      await app.db('users').where({ id: user.id }).update({ last_login: new Date() })
+
       app.log.info(`[vpn/connect] ${user.username} connected — session ${sessionId}, IP ${vpn_ip}, device: ${device_name ?? 'unknown'}`)
 
       // Log successful connection audit

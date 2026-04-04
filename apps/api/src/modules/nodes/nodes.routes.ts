@@ -503,6 +503,9 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
                 connected_at: new Date(client.connectedSince),
               })
               
+              // Update user's last_login time to reflect VPN usage
+              await app.db('users').where({ id: userId }).update({ last_login: new Date() })
+
               // Get username for audit
               const userObj = await app.db('users').where('id', userId).first()
               await logAudit(app, {

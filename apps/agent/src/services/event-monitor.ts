@@ -227,18 +227,31 @@ async function syncExistingClients(env: AgentEnv, driver: VpnDriver): Promise<vo
             'Content-Type': 'application/json',
             'X-VPN-Token': env.VPN_TOKEN,
           },
-          body: JSON.stringify({
-            username: client.commonName,
-            vpn_ip: client.virtualAddress ?? null,
-            real_ip: client.realAddress?.split(':')[0] ?? null,
-            node_id: env.AGENT_NODE_ID,
-            // Pass the actual connection time from OpenVPN status so the
-            // session reflects when the client really connected, not when
-            // the agent synced.
-            connected_at: client.connectedSince instanceof Date
-              ? client.connectedSince.toISOString()
-              : null,
-          }),
+          body: JSON.stringify(
+            env.VPN_TYPE === 'wireguard'
+              ? {
+                  public_key: client.commonName,
+                  vpn_ip: client.virtualAddress ?? null,
+                  real_ip: client.realAddress?.split(':')[0] ?? null,
+                  node_id: env.AGENT_NODE_ID,
+                  connected_at: client.connectedSince instanceof Date
+                    ? client.connectedSince.toISOString()
+                    : null,
+                  client_version: 'WireGuard',
+                  device_name: 'WireGuard Client',
+                }
+              : {
+                  username: client.commonName,
+                  vpn_ip: client.virtualAddress ?? null,
+                  real_ip: client.realAddress?.split(':')[0] ?? null,
+                  node_id: env.AGENT_NODE_ID,
+                  connected_at: client.connectedSince instanceof Date
+                    ? client.connectedSince.toISOString()
+                    : null,
+                  client_version: 'OpenVPN',
+                  device_name: 'Unknown Device',
+                }
+          ),
           signal: AbortSignal.timeout(5000),
         })
         if (response.ok) {

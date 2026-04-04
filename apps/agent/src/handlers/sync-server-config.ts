@@ -149,7 +149,7 @@ function parseServerConfig(content: string): Record<string, any> {
 
   config.customPushDirectives = customLines.join('\n')
 
-  if (!content.includes('redirect-gateway') && config.pushRoutes) {
+  if (!content.includes('redirect-gateway')) {
     config.tunnelMode = 'split'
   }
 

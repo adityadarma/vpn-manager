@@ -174,12 +174,16 @@ async function handleConnect(env: AgentEnv, client: StatusClient): Promise<void>
           vpn_ip: client.virtualAddress,
           real_ip: client.realAddress.split(':')[0],
           node_id: env.AGENT_NODE_ID,
+          client_version: 'WireGuard',
+          device_name: 'WireGuard Client',
         }
       : {
           username: client.commonName,
           vpn_ip: client.virtualAddress,
           real_ip: client.realAddress.split(':')[0],
           node_id: env.AGENT_NODE_ID,
+          client_version: 'OpenVPN',
+          device_name: 'Unknown Device',
         }
 
     const response = await fetch(`${env.AGENT_MANAGER_URL}/api/v1/vpn/connect`, {
