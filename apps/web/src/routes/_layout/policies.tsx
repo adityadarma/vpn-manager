@@ -18,8 +18,10 @@ interface Policy {
   id: string
   userId: string | null
   groupId: string | null
+  node_id: string | null
   username?: string
   group_name?: string
+  node_name?: string
   target_network: string
   target_port: string | null
   protocol: 'tcp' | 'udp' | 'icmp' | 'all'
@@ -32,6 +34,7 @@ interface CreatePolicyForm {
   targetType: 'user' | 'group' | 'global'
   userId: string
   groupId: string
+  nodeId: string
   targetNetwork: string
   protocol: 'tcp' | 'udp' | 'icmp' | 'all'
   targetPort: string
@@ -49,6 +52,7 @@ function PoliciesPage() {
     targetType: 'group',
     userId: '',
     groupId: '',
+    nodeId: '',
     targetNetwork: '',
     protocol: 'all',
     targetPort: '',
@@ -72,10 +76,16 @@ function PoliciesPage() {
     queryFn: () => api.get('/api/v1/groups'),
   })
 
+  const { data: nodes = [] } = useQuery<{ id: string; hostname: string }[]>({
+    queryKey: ['nodes'],
+    queryFn: () => api.get('/api/v1/nodes'),
+  })
+
   const createMutation = useMutation({
     mutationFn: () => api.post('/api/v1/policies', {
       userId: form.targetType === 'user' ? form.userId : undefined,
       groupId: form.targetType === 'group' ? form.groupId : undefined,
+      nodeId: form.nodeId || undefined,
       targetNetwork: form.targetNetwork,
       protocol: form.protocol,
       targetPort: form.targetPort || undefined,
@@ -86,7 +96,7 @@ function PoliciesPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['policies'] })
       setShowForm(false)
-      setForm({ targetType: 'group', userId: '', groupId: '', targetNetwork: '', protocol: 'all', targetPort: '', action: 'allow', priority: '100', description: '' })
+      setForm({ targetType: 'group', userId: '', groupId: '', nodeId: '', targetNetwork: '', protocol: 'all', targetPort: '', action: 'allow', priority: '100', description: '' })
       toast.success('Policy created')
     },
     onError: (e: Error) => toast.error(e.message),
@@ -193,6 +203,7 @@ function PoliciesPage() {
                 <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   {type === 'global' ? 'Target' : (type === 'user' ? 'User' : 'Group')}
                 </th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Routing Node</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Target Network</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Port/Proto</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Action</th>
@@ -214,6 +225,15 @@ function PoliciesPage() {
                   </td>
                   <td className="px-5 py-4 text-foreground font-medium whitespace-nowrap">
                     {type === 'global' ? <span className="text-muted-foreground italic">All Clients</span> : (type === 'user' ? (p.username ?? p.userId) : (p.group_name ?? p.groupId))}
+                  </td>
+                  <td className="px-5 py-4 whitespace-nowrap">
+                    {p.node_name ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                        {p.node_name}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground italic">Global</span>
+                    )}
                   </td>
                   <td className="px-5 py-4 font-mono text-xs text-muted-foreground whitespace-nowrap">{p.target_network}</td>
                   <td className="px-5 py-4 whitespace-nowrap">
@@ -345,6 +365,19 @@ function PoliciesPage() {
               onSubmit={e => { e.preventDefault(); createMutation.mutate() }}
               className="p-5 space-y-4"
             >
+              <div>
+                <Label className="block text-sm font-medium mb-1.5">Target Node</Label>
+                <select
+                  value={form.nodeId}
+                  onChange={e => setForm({ ...form, nodeId: e.target.value })}
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                >
+                  <option value="">Global (All Nodes)</option>
+                  {nodes.map(n => <option key={n.id} value={n.id}>{n.hostname}</option>)}
+                </select>
+                <p className="text-[11px] text-muted-foreground mt-1">Bind this policy to a specific node. Keep "Global" to apply evenly across all nodes.</p>
+              </div>
+
               <div>
                 <Label className="block text-sm font-medium mb-1.5">Target Type <span className="text-red-500">*</span></Label>
                 <select

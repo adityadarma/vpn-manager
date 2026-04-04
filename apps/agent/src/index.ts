@@ -87,6 +87,12 @@ async function syncCertificatesOnStartup(driver: VpnDriver): Promise<void> {
  * Sync server config on startup
  */
 async function syncServerConfigOnStartup(driver: VpnDriver): Promise<void> {
+  const env = loadAgentEnv()
+  if (env.VPN_TYPE === 'wireguard') {
+    // WireGuard config is fully managed centrally; no need to parse local file and push back
+    return
+  }
+
   console.log('[startup] Syncing server configuration...')
   
   try {

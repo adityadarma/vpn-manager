@@ -12,12 +12,15 @@ const policyRoutes: FastifyPluginAsync = async (app) => {
       const policies = await app.db('vpn_policies as p')
         .leftJoin('users as u', 'p.user_id', 'u.id')
         .leftJoin('groups as g', 'p.group_id', 'g.id')
+        .leftJoin('vpn_nodes as n', 'p.node_id', 'n.id')
         .select(
           'p.id',
           'p.user_id',
           'p.group_id',
+          'p.node_id',
           app.db.raw('p.user_id as "userId"'),
           app.db.raw('p.group_id as "groupId"'),
+          app.db.raw('p.node_id as "nodeId"'),
           'p.target_network',
           'p.protocol',
           'p.target_port',
@@ -26,7 +29,8 @@ const policyRoutes: FastifyPluginAsync = async (app) => {
           'p.description',
           'p.created_at',
           'u.username',
-          'g.name as group_name'
+          'g.name as group_name',
+          'n.hostname as node_name'
         )
         .orderBy('p.priority', 'asc')
       
@@ -46,6 +50,7 @@ const policyRoutes: FastifyPluginAsync = async (app) => {
         id,
         user_id: input.userId ?? null,
         group_id: input.groupId ?? null,
+        node_id: input.nodeId ?? null,
         target_network: input.targetNetwork,
         protocol: input.protocol ?? 'all',
         target_port: input.targetPort ?? null,
@@ -70,7 +75,8 @@ const policyRoutes: FastifyPluginAsync = async (app) => {
           action: input.action ?? 'allow',
           protocol: input.protocol,
           user_id: input.userId,
-          group_id: input.groupId
+          group_id: input.groupId,
+          node_id: input.nodeId
         }
       })
 
@@ -125,6 +131,7 @@ async function enqueueApplyPolicies(app: any) {
       'p.priority',
       'p.user_id',
       'p.group_id',
+      'p.node_id',
       'u.vpn_ip as user_ip',
       'g.vpn_subnet as group_subnet'
     )
@@ -133,17 +140,26 @@ async function enqueueApplyPolicies(app: any) {
   const onlineNodes = await app.db('vpn_nodes').where({ status: 'online' }).select('id', 'firewall_engine', 'vpn_type')
   if (onlineNodes.length === 0) return
 
-  const tasks = onlineNodes.map((node: { id: string, firewall_engine: string, vpn_type: string }) => ({
-    id: uuidv7(),
-    node_id: node.id,
-    action: 'apply_network_policy',
-    payload: JSON.stringify({ policies, firewall_engine: node.firewall_engine, vpn_type: node.vpn_type }),
-    status: 'pending',
-    created_at: new Date(),
-  }))
+  const tasks = []
+  
+  for (const node of onlineNodes) {
+    // Filter policies for this specific node (include globals where node_id is null)
+    const nodePolicies = policies.filter((p: any) => p.node_id === null || p.node_id === node.id)
+    
+    tasks.push({
+      id: uuidv7(),
+      node_id: node.id,
+      action: 'apply_network_policy',
+      payload: JSON.stringify({ policies: nodePolicies, firewall_engine: node.firewall_engine, vpn_type: node.vpn_type }),
+      status: 'pending',
+      created_at: new Date(),
+    })
+  }
 
-  await app.db('tasks').insert(tasks)
-  app.log.info(`[policy] Queued apply_network_policy to ${tasks.length} node(s) with ${policies.length} rules`)
+  if (tasks.length > 0) {
+    await app.db('tasks').insert(tasks)
+    app.log.info(`[policy] Queued apply_network_policy to ${tasks.length} online node(s)`)
+  }
 }
 
 export default policyRoutes
