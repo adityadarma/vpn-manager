@@ -545,6 +545,12 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
                 bytes_received: client.bytesReceived,
                 last_activity_at: new Date(),
               })
+              
+              // Ensure last_login is populated if it was null before our update
+              await app.db('users')
+                .where({ id: userId })
+                .whereNull('last_login')
+                .update({ last_login: new Date(client.connectedSince) })
             }
           }
         }

@@ -60,22 +60,30 @@ function DashboardPage() {
               <p className="text-sm text-muted-foreground/70 text-center py-8">No nodes registered yet.</p>
             ) : (
               <div className="space-y-3">
-                {nodes.slice(0, 5).map((node) => (
-                  <div key={node.id} className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{node.hostname}</p>
-                      <p className="text-xs text-muted-foreground/70">{node.ip_address}</p>
+                {nodes.slice(0, 5).map((node) => {
+                  const activeCount = sessions.filter(s => s.node_id === node.id).length
+                  return (
+                    <div key={node.id} className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{node.hostname}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <p className="text-xs text-muted-foreground/70">{node.ip_address}</p>
+                          <span className="text-[10px] bg-muted/60 text-muted-foreground px-1.5 py-0.5 rounded-md font-medium flex items-center gap-1">
+                            <Users className="w-3 h-3" /> {activeCount} {activeCount === 1 ? 'user' : 'users'}
+                          </span>
+                        </div>
+                      </div>
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                        node.status === 'online'
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : 'bg-muted text-muted-foreground'
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${node.status === 'online' ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                        {node.status}
+                      </span>
                     </div>
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-                      node.status === 'online'
-                        ? 'bg-emerald-50 text-emerald-700'
-                        : 'bg-muted text-muted-foreground'
-                    }`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${node.status === 'online' ? 'bg-emerald-500' : 'bg-gray-400'}`} />
-                      {node.status}
-                    </span>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
@@ -98,9 +106,9 @@ function DashboardPage() {
                 {sessions.slice(0, 5).map((s) => (
                   <div key={s.id} className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-foreground">{s.vpn_ip}</p>
+                      <p className="text-sm font-medium text-foreground">{s.username}</p>
                       <p className="text-xs text-muted-foreground/70">
-                        Connected {new Date(s.connected_at).toLocaleTimeString()}
+                        {s.vpn_ip} &bull; {new Date(s.connected_at).toLocaleTimeString()}
                       </p>
                     </div>
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">

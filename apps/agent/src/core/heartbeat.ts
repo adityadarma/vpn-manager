@@ -56,8 +56,6 @@ export function startHeartbeat(env: AgentEnv, driver: VpnDriver): void {
 
       if (!res.ok) {
         console.warn(`[heartbeat] HTTP ${res.status}`)
-      } else {
-        console.log(`[heartbeat] ✓ Sent (${clients.length} clients, ${metrics.totalClients || 0} total)`)
       }
     } catch (err) {
       console.error('[heartbeat] Error:', (err as Error).message)
