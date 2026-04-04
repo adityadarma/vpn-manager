@@ -255,7 +255,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
             .update({ 
                is_revoked: 1, 
                revoked_at: new Date(), 
-               revocation_reason: 'Network Subnet Changed' 
+               revoke_reason: 'Network Subnet Changed' 
             })
             
           for (const cert of certs) {
