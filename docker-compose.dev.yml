@@ -139,6 +139,7 @@ services:
       VPN_TOKEN: ${VPN_TOKEN:-dev-vpn-token}
       AGENT_POLL_INTERVAL_MS: 5000
       AGENT_HEARTBEAT_INTERVAL_MS: 30000
+      FIREWALL_ENGINE: ${FIREWALL_ENGINE:-auto}
       VPN_TYPE: ${VPN_TYPE:-openvpn}
       OPENVPN_SOCKET_PATH: ${OPENVPN_SOCKET_PATH:-/run/openvpn/server.sock}
     volumes:

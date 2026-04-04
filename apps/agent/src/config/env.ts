@@ -19,6 +19,9 @@ const AgentEnvSchema = z.object({
   
   // WireGuard Settings
   WIREGUARD_INTERFACE: z.string().default('wg0'),
+  
+  // Firewall Engine (auto tries to detect iptables vs nftables)
+  FIREWALL_ENGINE: z.enum(['iptables', 'nftables', 'ufw', 'firewalld', 'none', 'auto']).default('auto'),
 })
 
 export type AgentEnv = z.infer<typeof AgentEnvSchema>

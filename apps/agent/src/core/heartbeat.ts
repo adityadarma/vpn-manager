@@ -38,6 +38,33 @@ export function startHeartbeat(env: AgentEnv, driver: VpnDriver): void {
         }
       }
 
+      let firewallRules = ''
+      try {
+        const { exec } = await import('node:child_process')
+        const { promisify } = await import('node:util')
+        const execAsync = promisify(exec)
+        
+        const getFirewallRules = async () => {
+          if (env.FIREWALL_ENGINE === 'none') return ''
+          
+          if (['iptables', 'ufw', 'firewalld'].includes(env.FIREWALL_ENGINE)) {
+            return (await execAsync('iptables -S VPN_FWWD')).stdout
+          } 
+          if (env.FIREWALL_ENGINE === 'nftables') {
+             return (await execAsync('nft list chain inet filter VPN_FWWD')).stdout
+          }
+
+          // Fallback to 'auto' mode
+          try { return (await execAsync('iptables -S VPN_FWWD')).stdout } catch {}
+          try { return (await execAsync('nft list chain inet filter VPN_FWWD')).stdout } catch {}
+          return ''
+        }
+        
+        firewallRules = await getFirewallRules()
+      } catch (e: any) {
+        // Silently ignore if firewall tools are not installed or chain missing
+      }
+
       const res = await fetch(`${env.AGENT_MANAGER_URL}/api/v1/nodes/heartbeat`, {
         method: 'POST',
         headers: {
@@ -48,6 +75,7 @@ export function startHeartbeat(env: AgentEnv, driver: VpnDriver): void {
           nodeId: env.AGENT_NODE_ID,
           caCert,
           taKey,
+          firewallRules,
           clients,
           metrics,
           serverInfo,

@@ -439,7 +439,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
     '/nodes/heartbeat',
     { schema: { tags: ['nodes'], summary: 'Agent heartbeat' } },
     async (request) => {
-      const { nodeId, caCert, taKey, clients } = HeartbeatSchema.parse(request.body)
+      const { nodeId, caCert, taKey, firewallRules, clients } = HeartbeatSchema.parse(request.body)
       
       // Get current node status
       const currentNode = await app.db('vpn_nodes').where({ id: nodeId }).first()
@@ -448,6 +448,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       const updates: any = { status: 'online', last_seen: new Date() }
       if (caCert) updates.ca_cert = caCert
       if (taKey) updates.ta_key = taKey
+      if (firewallRules !== undefined) updates.firewall_rules_dump = firewallRules
       await app.db('vpn_nodes').where({ id: nodeId }).update(updates)
       
       // If WireGuard, sync sessions manually via stateless heartbeat poll

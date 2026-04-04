@@ -15,4 +15,5 @@ export interface VpnNode {
   public_key?: string | null
   private_key?: string | null
   endpoint_port?: number | null
+  firewall_rules_dump?: string | null
 }

@@ -8,7 +8,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
-import { Plus, Trash2, MapPin, Clock, Activity, Server, X, Copy, CheckCircle2, Settings, RefreshCw, Edit } from 'lucide-react'
+import { Plus, Trash2, MapPin, Clock, Activity, Server, X, Copy, CheckCircle2, Settings, RefreshCw, Edit, Shield } from 'lucide-react'
 import type { VpnNode } from '@vpn/shared'
 import { Button } from '@/components/ui/button'
 
@@ -49,6 +49,7 @@ function NodesPage() {
   const [selectedNodes, setSelectedNodes] = useState<Set<string>>(new Set())
   const [configNode, setConfigNode] = useState<string | null>(null)
   const [editNode, setEditNode] = useState<VpnNode | null>(null)
+  const [viewFirewallNode, setViewFirewallNode] = useState<VpnNode | null>(null)
   const [editForm, setEditForm] = useState<NodeForm>({ hostname: '', ipAddress: '', region: '' })
   const [nodeConfig, setNodeConfig] = useState<NodeConfig>({
     port: 1194,
@@ -367,6 +368,13 @@ function NodesPage() {
                     <Settings className="h-4 w-4" />
                   </button>
                   <button
+                    onClick={() => setViewFirewallNode(node)}
+                    className="p-2 text-muted-foreground/70 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                    title="View Server Firewall Rules"
+                  >
+                    <Shield className="h-4 w-4" />
+                  </button>
+                  <button
                     onClick={() => {
                       if (confirm(`Delete node "${node.hostname}"?`)) {
                         deleteMutation.mutate(node.id)
@@ -403,7 +411,8 @@ function NodesPage() {
                 <div className="bg-muted/50 rounded-lg p-4 border border-border/50 mb-6 relative group">
                   <pre className="text-xs font-mono text-foreground whitespace-pre-wrap break-all">
                     <span className="text-emerald-600">AGENT_NODE_ID</span>={registeredNode.id}{'\n'}
-                    <span className="text-emerald-600">AGENT_SECRET_TOKEN</span>={registeredNode.token}
+                    <span className="text-emerald-600">AGENT_SECRET_TOKEN</span>={registeredNode.token}{'\n'}
+                    <span className="text-emerald-600">FIREWALL_ENGINE</span>=auto
                   </pre>
                   <button
                     onClick={copyCredentials}
@@ -795,6 +804,55 @@ route 172.31.0.0 255.255.0.0`}</pre>
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Firewall Rules Modal */}
+      {viewFirewallNode && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
+          <div className="bg-card text-card-foreground rounded-xl shadow-xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="p-5 border-b border-border/50 flex justify-between items-center bg-muted/30">
+              <div>
+                <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                  <Shield className="h-5 w-5 text-indigo-500" />
+                  Active Firewall Rules
+                </h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Raw iptables/nftables setup currently active on {viewFirewallNode.hostname} ({viewFirewallNode.ip_address})
+                </p>
+              </div>
+              <button 
+                onClick={() => setViewFirewallNode(null)}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <div className="p-5 bg-card overflow-y-auto flex-1">
+              {!viewFirewallNode.firewall_rules_dump ? (
+                <div className="text-center py-12">
+                  <Shield className="h-12 w-12 text-muted-foreground/20 mx-auto mb-4" />
+                  <p className="text-foreground font-medium">No firewall data available yet</p>
+                  <p className="text-sm text-muted-foreground/70 mt-1 max-w-sm mx-auto">
+                    The agent hasn't synchronized its firewall rules. Please wait up to 30 seconds for the next automatically scheduled heartbeat.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-lg bg-zinc-950 p-4 border border-zinc-800">
+                  <pre className="text-sm font-mono text-zinc-300 whitespace-pre-wrap leading-relaxed overflow-x-auto">
+                    {viewFirewallNode.firewall_rules_dump}
+                  </pre>
+                </div>
+              )}
+            </div>
+            
+            <div className="p-4 border-t border-border/50 bg-muted/30 flex justify-end">
+              <Button variant="outline" onClick={() => setViewFirewallNode(null)}>
+                Close
+              </Button>
+            </div>
           </div>
         </div>
       )}
