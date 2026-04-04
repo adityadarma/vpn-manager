@@ -44,21 +44,27 @@ export async function handleRevokeUser(
   )
 
   // Copy CRL to server directory
-  await execAsync(`cp ${EASYRSA_DIR}/pki/crl.pem /etc/openvpn/server/crl.pem || true`)
+  await execAsync(`cp ${EASYRSA_DIR}/pki/crl.pem /etc/openvpn/server/crl.pem`)
+  await execAsync(`chmod 644 /etc/openvpn/server/crl.pem`)
 
-  // Disconnect client if currently connected
+  // CRITICAL: Reload OpenVPN FIRST so it loads the new CRL,
+  // THEN disconnect the client. This way, when the client auto-reconnects,
+  // it is immediately rejected by the updated CRL.
+  try {
+    await driver.sendCommand('signal SIGHUP')
+    console.log(`[revoke-user] Sent SIGHUP — OpenVPN is reloading CRL`)
+    // Wait for OpenVPN to finish reloading before kicking
+    await new Promise(resolve => setTimeout(resolve, 3000))
+  } catch (err) {
+    console.error('[revoke-user] Failed to send SIGHUP:', err)
+  }
+
+  // Now kick the active client — reconnect will be blocked by the updated CRL
   try {
     await driver.disconnectClient(username)
     console.log(`[revoke-user] Disconnected active client: ${username}`)
   } catch (err) {
     // Client might not be connected, that's ok
-  }
-
-  // Reload VPN via management interface to pick up the new CRL
-  try {
-    await driver.sendCommand('signal SIGHUP')
-  } catch (err) {
-    // Management interface might be down
   }
 
   console.log(`[revoke-user] Certificate revoked for: ${username}`)

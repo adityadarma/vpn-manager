@@ -241,9 +241,27 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         custom_push_directives: config.custom_push_directives ?? null,
         firewall_engine: config.firewall_engine,
       })
-      
-      // If network changed, we must revoke and kick all existing users 
-      // because their static IPs are now invalid!
+
+      // Collect all group subnets so the agent can generate route directives
+      const allGroups = await app.db('groups').whereNotNull('vpn_subnet').select('name', 'vpn_subnet')
+      const groupSubnets = allGroups
+        .map((g: { name: string; vpn_subnet: string }) => g.vpn_subnet)
+        .filter(Boolean)
+
+      // IMPORTANT: Schedule update_server_config FIRST so that OpenVPN reloads
+      // with the new network + crl-verify BEFORE revoke tasks kick clients.
+      // When kicked clients auto-reconnect, the CRL will already be loaded.
+      const taskId = uuidv7()
+      await app.db('tasks').insert({
+        id: taskId,
+        node_id: request.params.id,
+        action: 'update_server_config',
+        payload: JSON.stringify({ ...config, group_subnets: groupSubnets }),
+        status: 'pending',
+        created_at: new Date(),
+      })
+
+      // If network changed, schedule revoke tasks AFTER the config update task
       if (networkChanged) {
         const certs = await app.db('user_node_certificates').where({ node_id: request.params.id, is_revoked: 0 })
         
@@ -285,23 +303,6 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         }
       }
 
-      // Collect all group subnets so the agent can generate route directives
-      // for CCD-assigned IPs that fall outside the main server pool.
-      const allGroups = await app.db('groups').whereNotNull('vpn_subnet').select('name', 'vpn_subnet')
-      const groupSubnets = allGroups
-        .map((g: { name: string; vpn_subnet: string }) => g.vpn_subnet)
-        .filter(Boolean)
-
-      // Create task to update server config
-      const taskId = uuidv7()
-      await app.db('tasks').insert({
-        id: taskId,
-        node_id: request.params.id,
-        action: 'update_server_config',
-        payload: JSON.stringify({ ...config, group_subnets: groupSubnets }),
-        status: 'pending',
-        created_at: new Date(),
-      })
 
       const userObj = request.user as { id: string; username: string }
       await logAudit(app, {
