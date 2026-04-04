@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { v7 as uuidv7 } from 'uuid'
 import { logAudit, getClientIp } from '../../utils/audit'
+import geoip from 'geoip-lite'
 
 /**
  * VPN Hooks API — called by vpn-client agent living on the VPN server.
@@ -160,6 +161,17 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const sessionId = uuidv7()
+      
+      let geoCity = null
+      let geoCountry = null
+      if (clientIp) {
+        const geo = geoip.lookup(clientIp)
+        if (geo) {
+          geoCity = geo.city || null
+          geoCountry = geo.country || null
+        }
+      }
+
       await app.db('vpn_sessions').insert({
         id: sessionId,
         user_id: user.id,
@@ -172,6 +184,8 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
         bytes_received: 0,
         connected_at: connectedAtOverride ?? new Date(),
         last_activity_at: new Date(),
+        geo_city: geoCity,
+        geo_country: geoCountry,
       })
 
       // Update user's last_login time to reflect VPN usage

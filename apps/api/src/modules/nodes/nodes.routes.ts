@@ -3,6 +3,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import crypto from 'node:crypto'
 import { HeartbeatSchema } from '@vpn/shared'
 import { logAudit, getClientIp } from '../../utils/audit'
+import geoip from 'geoip-lite'
 
 interface NodeConfig {
   port: number
@@ -488,6 +489,19 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
             
             if (!existingSession) {
               app.log.info(`[heartbeat] Creating new session for user ${userId} via WireGuard heartbeat`)
+              
+              let geoCity = null
+              let geoCountry = null
+              if (client.realAddress) {
+                // Remove port if present: e.g. "1.2.3.4:51820" -> "1.2.3.4"
+                const cleanIp = client.realAddress.split(':')[0]
+                const geo = geoip.lookup(cleanIp)
+                if (geo) {
+                  geoCity = geo.city || null
+                  geoCountry = geo.country || null
+                }
+              }
+
               // New session! Create it via vpn_sessions
               const newSessionId = uuidv7()
               await app.db('vpn_sessions').insert({
@@ -495,12 +509,14 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
                 user_id: userId,
                 node_id: nodeId,
                 vpn_ip: client.virtualAddress,
-                real_ip: client.realAddress,
+                real_ip: client.realAddress?.split(':')[0] || client.realAddress,
                 client_version: 'WireGuard',
                 device_name: 'WireGuard Client',
                 bytes_sent: client.bytesSent,
                 bytes_received: client.bytesReceived,
                 connected_at: new Date(client.connectedSince),
+                geo_city: geoCity,
+                geo_country: geoCountry,
               })
               
               // Update user's last_login time to reflect VPN usage
