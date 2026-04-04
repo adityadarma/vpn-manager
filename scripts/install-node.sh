@@ -502,18 +502,10 @@ install_agent() {
     # Adjust Docker Compose based on VPN Type
     if [ "$ENV_VPN_TYPE" = "wireguard" ] && [ -f "docker-compose.yml" ]; then
         # Add WireGuard volume
-        if ! grep -q "/etc/wireguard" docker-compose.yml; then
-            sed -i '/volumes:/a \      - /etc/wireguard:/etc/wireguard' docker-compose.yml
-        fi
-
-        # Remove default OpenVPN environment variables and volumes to keep it clean
-        sed -i '/OPENVPN_SOCKET_PATH/d' docker-compose.yml
-        sed -i '/openvpn:/d' docker-compose.yml
-        sed -i '/VPN Management Interface/d' docker-compose.yml
+        sed -i '/volumes:/a \      - /etc/wireguard:/etc/wireguard' docker-compose.yml
     elif [ "$ENV_VPN_TYPE" = "openvpn" ] && [ -f "docker-compose.yml" ]; then
-        # Remove WireGuard environment variables to keep it clean for OpenVPN
-        sed -i '/WIREGUARD_INTERFACE/d' docker-compose.yml
-        sed -i '/WireGuard Interface/d' docker-compose.yml
+        # Inject OpenVPN volumes
+        sed -i '/volumes:/a \      - /run/openvpn:/run/openvpn\n      - /etc/openvpn:/etc/openvpn\n      - /var/log/openvpn:/var/log/openvpn:ro' docker-compose.yml
     fi
     
     # Check for environment variables (support both naming conventions)
@@ -603,10 +595,8 @@ FIREWALL_ENGINE=${ENV_FIREWALL_ENGINE:-auto}
 EOF
         if [ "$ENV_VPN_TYPE" = "wireguard" ]; then
             echo "VPN_TYPE=wireguard" >> .env
-            echo "WIREGUARD_INTERFACE=wg0" >> .env
         else
             echo "VPN_TYPE=openvpn" >> .env
-            echo "OPENVPN_SOCKET_PATH=/run/openvpn/server.sock" >> .env
         fi
         
         # Register node
@@ -675,10 +665,8 @@ FIREWALL_ENGINE=${ENV_FIREWALL_ENGINE:-auto}
 EOF
         if [ "$ENV_VPN_TYPE" = "wireguard" ]; then
             echo "VPN_TYPE=wireguard" >> .env
-            echo "WIREGUARD_INTERFACE=wg0" >> .env
         else
             echo "VPN_TYPE=openvpn" >> .env
-            echo "OPENVPN_SOCKET_PATH=/run/openvpn/server.sock" >> .env
         fi
         ok "Configuration saved with provided credentials"
     fi

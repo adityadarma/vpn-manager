@@ -22,8 +22,8 @@ import { loadAgentEnv } from '../config/env'
  *   or call the unkick endpoint (if implemented).
  */
 
-const MGMT_SOCKET = process.env['OPENVPN_SOCKET_PATH'] ?? '/run/openvpn/server.sock'
-const CCD_DIR = process.env['OPENVPN_CCD_DIR'] ?? '/etc/openvpn/ccd'
+const MGMT_SOCKET = '/run/openvpn/server.sock'
+const CCD_DIR = '/etc/openvpn/ccd'
 
 // ── Raw management socket kill ─────────────────────────────────────────────
 // Opens a dedicated connection so it never conflicts with the driver's
@@ -144,7 +144,7 @@ export async function handleKickSession(
       return result
     }
 
-    const iface = env.WIREGUARD_INTERFACE || 'wg0'
+    const iface = 'wg0'
     try {
       if (permanent) {
         // PERMANENT: Remove peer from wg0 and save config

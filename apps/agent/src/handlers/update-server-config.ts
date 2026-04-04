@@ -88,15 +88,53 @@ function networkAddress(ip: string, netmask: string): string {
 export async function handleUpdateServerConfig(params: Record<string, unknown>, driver: VpnDriver): Promise<Record<string, unknown>> {
   const config = params as unknown as UpdateServerConfigParams
 
+  if (!config.vpn_network || !config.vpn_netmask) {
+    throw new Error('Missing required parameters: vpn_network, vpn_netmask')
+  }
+
+  const VPN_TYPE = process.env.VPN_TYPE || 'openvpn'
+
+  if (VPN_TYPE === 'wireguard') {
+    const WG_CONF = '/etc/wireguard/wg0.conf'
+    if (!existsSync(WG_CONF)) {
+      throw new Error('WireGuard config not found. Please install VPN server first.')
+    }
+    
+    const wgPrefix = netmaskToPrefix(config.vpn_netmask)
+    const serverNet = networkAddress(config.vpn_network, config.vpn_netmask)
+    const serverIp = intToIp(ipToInt(serverNet) + 1)
+    
+    // Update Address and port via sed (to preserve peers!)
+    const { exec } = require('node:child_process')
+    const { promisify } = require('node:util')
+    const execAsync = promisify(exec)
+    
+    await execAsync(`sed -i 's|^Address = .*|Address = ${serverIp}/${wgPrefix}|' ${WG_CONF}`)
+    if (config.port) {
+      await execAsync(`sed -i 's|^ListenPort = .*|ListenPort = ${config.port}|' ${WG_CONF}`)
+    }
+    
+    // Restart interface
+    try {
+      await execAsync('wg-quick down wg0 || true')
+      await execAsync('wg-quick up wg0')
+      console.log('[update-config] WireGuard restarted with new config')
+    } catch (e: any) {
+      throw new Error('Failed to restart WireGuard: ' + e.message)
+    }
+    
+    return {
+      success: true,
+      message: 'WireGuard configuration updated successfully. Interface restarted.',
+      configPath: WG_CONF
+    }
+  }
+
   const CONFIG_PATH = '/etc/openvpn/server/server.conf'
   const BACKUP_PATH = '/etc/openvpn/server/server.conf.backup'
 
   if (!existsSync(CONFIG_PATH)) {
     throw new Error('VPN server config not found. Please install VPN server first.')
-  }
-
-  if (!config.vpn_network || !config.vpn_netmask) {
-    throw new Error('Missing required parameters: vpn_network, vpn_netmask')
   }
 
   // Defaults
@@ -245,7 +283,32 @@ management /run/openvpn/server.sock unix
 
 # Client Config Directory — required for per-user IP assignments (ifconfig-push in CCD)
 client-config-dir /etc/openvpn/ccd
+
+# Check revoked certificates
+crl-verify /etc/openvpn/server/crl.pem
 `
+
+    // Ensure CRL exists to prevent OpenVPN startup failure
+    const CRL_PATH = '/etc/openvpn/server/crl.pem'
+    const EASYRSA_DIR = '/etc/openvpn/easy-rsa'
+    if (!existsSync(CRL_PATH)) {
+      console.log(`[update-config] CRL not found at ${CRL_PATH}. Generating...`)
+      if (existsSync(EASYRSA_DIR)) {
+        const { execSync } = require('node:child_process')
+        try {
+          execSync(`./easyrsa --batch gen-crl`, { cwd: EASYRSA_DIR })
+          execSync(`cp ${EASYRSA_DIR}/pki/crl.pem ${CRL_PATH}`)
+          execSync(`chmod 644 ${CRL_PATH}`)
+          console.log('[update-config] Initial CRL generated successfully.')
+        } catch (crlErr: any) {
+          console.error('[update-config] Failed to generate initial CRL:', crlErr.message)
+        }
+      } else {
+        // If easy-rsa is not available, touch an empty file just so OpenVPN doesn't crash, 
+        // though it might still complain if it's not a valid PEM. 
+        // Usually easy-rsa is where we expect it to be.
+      }
+    }
 
     writeFileSync(CONFIG_PATH, newConfig)
     console.log('[update-config] Wrote new config')

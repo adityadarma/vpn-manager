@@ -143,7 +143,7 @@ function parseWireGuardStatus(interfaceName: string): StatusClient[] {
 function parseStatus(env: AgentEnv): StatusClient[] {
   switch (env.VPN_TYPE) {
     case 'wireguard':
-      return parseWireGuardStatus(env.WIREGUARD_INTERFACE)
+      return parseWireGuardStatus('wg0')
     
     case 'openvpn':
       return parseOpenVpnStatusFile('/var/log/openvpn/status.log')

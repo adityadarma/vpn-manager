@@ -14,12 +14,6 @@ const AgentEnvSchema = z.object({
   // VPN Type Selection
   VPN_TYPE: z.enum(['openvpn', 'wireguard']).default('openvpn'),
   
-  // OpenVPN Management Interface (Unix Socket)
-  OPENVPN_SOCKET_PATH: z.string().default('/run/openvpn/server.sock'),
-  
-  // WireGuard Settings
-  WIREGUARD_INTERFACE: z.string().default('wg0'),
-  
   // Firewall Engine (auto tries to detect iptables vs nftables)
   FIREWALL_ENGINE: z.enum(['iptables', 'nftables', 'ufw', 'firewalld', 'none', 'auto']).default('auto'),
 })

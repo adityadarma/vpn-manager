@@ -409,7 +409,6 @@ nano .env
 
 ```env
 VPN_TYPE=wireguard
-WIREGUARD_INTERFACE=wg0
 AGENT_MANAGER_URL=http://YOUR_MANAGER_SERVER_IP:3001
 AGENT_NODE_ID=your-node-id
 AGENT_SECRET_TOKEN=your-secret-token

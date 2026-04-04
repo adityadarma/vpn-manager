@@ -43,12 +43,6 @@ services:
       AGENT_HEARTBEAT_INTERVAL_MS: ${AGENT_HEARTBEAT_INTERVAL_MS:-30000}
       FIREWALL_ENGINE: ${FIREWALL_ENGINE:-auto}
 
-      # VPN Management Interface (Unix Socket)
-      OPENVPN_SOCKET_PATH: ${OPENVPN_SOCKET_PATH:-/run/openvpn/server.sock}
-
-      # WireGuard Interface
-      WIREGUARD_INTERFACE: ${WIREGUARD_INTERFACE:-wg0}
-
     # Use host network for direct access to host VPN management interface and iptables bindings
     network_mode: host
 
@@ -59,9 +53,6 @@ services:
 
     # Volumes for VPN config and certificates
     volumes:
-      - /run/openvpn:/run/openvpn # Unix socket directory
-      - /etc/openvpn:/etc/openvpn
-      - /var/log/openvpn:/var/log/openvpn:ro # Status log (read-only)
 
     logging:
       driver: "json-file"

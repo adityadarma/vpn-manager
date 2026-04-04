@@ -9,7 +9,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env') })
 import { loadAgentEnv } from './config/env'
 import { startPoller } from './core/poller'
 import { startHeartbeat } from './core/heartbeat'
-import { OpenVpnManagementDriver, WireGuardDriver, type VpnDriver } from './drivers'
+import { OpenVpnDriver, WireGuardDriver, type VpnDriver } from './drivers'
 import { handleSyncCertificates } from './handlers/sync-certificates'
 import { handleSyncServerConfig } from './handlers/sync-server-config'
 import { startStatusMonitor } from './services/status-monitor'
@@ -21,10 +21,10 @@ import { startEventMonitor } from './services/event-monitor'
 function createVpnDriver(env: ReturnType<typeof loadAgentEnv>): VpnDriver {
   switch (env.VPN_TYPE) {
     case 'openvpn':
-      return new OpenVpnManagementDriver(env.OPENVPN_SOCKET_PATH)
+      return new OpenVpnDriver()
     
     case 'wireguard':
-      return new WireGuardDriver(env.WIREGUARD_INTERFACE)
+      return new WireGuardDriver()
     
     default:
       throw new Error(`Unsupported VPN type: ${env.VPN_TYPE}`)
@@ -113,12 +113,6 @@ async function main() {
   console.log(`   VPN Type: ${env.VPN_TYPE}`)
   console.log(`   Poll:     every ${env.AGENT_POLL_INTERVAL_MS}ms`)
   console.log(`   Heartbeat: every ${env.AGENT_HEARTBEAT_INTERVAL_MS}ms`)
-  
-  if (env.VPN_TYPE === 'openvpn') {
-    console.log(`   VPN Socket: ${env.OPENVPN_SOCKET_PATH}`)
-  } else if (env.VPN_TYPE === 'wireguard') {
-    console.log(`   WG Interface: ${env.WIREGUARD_INTERFACE}`)
-  }
 
   // Initialize VPN driver (factory pattern)
   const driver = createVpnDriver(env)

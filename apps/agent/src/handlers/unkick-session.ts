@@ -13,7 +13,7 @@ import { loadAgentEnv } from '../config/env'
  * the user's ability to reconnect to the VPN.
  */
 
-const CCD_DIR = process.env['OPENVPN_CCD_DIR'] ?? '/etc/openvpn/ccd'
+const CCD_DIR = '/etc/openvpn/ccd'
 
 export async function handleUnkickSession(
   payload: Record<string, unknown>,
@@ -35,7 +35,7 @@ export async function handleUnkickSession(
       return { unkicked: false, common_name, error: 'missing_payload_data' }
     }
 
-    const iface = env.WIREGUARD_INTERFACE || 'wg0'
+    const iface = 'wg0'
     try {
       // Re-inject the peer that was removed during permanent kick
       execSync(`wg set ${iface} peer ${public_key} allowed-ips ${vpn_ip}/32`)

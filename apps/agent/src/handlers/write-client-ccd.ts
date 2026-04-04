@@ -11,7 +11,7 @@ interface WriteClientCcdParams {
   extra_lines?: string[]  // any additional CCD directives to merge
 }
 
-const CCD_DIR = process.env.OPENVPN_CCD_DIR ?? '/etc/openvpn/ccd'
+const CCD_DIR = '/etc/openvpn/ccd'
 
 /**
  * Write (or update) a CCD file for a user with ifconfig-push.
@@ -43,7 +43,7 @@ export async function handleWriteClientCcd(
       return { success: false, reason: 'missing_public_key' }
     }
 
-    const iface = env.WIREGUARD_INTERFACE || 'wg0'
+    const iface = 'wg0'
     try {
       // Inject peer into active WireGuard interface
       execSync(`wg set ${iface} peer ${public_key} allowed-ips ${vpn_ip}/32`)

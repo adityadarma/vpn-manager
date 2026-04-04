@@ -51,7 +51,7 @@ The agent uses a factory pattern to create the appropriate driver:
 function createVpnDriver(env: AgentEnv): VpnDriver {
   switch (env.VPN_TYPE) {
     case 'openvpn':
-      return new OpenVpnManagementDriver(...)
+      return new OpenVpnDriver(...)
     case 'wireguard':
       return new WireGuardDriver(...)
     default:
@@ -133,7 +133,6 @@ sudo systemctl enable wg-quick@wg0
 
 ```env
 VPN_TYPE=wireguard
-WIREGUARD_INTERFACE=wg0
 ```
 
 **5. Grant agent permissions:**
@@ -298,7 +297,7 @@ const AgentEnvSchema = z.object({
 function createVpnDriver(env: AgentEnv): VpnDriver {
   switch (env.VPN_TYPE) {
     case 'openvpn':
-      return new OpenVpnManagementDriver(...)
+      return new OpenVpnDriver(...)
     case 'wireguard':
       return new WireGuardDriver(...)
     case 'myvpn':
@@ -435,9 +434,6 @@ sudo docker compose up -d
 ```bash
 # Check interface name
 ip link show
-
-# Update agent config
-WIREGUARD_INTERFACE=wg0
 
 # Start interface
 sudo wg-quick up wg0

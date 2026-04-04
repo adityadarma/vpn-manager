@@ -9,7 +9,7 @@ import type {
 } from './vpn-driver.interface'
 
 /**
- * OpenVPN Management Interface Driver
+ * OpenVPN Interface Driver
  * 
  * Communicates with OpenVPN via Unix socket
  * 
@@ -18,7 +18,7 @@ import type {
  * Protocol Reference:
  * - https://openvpn.net/community-resources/management-interface/
  */
-export class OpenVpnManagementDriver extends EventEmitter implements VpnDriver {
+export class OpenVpnDriver extends EventEmitter implements VpnDriver {
   private socket: net.Socket | null = null
   private connected = false
   private buffer = ''
