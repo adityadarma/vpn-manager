@@ -1,5 +1,9 @@
 import { writeFileSync, readFileSync, existsSync } from 'node:fs'
+import { exec, execSync } from 'node:child_process'
+import { promisify } from 'node:util'
 import type { VpnDriver } from '../drivers'
+
+const execAsync = promisify(exec)
 
 interface UpdateServerConfigParams {
   port: number
@@ -105,9 +109,6 @@ export async function handleUpdateServerConfig(params: Record<string, unknown>, 
     const serverIp = intToIp(ipToInt(serverNet) + 1)
     
     // Update Address and port via sed (to preserve peers!)
-    const { exec } = require('node:child_process')
-    const { promisify } = require('node:util')
-    const execAsync = promisify(exec)
     
     await execAsync(`sed -i 's|^Address = .*|Address = ${serverIp}/${wgPrefix}|' ${WG_CONF}`)
     if (config.port) {
@@ -294,7 +295,6 @@ crl-verify /etc/openvpn/server/crl.pem
     if (!existsSync(CRL_PATH)) {
       console.log(`[update-config] CRL not found at ${CRL_PATH}. Generating...`)
       if (existsSync(EASYRSA_DIR)) {
-        const { execSync } = require('node:child_process')
         try {
           execSync(`./easyrsa --batch gen-crl`, { cwd: EASYRSA_DIR })
           execSync(`cp ${EASYRSA_DIR}/pki/crl.pem ${CRL_PATH}`)
