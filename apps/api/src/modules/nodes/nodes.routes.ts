@@ -220,6 +220,9 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
 
       const config = request.body as NodeConfig
       
+      // Check if vpn_network actually changed
+      const networkChanged = node.vpn_network !== config.vpn_network || node.vpn_netmask !== config.vpn_netmask
+
       // Update database
       await app.db('vpn_nodes').where({ id: request.params.id }).update({
         port: config.port,
@@ -238,6 +241,49 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         custom_push_directives: config.custom_push_directives ?? null,
         firewall_engine: config.firewall_engine,
       })
+      
+      // If network changed, we must revoke and kick all existing users 
+      // because their static IPs are now invalid!
+      if (networkChanged) {
+        const certs = await app.db('user_node_certificates').where({ node_id: request.params.id, is_revoked: 0 })
+        
+        if (certs.length > 0) {
+          app.log.info(`[api/nodes] Network changed. Revoking ${certs.length} legacy certificates for node ${request.params.id}`)
+          
+          await app.db('user_node_certificates')
+            .where({ node_id: request.params.id })
+            .update({ 
+               is_revoked: 1, 
+               revoked_at: new Date(), 
+               revocation_reason: 'Network Subnet Changed' 
+            })
+            
+          for (const cert of certs) {
+            const userObj = await app.db('users').where({ id: cert.user_id }).first()
+            if (!userObj) continue
+            
+            await app.db('tasks').insert({
+              id: uuidv7(),
+              node_id: request.params.id,
+              action: 'revoke_user',
+              payload: JSON.stringify({ 
+                username: userObj.username,
+                client_cert: cert.client_cert 
+              }),
+              status: 'pending',
+              created_at: new Date(),
+            })
+            
+            await app.db('vpn_sessions')
+               .where({ user_id: userObj.id, node_id: request.params.id })
+               .whereNull('disconnected_at')
+               .update({
+                 disconnected_at: new Date(),
+                 disconnect_reason: 'admin_kick'
+               })
+          }
+        }
+      }
 
       // Collect all group subnets so the agent can generate route directives
       // for CCD-assigned IPs that fall outside the main server pool.

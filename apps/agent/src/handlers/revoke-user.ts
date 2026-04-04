@@ -12,6 +12,24 @@ export async function handleRevokeUser(
   const username = payload['username'] as string
   if (!username) throw new Error('Missing username in payload')
 
+  const VPN_TYPE = process.env.VPN_TYPE || 'openvpn'
+
+  if (VPN_TYPE === 'wireguard') {
+    const pubKey = payload['client_cert'] as string
+    if (!pubKey) throw new Error('Missing client_cert (public key) in payload for WireGuard revocation')
+    
+    // Remove peer from running interface (will also kick them)
+    try {
+      await execAsync(`wg set wg0 peer ${pubKey} remove`)
+      
+      console.log(`[revoke-user] WireGuard peer removed: ${pubKey}`)
+      return { username, stdout: 'Peer removed' }
+    } catch (err: any) {
+      throw new Error(`Failed to remove WireGuard peer: ${err.message}`)
+    }
+  }
+
+  // OpenVPN flow
   const EASYRSA_DIR = '/etc/openvpn/easy-rsa'
   const EASYRSA_BIN = `${EASYRSA_DIR}/easyrsa`
 
@@ -37,7 +55,11 @@ export async function handleRevokeUser(
   }
 
   // Reload VPN via management interface to pick up the new CRL
-  await driver.sendCommand('signal SIGHUP')
+  try {
+    await driver.sendCommand('signal SIGHUP')
+  } catch (err) {
+    // Management interface might be down
+  }
 
   console.log(`[revoke-user] Certificate revoked for: ${username}`)
   return { username, stdout: stdout.trim() }
