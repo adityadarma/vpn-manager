@@ -155,15 +155,40 @@ export async function handleUpdateServerConfig(params: Record<string, unknown>, 
   const customPushLines = (config.custom_push_directives ?? '')
     .split('\n').map(l => l.trim()).filter(Boolean)
 
-  // ── Compute group-subnet route directives ──────────────────────────────────
-  // For every group subnet that is NOT already inside the server pool we emit
-  // a `route <network> <netmask>` directive.  This tells OpenVPN to accept
-  // and route packets for that subnet through the tun interface, which allows
-  // CCD files to use `ifconfig-push` IPs from those subnets.
-  const serverNet  = networkAddress(config.vpn_network, config.vpn_netmask)
-  const serverMask = config.vpn_netmask
+    // ── Compute group-subnet route directives ──────────────────────────────────
+    // For every group subnet that is NOT already inside the server pool we emit
+    // a `route <network> <netmask>` directive.  This tells OpenVPN to accept
+    // and route packets for that subnet through the tun interface, which allows
+    // CCD files to use `ifconfig-push` IPs from those subnets.
+    const serverNet  = networkAddress(config.vpn_network, config.vpn_netmask)
+    const serverMask = config.vpn_netmask
 
-  const extraRoutes: Array<{ network: string; netmask: string; cidr: string }> = []
+    // Detect network change to clean up stale CCD files
+    const CCD_DIR = '/etc/openvpn/ccd'
+    const NETWORK_MARKER = `${CCD_DIR}/.current_network`
+    const currentNetworkString = `${config.vpn_network}/${config.vpn_netmask}`
+    
+    if (existsSync(CCD_DIR)) {
+      let previousNetwork = ''
+      try {
+        if (existsSync(NETWORK_MARKER)) {
+          previousNetwork = readFileSync(NETWORK_MARKER, 'utf-8').trim()
+        }
+        
+        if (previousNetwork && previousNetwork !== currentNetworkString) {
+          console.log(`[update-config] Network changed from ${previousNetwork} to ${currentNetworkString}. Cleaning up stale CCD files...`)
+          // Use the static execSync imported at the top
+          execSync(`find ${CCD_DIR} -type f ! -name ".current_network" -delete`)
+          console.log('[update-config] CCD directory cleaned.')
+        }
+        
+        writeFileSync(NETWORK_MARKER, currentNetworkString)
+      } catch (err: any) {
+        console.error('[update-config] Failed to process CCD cleanup:', err.message)
+      }
+    }
+
+    const extraRoutes: Array<{ network: string; netmask: string; cidr: string }> = []
 
   for (const cidr of (config.group_subnets ?? [])) {
     const parsed = parseCidr(cidr)
