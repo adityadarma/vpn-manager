@@ -194,7 +194,7 @@ function UsersPage() {
       toast.error('No users selected')
       return
     }
-    
+
     const onlineNode = nodes.find((n: any) => n.status === 'online')
     if (!onlineNode) {
       toast.error('No online nodes available')
@@ -242,23 +242,23 @@ function UsersPage() {
   }
 
   const [isDownloading, setIsDownloading] = useState<string | null>(null)
-  
+
   const handleDownloadConfig = async (user: User, certId?: string) => {
     try {
       setIsDownloading(certId || user.id)
-      const url = certId 
+      const url = certId
         ? `${API_URL}/api/v1/users/${user.id}/vpn?certId=${certId}`
         : `${API_URL}/api/v1/users/${user.id}/vpn`
-      
+
       const res = await fetch(url, {
         credentials: 'include',
       })
-      
+
       if (!res.ok) {
         const errorData = await res.json().catch(() => null)
         throw new Error(errorData?.message || errorData?.error || 'Failed to generate config')
       }
-      
+
       // Attempt to get filename from Content-Disposition header
       let filename = `${user.username}.ovpn`
       const disposition = res.headers.get('Content-Disposition')
@@ -266,7 +266,7 @@ function UsersPage() {
         const matches = /filename="([^"]+)"/.exec(disposition)
         if (matches?.[1]) filename = matches[1]
       }
-      
+
       const blob = await res.blob()
       const url2 = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -276,9 +276,9 @@ function UsersPage() {
       a.click()
       window.URL.revokeObjectURL(url2)
       a.remove()
-      
+
       toast.success('Configuration downloaded successfully')
-      
+
       // Refresh certificates list if modal is open
       if (showCertListModal) {
         refetchCertificates()
@@ -429,15 +429,16 @@ function UsersPage() {
               <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">User</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Role</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
-              <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Last Login</th>
+              <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Last Login (Web)</th>
+              <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Last Connect (VPN)</th>
               <th className="text-right px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {isLoading ? (
-              <tr><td colSpan={6} className="py-12 text-center text-muted-foreground/70">Loading users...</td></tr>
+              <tr><td colSpan={7} className="py-12 text-center text-muted-foreground/70">Loading users...</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={6} className="py-12 text-center text-muted-foreground/70">No users found.</td></tr>
+              <tr><td colSpan={7} className="py-12 text-center text-muted-foreground/70">No users found.</td></tr>
             ) : filtered.map((user) => (
               <tr key={user.id} className="hover:bg-muted/50 transition-colors">
                 <td className="px-5 py-4">
@@ -467,26 +468,31 @@ function UsersPage() {
                   </div>
                 </td>
                 <td className="px-5 py-4">
-                  <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${
-                    user.role === 'admin' 
-                      ? 'bg-violet-50 text-violet-700' 
+                  <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${user.role === 'admin'
+                      ? 'bg-violet-50 text-violet-700'
                       : 'bg-muted text-muted-foreground'
-                  }`}>
+                    }`}>
                     {user.role === 'admin' && <Shield className="h-3 w-3" />}
                     {user.role}
                   </span>
                 </td>
                 <td className="px-5 py-4">
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-                    user.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'
-                  }`}>
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${user.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'
+                    }`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${user.is_active ? 'bg-emerald-500' : 'bg-red-400'}`} />
                     {user.is_active ? 'Active' : 'Disabled'}
                   </span>
                 </td>
                 <td className="px-5 py-4 text-muted-foreground" >
-                  {user.last_login ? (() => {
+                  {user.role === 'user' ? '-' : (user.last_login ? (() => {
                     const d = new Date(user.last_login);
+                    const pad = (n: number) => n.toString().padStart(2, '0');
+                    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+                  })() : 'Never')}
+                </td>
+                <td className="px-5 py-4 text-muted-foreground" >
+                  {user.last_vpn_connect ? (() => {
+                    const d = new Date(user.last_vpn_connect);
                     const pad = (n: number) => n.toString().padStart(2, '0');
                     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
                   })() : 'Never'}
@@ -626,23 +632,23 @@ function UsersPage() {
                 </h2>
                 <p className="text-sm text-muted-foreground/70 mt-0.5">Update user information</p>
               </div>
-              <button 
+              <button
                 onClick={() => {
                   setShowEditForm(false)
                   setSelectedUserForEdit(null)
                   setEditForm({ email: '', password: '', role: 'user', isActive: true })
-                }} 
+                }}
                 className="p-1 text-muted-foreground/70 hover:text-muted-foreground rounded-md"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
             <form
-              onSubmit={(e) => { 
+              onSubmit={(e) => {
                 e.preventDefault()
-                updateMutation.mutate({ 
-                  id: selectedUserForEdit.id, 
-                  data: editForm 
+                updateMutation.mutate({
+                  id: selectedUserForEdit.id,
+                  data: editForm
                 })
               }}
               className="p-5 space-y-4"
@@ -751,12 +757,12 @@ function UsersPage() {
                   For user: <span className="font-medium text-muted-foreground">{selectedUserForCert.username}</span>
                 </p>
               </div>
-              <button 
+              <button
                 onClick={() => {
                   setShowCertModal(false)
                   setSelectedUserForCert(null)
                   setCertForm({ nodeId: '', passwordProtected: false, password: '', validDays: 0 })
-                }} 
+                }}
                 className="p-1 text-muted-foreground/70 hover:text-muted-foreground rounded-md"
               >
                 <X className="h-5 w-5" />
@@ -807,7 +813,7 @@ function UsersPage() {
 
               {(() => {
                 const selectedNode = nodes?.find((n: any) => n.id === certForm.nodeId)
-                
+
                 if (selectedNode?.vpn_type === 'wireguard') {
                   return (
                     <div className="bg-muted/50 border border-border rounded-lg p-4">
@@ -901,7 +907,7 @@ function UsersPage() {
 
               <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
                 <p className="text-xs text-blue-800">
-                  <strong>Note:</strong> This will generate a new client certificate and private key. 
+                  <strong>Note:</strong> This will generate a new client certificate and private key.
                   Any existing certificate for this user will be revoked.
                 </p>
               </div>
@@ -945,11 +951,11 @@ function UsersPage() {
                   Manage certificates across all nodes
                 </p>
               </div>
-              <button 
+              <button
                 onClick={() => {
                   setShowCertListModal(false)
                   setSelectedUserForCertList(null)
-                }} 
+                }}
                 className="p-1 text-muted-foreground/70 hover:text-muted-foreground rounded-md"
               >
                 <X className="h-5 w-5" />
@@ -980,13 +986,12 @@ function UsersPage() {
                   {userCertificates.map((cert: any) => (
                     <div
                       key={cert.id}
-                      className={`relative border rounded-xl p-5 overflow-hidden transition-all duration-200 hover:shadow-md ${
-                        !!cert.is_revoked 
-                          ? 'border-red-500/20 bg-red-500/5' 
+                      className={`relative border rounded-xl p-5 overflow-hidden transition-all duration-200 hover:shadow-md ${!!cert.is_revoked
+                          ? 'border-red-500/20 bg-red-500/5'
                           : cert.node_status === 'online'
-                          ? 'border-emerald-500/30 bg-emerald-500/[0.03]'
-                          : 'border-border/60 bg-muted/20'
-                      }`}
+                            ? 'border-emerald-500/30 bg-emerald-500/[0.03]'
+                            : 'border-border/60 bg-muted/20'
+                        }`}
                     >
                       <div className="flex items-start justify-between gap-6">
                         <div className="flex-1 min-w-0">
@@ -995,13 +1000,12 @@ function UsersPage() {
                             <h3 className="text-lg font-bold text-foreground">
                               {cert.node_hostname}
                             </h3>
-                            
+
                             <div className="flex items-center gap-2">
-                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider ${
-                                cert.node_status === 'online'
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider ${cert.node_status === 'online'
                                   ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
                                   : 'bg-muted text-muted-foreground border border-border'
-                              }`}>
+                                }`}>
                                 <span className={`w-1.5 h-1.5 rounded-full ${cert.node_status === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
                                 {cert.node_status}
                               </span>

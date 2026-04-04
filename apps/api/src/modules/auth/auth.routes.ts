@@ -107,7 +107,7 @@ const authRoutes: FastifyPluginAsync = async (app) => {
     async (request) => {
       const payload = request.user as { id: string }
       const user = await app.db('users')
-        .select('id', 'username', 'email', 'role', 'is_active', 'last_login', 'created_at')
+        .select('id', 'username', 'email', 'role', 'is_active', 'last_login', 'last_vpn_connect', 'created_at')
         .where({ id: payload.id })
         .first()
       return user

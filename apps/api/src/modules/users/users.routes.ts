@@ -11,24 +11,28 @@ const userRoutes: FastifyPluginAsync = async (app) => {
     '/users',
     { onRequest: [app.authenticate], schema: { tags: ['users'], summary: 'List all VPN users', security: [{ bearerAuth: [] }] } },
     async () => {
-      return app.db('users as u')
-        .leftJoin('groups as g', 'u.vpn_group_id', 'g.id')
+      const usersWithGroups = await app.db('users as u')
+        .leftJoin('user_groups as ug', 'u.id', 'ug.user_id')
+        .leftJoin('groups as g', 'ug.group_id', 'g.id')
         .select(
-          'u.id', 'u.username', 'u.email', 'u.role', 'u.is_active',
-          'u.vpn_ip', 'u.vpn_group_id',
-          'g.name as vpn_group_name', 'g.vpn_subnet',
-          'u.last_login', 'u.created_at', 'u.updated_at',
+          'u.id', 'u.username', 'u.email', 'u.role', 'u.is_active', 
+          'u.last_login', 'u.last_vpn_connect', 'u.created_at', 'u.updated_at',
+          app.db.raw('GROUP_CONCAT(g.name) as current_groups')
         )
+        .groupBy('u.id')
+
+      return usersWithGroups
     },
   )
 
   // GET /api/v1/users/:id
   app.get<{ Params: { id: string } }>(
     '/users/:id',
-    { onRequest: [app.authenticate], schema: { tags: ['users'], summary: 'Get user by ID', security: [{ bearerAuth: [] }] } },
+    { onRequest: [app.authenticateAdmin], schema: { tags: ['users'], summary: 'Get user details', security: [{ bearerAuth: [] }] } },
     async (request, reply) => {
       const user = await app.db('users')
-        .select('id', 'username', 'email', 'role', 'is_active', 'last_login', 'created_at', 'updated_at')
+        .where({ id: request.params.id })
+        .select('id', 'username', 'email', 'role', 'is_active', 'last_login', 'last_vpn_connect', 'created_at', 'updated_at')
         .where({ id: request.params.id })
         .first()
       if (!user) return reply.status(404).send({ error: 'Not Found', message: 'User not found' })

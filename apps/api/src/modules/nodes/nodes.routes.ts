@@ -520,8 +520,8 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
                 geo_country: geoCountry,
               })
               
-              // Update user's last_login time to reflect VPN usage
-              await app.db('users').where({ id: userId }).update({ last_login: new Date() })
+              // Update user's last_vpn_connect time to reflect VPN usage
+              await app.db('users').where({ id: userId }).update({ last_vpn_connect: new Date() })
 
               // Get username for audit
               const userObj = await app.db('users').where('id', userId).first()
@@ -547,11 +547,11 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
                 last_activity_at: new Date(),
               })
               
-              // Ensure last_login is populated if it was null before our update
+              // Ensure last_vpn_connect is populated if it was null before our update
               await app.db('users')
                 .where({ id: userId })
-                .whereNull('last_login')
-                .update({ last_login: new Date(client.connectedSince) })
+                .whereNull('last_vpn_connect')
+                .update({ last_vpn_connect: new Date(client.connectedSince) })
             }
           }
         }

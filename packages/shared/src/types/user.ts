@@ -7,6 +7,7 @@ export interface User {
   role: UserRole
   is_active: boolean
   last_login: string | null
+  last_vpn_connect: string | null
   created_at: string
   updated_at: string
 }
