@@ -31,7 +31,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
     async () => {
       // Get all nodes
       const nodes = await app.db('vpn_nodes')
-        .select('id', 'hostname', 'ip_address', 'port', 'region', 'status', 'version', 'last_seen', 'created_at', 'vpn_type', 'public_key', 'endpoint_port')
+        .select('id', 'hostname', 'ip_address', 'port', 'region', 'status', 'version', 'last_seen', 'created_at', 'vpn_type', 'public_key', 'endpoint_port', 'firewall_rules_dump')
       
       // Get active sessions count for each node
       const sessionCounts = await app.db('vpn_sessions')
@@ -616,6 +616,18 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
 
           if (!existingSession) {
             app.log.info(`[heartbeat] Creating OpenVPN session for ${username} (${client.virtualAddress})`)
+            
+            let geoCity = null
+            let geoCountry = null
+            if (client.realAddress) {
+              const cleanIp = client.realAddress.split(':')[0]
+              const geo = geoip.lookup(cleanIp)
+              if (geo) {
+                geoCity = geo.city || null
+                geoCountry = geo.country || null
+              }
+            }
+
             const newSessionId = uuidv7()
             await app.db('vpn_sessions').insert({
               id: newSessionId,
@@ -629,6 +641,8 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
               bytes_received: client.bytesReceived ?? 0,
               connected_at: client.connectedSince ? new Date(client.connectedSince) : new Date(),
               last_activity_at: new Date(),
+              geo_city: geoCity,
+              geo_country: geoCountry,
             })
             await logAudit(app, {
               userId: user.id,

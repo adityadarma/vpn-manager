@@ -485,7 +485,11 @@ function UsersPage() {
                   </span>
                 </td>
                 <td className="px-5 py-4 text-muted-foreground" >
-                  {user.last_login ? new Date(user.last_login).toLocaleDateString() : 'Never'}
+                  {user.last_login ? (() => {
+                    const d = new Date(user.last_login);
+                    const pad = (n: number) => n.toString().padStart(2, '0');
+                    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+                  })() : 'Never'}
                 </td>
                 <td className="px-5 py-4">
                   <div className="flex items-center justify-end gap-1">
