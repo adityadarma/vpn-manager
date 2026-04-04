@@ -469,8 +469,8 @@ function UsersPage() {
                 </td>
                 <td className="px-5 py-4">
                   <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${user.role === 'admin'
-                      ? 'bg-violet-50 text-violet-700'
-                      : 'bg-muted text-muted-foreground'
+                    ? 'bg-violet-50 text-violet-700'
+                    : 'bg-muted text-muted-foreground'
                     }`}>
                     {user.role === 'admin' && <Shield className="h-3 w-3" />}
                     {user.role}
@@ -553,6 +553,17 @@ function UsersPage() {
               className="p-5 space-y-4"
             >
               <div>
+                <label className="block text-sm font-medium text-foreground mb-1.5">Role</label>
+                <select
+                  value={form.role}
+                  onChange={(e) => setForm({ ...form, role: e.target.value as 'admin' | 'user' })}
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-card text-card-foreground"
+                >
+                  <option value="user">User</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-foreground mb-1.5">Username <span className="text-red-500">*</span></label>
                 <input
                   type="text"
@@ -586,17 +597,6 @@ function UsersPage() {
                   minLength={8}
                   className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1.5">Role</label>
-                <select
-                  value={form.role}
-                  onChange={(e) => setForm({ ...form, role: e.target.value as 'admin' | 'user' })}
-                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-card text-card-foreground"
-                >
-                  <option value="user">User</option>
-                  <option value="admin">Admin</option>
-                </select>
               </div>
               <div className="flex gap-3 pt-2">
                 <Button
@@ -654,6 +654,17 @@ function UsersPage() {
               className="p-5 space-y-4"
             >
               <div>
+                <label className="block text-sm font-medium text-foreground mb-1.5">Role</label>
+                <select
+                  value={editForm.role}
+                  onChange={(e) => setEditForm({ ...editForm, role: e.target.value as 'admin' | 'user' })}
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-card text-card-foreground"
+                >
+                  <option value="user">User</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-foreground mb-1.5">
                   Username
                 </label>
@@ -693,17 +704,6 @@ function UsersPage() {
                 <p className="text-xs text-muted-foreground mt-1">
                   Min. 8 characters. Leave blank to keep current password.
                 </p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1.5">Role</label>
-                <select
-                  value={editForm.role}
-                  onChange={(e) => setEditForm({ ...editForm, role: e.target.value as 'admin' | 'user' })}
-                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-card text-card-foreground"
-                >
-                  <option value="user">User</option>
-                  <option value="admin">Admin</option>
-                </select>
               </div>
               <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
                 <input
@@ -987,10 +987,10 @@ function UsersPage() {
                     <div
                       key={cert.id}
                       className={`relative border rounded-xl p-5 overflow-hidden transition-all duration-200 hover:shadow-md ${!!cert.is_revoked
-                          ? 'border-red-500/20 bg-red-500/5'
-                          : cert.node_status === 'online'
-                            ? 'border-emerald-500/30 bg-emerald-500/[0.03]'
-                            : 'border-border/60 bg-muted/20'
+                        ? 'border-red-500/20 bg-red-500/5'
+                        : cert.node_status === 'online'
+                          ? 'border-emerald-500/30 bg-emerald-500/[0.03]'
+                          : 'border-border/60 bg-muted/20'
                         }`}
                     >
                       <div className="flex items-start justify-between gap-6">
@@ -1003,8 +1003,8 @@ function UsersPage() {
 
                             <div className="flex items-center gap-2">
                               <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider ${cert.node_status === 'online'
-                                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                                  : 'bg-muted text-muted-foreground border border-border'
+                                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                                : 'bg-muted text-muted-foreground border border-border'
                                 }`}>
                                 <span className={`w-1.5 h-1.5 rounded-full ${cert.node_status === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
                                 {cert.node_status}
