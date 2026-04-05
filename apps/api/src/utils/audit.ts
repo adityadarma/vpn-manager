@@ -47,6 +47,13 @@ export async function logAudit(
   }
 ) {
   try {
+    // Skip if user_id doesn't exist (stale JWT token after DB reset, etc.)
+    const userExists = await app.db('users').where({ id: options.userId }).first()
+    if (!userExists) {
+      app.log.warn(`[audit] Skipping audit log — user_id '${options.userId}' not found in users table`)
+      return
+    }
+
     await app.db('audit_logs').insert({
       id: uuidv7(),
       user_id: options.userId,

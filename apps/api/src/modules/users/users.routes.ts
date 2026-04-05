@@ -1052,27 +1052,16 @@ async function enqueueCcdTask(
 
   // Fetch network routes from all user's groups
   let extraLines: string[] = []
+  // Collect all group IDs for this user (needed per-node)
+  let userGroupIds: string[] = []
   if (userId) {
-    const groupIds = await app.db('user_groups')
+    userGroupIds = await app.db('user_groups')
       .where({ user_id: userId })
       .pluck('group_id') as string[]
-
-    if (groupIds.length > 0) {
-      const networks = await app.db('group_networks as gn')
-        .join('networks as n', 'gn.network_id', 'n.id')
-        .whereIn('gn.group_id', groupIds)
-        .distinct('n.cidr')
-        .pluck('n.cidr') as string[]
-
-      extraLines = cidrsToPushRoutes(networks)
-      if (extraLines.length > 0) {
-        app.log.info(`[ip-pool] Including ${extraLines.length} network route(s) in CCD for ${username}`)
-      }
-    }
   }
 
   const tasks = []
-  
+
   for (const node of onlineNodes) {
     // For wireguard support, fetch the user's generated public key if available
     let publicKey = undefined
@@ -1081,7 +1070,32 @@ async function enqueueCcdTask(
         .where({ user_id: userId, node_id: node.id })
         .first()
       if (cert && cert.client_cert) {
-        publicKey = cert.client_cert // Note: Wireguard public key is stored in client_cert field
+        publicKey = cert.client_cert
+      }
+    }
+
+    // Per-node network filtering:
+    // - Networks with node assignment → only push to matching nodes
+    // - Networks with NO node assignment → push to ALL nodes (global)
+    let nodeExtraLines = extraLines
+    if (userGroupIds.length > 0) {
+      const allGroupNetworks = await app.db('group_networks as gn')
+        .join('networks as n', 'gn.network_id', 'n.id')
+        .leftJoin('node_networks as nn', (builder: any) => {
+          builder.on('n.id', 'nn.network_id').andOn('nn.node_id', app.db.raw('?', [node.id]))
+        })
+        .whereIn('gn.group_id', userGroupIds)
+        .select('n.cidr', 'nn.node_id')
+
+      const filteredCidrs: string[] = [...new Set(
+        (allGroupNetworks as Array<{ cidr: string; node_id: string | null }>)
+          .filter((row) => row.node_id === null || row.node_id === node.id)
+          .map((row) => row.cidr)
+      )]
+
+      nodeExtraLines = cidrsToPushRoutes(filteredCidrs)
+      if (nodeExtraLines.length > 0) {
+        app.log.info(`[ip-pool] Node ${node.hostname}: pushing ${nodeExtraLines.length} network route(s) for ${username}`)
       }
     }
 
@@ -1089,7 +1103,7 @@ async function enqueueCcdTask(
       id: uuidv7(),
       node_id: node.id,
       action: 'write_client_ccd',
-      payload: JSON.stringify({ username, vpn_ip: vpnIp, netmask, extra_lines: extraLines, public_key: publicKey }),
+      payload: JSON.stringify({ username, vpn_ip: vpnIp, netmask, extra_lines: nodeExtraLines, public_key: publicKey }),
       status: 'pending',
       created_at: new Date(),
     })
