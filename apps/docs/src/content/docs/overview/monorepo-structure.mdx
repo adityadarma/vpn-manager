@@ -1,0 +1,58 @@
+---
+title: Monorepo Architecture
+description: Jelajah struktur utama proyek VPN Manager yang menggunakan basis monorepo Turborepo.
+---
+
+VPN Manager menerapkan pendekatan arsitektur **Monorepo** yang dikelola menggunakan **Turborepo** dan **pnpm workspaces**. Keputusan arsitektur ini mempermudah kolaborasi pengembangan, linting, formatting, dan eksekusi lintas layanan dalam satu perintah (seperti `pnpm dev`).
+
+## Struktur Folder
+
+Hierarki utama repositori terdiri dari `apps/` untuk service yang berjalan secara aktif, dan `packages/` untuk _library_ atau _shared code_.
+
+```ascii
+vpn-manager/
+├── apps/
+│   ├── web/        (Frontend Dashboard VPN)
+│   ├── api/        (Main Backend Server - Fastify)
+│   ├── agent/      (Service Worker / Agent eksekutor VPN)
+│   └── docs/       (Portal Dokumentasi ini - Astro)
+├── packages/
+│   └── db/         (Manajemen Skema DB via Knex.js & SQLite)
+└── package.json
+```
+
+---
+
+## 1. apps/web 🖥️
+Aplikasi _Single Page Application (SPA)_ yang memberikan antarmuka visual bagi admin dan user akhir.
+- **Framework Utama:** React, **Vite** (via `@vitejs/plugin-react`)
+- **Routing:** Tanstack Router (untuk navigasi yang _type-safe_)
+- **Styling:** Tailwind CSS V4 + Lucide React + Radix UI Primitives 
+- **Fungsi:** Dashboard admin untuk kelola user, jaringan, status online Node VPN, serta page bagi *end-user* yang ingin men-download sertifikat / konfigurasi VPN miliknya.
+
+## 2. apps/api ⚙️
+_Backend Gateway_ yang menyimpan hampir 100% dari *business logic* terpusat.
+- **Framework Utama:** Fastify (berfokus pada _high performance_)
+- **Database driver:** Better-SQLite3 (kencang dan beroperasi di *memory/disk* minimalis).
+- **Fungsi:** Menyediakan RESTFul API untuk `web`, mengolah JWT Authentication, mengatur hak akses Group/Networking (RBAC), serta memproduksi Queue *tasks* (`db('tasks')`) untuk dieksekusi oleh Agen.
+
+## 3. apps/agent 🚀
+Penghubung *low-level* antara Database Logika API dengan Sistem Operasi Server Linux tempat **OpenVPN / WireGuard** terinstall.
+- **Teknologi:** Node.js murni (*daemonized*)
+- **Fungsi:** 
+  - Agen melakukan siklus *polling* ke database API untuk mengambil instruksi (`tasks`) seperti: `create_user`, `revoke_user`, `write_client_ccd`, atau `update_server_config`.
+  - Agen membaca instruksi tersebut dan mengubah file biner mesin (seperti merubah `wg0.conf` / menambahkan file `ccd` OpenVPN).
+  - Agen merekam status koneksi, detak jantung server, bandwith usage, dan memutakhirkannya (sinkronisasi) kembali ke API.
+
+## 4. apps/docs 📖
+Pusat ensiklopedia informasi proyek seperti yang sedang Anda baca ini.
+- **Framework Utama:** Astro dengan plugin **Starlight**
+
+## 5. packages/db 🗄️
+Isolasi area khusus *persistence* dan data model.
+- **Teknologi Utama:** **Knex.js**
+- **Fungsi:** Tempat menyimpan _Migrations_ secara runut. Alih-alih setiap service membuat skema databasenya sendiri, pengembang mendelegasikan perintah `pnpm db:migrate` agar database terbentuk utuh sekaligus.
+
+---
+
+Cakupan **Monorepo** begini mendemonstrasikan bahwa *Single Source of Truth* dapat terjaga dari level Schema Database → API Backend → Eksekusi OS Agen → Visualisasi Dashboard.

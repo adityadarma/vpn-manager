@@ -1,0 +1,57 @@
+---
+title: RBAC & Network Routing
+description: Pahami bagaimana hubungan antara Node, Network, Group, dan User dalam ekosistem VPN Manager.
+---
+
+VPN Manager dirancang menggunakan arsitektur **Role-Based Network Access Control (RBAC)** di mana hak akses dan routing jaringan diatur secara bertingkat. Panduan ini menjelaskan bagaimana entitas-entitas saling berinteraksi, dan bagaimana sistem menerjemahkan relasi ini ke dalam bentuk konfigurasi VPN.
+
+## Entitas Utama
+
+Sistem ini memiliki 4 pilar utama pendelegasian akses:
+
+1. **User (Pengguna):** Pengguna akhir yang akan melakukan koneksi VPN dari perangkatnya.
+2. **Group (Grup):** Wadah untuk mengklasifikasikan `User` sesuai divisinya, sekaligus perantara untuk memberikan daftar `Network` yang boleh diakses.
+3. **Network (Jaringan):** Target jaringan atau subnet CIDR (contoh: `10.0.1.0/24`, `172.31.0.0/16`) yang boleh dituju oleh klien VPN.
+4. **Node (Server VPN):** Instance atau *virtual machine* aktual (seperti server AWS, DO, dll) tempat engine WireGuard atau OpenVPN berjalan.
+
+---
+
+## Logika Relasional
+
+### 1. User ↔ Group
+Seorang pengguna dapat bergabung dalam **banyak** grup.
+- Contoh: Budi masuk ke grup `IT Engineer` dan `Staff`.
+
+### 2. Group ↔ Network
+Grup digunakan untuk mendistribusikan daftar **Network** (rute IP) yang diizinkan untuk diakses.
+- Contoh: Grup `IT Engineer` diizinkan masuk ke `172.31.0.0/16` (AWS VPC). Grup `Staff` ke `10.0.1.0/24` (Kantor Pusat).
+- Ketika Budi login, ia **otomatis** mewarisi gabungan dari semua jaringan milik grup-grupnya.
+
+### 3. Node ↔ Network (Penugasan Spesifik Node)
+Tidak semua node (server VPN) di seluruh dunia memiliki akses fisik (routing table mesin host) ke semua *Network*. Oleh karenanya, sistem memperkenalkan fitur **Penugasan Node-ke-Network**.
+
+- **Network Spesifik (Assigned):** Jika sebuah `Network` ditugaskan ke salah satu `Node`, maka informasi rute ini **HANYA** akan di-*push* ke klien apabila klien tersebut terkoneksi via `Node` yang dimaksud.
+  > Contoh kasus: Network `AWS DB (10.150.0.0/24)` hanya bisa dihubungi lewat node yang berada di AWS Singapura. Maka, Assign _"Node AWS SG"_ ke network tersebut. Klien yang konek lewat _"Node lokal Jakarta"_ tidak akan mendapat rute tersebut.
+- **Network Global:** Jika sebuah `Network` **DIPOSISIKAN KOSONG** (tidak ditarik ke `Node` manapun), rute ID tersebut dianggap global dan akan selalu diberikan pada instruksi routing koneksi di **SEMUA Node**.
+
+---
+
+## Output Eksekusi berdasarkan Tipe VPN
+
+Setiap kali Anda menugaskan (assign) / mencabut Network dari Group atau Node, sistem langsung memproses secara *real-time* modifikasi konfigurasinya.
+
+### Apabila Menggunakan OpenVPN
+Bagi OpenVPN, delegasi akses dieksekusi **on the fly (dinamis)** menggunakan kombinasi:
+
+1. **CCD (Client Config Dir):** 
+   Setiap klien yang berhasil login, Node dari VPN akan memegang *file CCD* (misal: `/etc/openvpn/ccd/budi`). Sistem akan menulis resep routing-nya: `push "route 172.31.0.0 255.255.0.0"`.
+2. **Server config update:** 
+   Agar OS server OpenVPN mengerti jaringan tersebut adalah *endpoint tunnel*, sistem otomatis mendepak task `update_server_config` memasukkan `route 172.31.0.0 255.255.0.0` pada `/etc/openvpn/server/server.conf`.
+
+### Apabila Menggunakan WireGuard
+Berbeda dari OpenVPN, WireGuard bekerja dengan metode rute statis dalam skema `AllowedIPs`.
+1. **Filter Pengunduhan Konfigurasi (`wg0.conf`):** 
+   Ketika pengguna mengunduh atau men-generate *Client Config* dari peramban dashboard, API akan merekonstruksi daftar IP.
+2. **Mengecek Kecocokan Node:**
+   API secara pintar melacak _"Hey, user ini menelusuri WG config untuk Node SG."_ — Alhasil, konfigurasi WireGuard ini hanya akan diberikan daftar `AllowedIPs = ...` untuk CIDR grup yang memang terikat ke _Node SG_ ataupun _berstatus global_. 
+3. Konfigurasi Client tertata apik, OS klien *hanya* akan melempar traffic yang secara logis nyambung ke WireGuard Peer server-nya, terhindar dari salah jalur.

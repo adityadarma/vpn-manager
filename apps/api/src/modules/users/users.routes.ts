@@ -909,15 +909,24 @@ const userRoutes: FastifyPluginAsync = async (app) => {
           }
         }
 
-        // 2. Add explicit target Networks
-        const networks = await app.db('group_networks as gn')
+        // 2. Add explicit target Networks (Filtered by Node Assignment)
+        const allTargetNetworks = await app.db('group_networks as gn')
           .join('networks as n', 'gn.network_id', 'n.id')
+          .leftJoin('node_networks as nn', function(this: any) {
+            this.on('n.id', 'nn.network_id').andOn('nn.node_id', app.db.raw('?', [node.id]))
+          })
           .whereIn('gn.group_id', userGroupIds)
-          .select('n.cidr', 'n.name')
-          .distinct('n.cidr')
-        if (networks.length > 0) {
-          splitCidrs.push(...networks.map((n: { cidr: string }) => n.cidr))
-          const routeComments = networks.map((n: { cidr: string; name: string }) =>
+          .select('n.cidr', 'n.name', 'nn.node_id')
+
+        // Keep CIDR if: no node assigned (global) OR this node is assigned
+        const filteredNetworks = allTargetNetworks.filter((row: any) => row.node_id === null || row.node_id === node.id)
+
+        if (filteredNetworks.length > 0) {
+          // Remove duplicate CIDRs in case multiple groups share the same network
+          const uniqueNetworks = Array.from(new Map(filteredNetworks.map((item: any) => [item.cidr, item])).values()) as any[]
+          
+          splitCidrs.push(...uniqueNetworks.map((n) => n.cidr))
+          const routeComments = uniqueNetworks.map((n) =>
             `# ${n.name}: ${n.cidr}\n${cidrToRoute(n.cidr)}`
           ).join('\n')
           routeLines = `\n# Split-tunnel routes (from group network assignments)\n${routeComments}\n`

@@ -1,0 +1,29 @@
+---
+title: Agent & Executor Model
+description: Cara kerja sistem Agent secara daemon pada OS mesin dalam menjembatani OpenVPN dan WireGuard.
+---
+
+`apps/agent` adalah peranti penggerak (*daemons*) yang berdiri mandiri terpisah dengan pusat Backend Web API. Kode pada agent berjalan selayaknya "Robot Eksekutor".
+
+Ia di-*install* atau dipancangkan tegak langsung pada mesin-mesin Linux target di lapangan (AWS, GCP, Digital Ocean) yang berperan memancarkan sinyal VPN lokal.
+
+## Arsitektur Driver-Abstractions
+
+Paham dengan realita ragam dan evolusi kebutuhan sistem, VPN Agent menepis paksaan menempel kuat dengan spesifikasi 1 *Engine VPN* tunggal. Komponen *handler/-driver* membungkus ragam Engine ini agar bertingkah layaknya "Satu Pintu Layanan Universal":
+
+1. **OpenVPN Driver (`openvpn.driver.ts`)**: Terhubung dengan VPN melancarkan *Telnet Protocol* memanfaatkan management port (misal 127.0.0.1:7505). Metode ini paling stabil dan dinamis untuk membaca data live bandwidth secara *real-time stream* dan menendang (*kill*) user via port itu secara efisien.
+2. **WireGuard Driver (`wireguard.driver.ts`)**: Lebih bergantung kepada perintah *CLI Shell (execOS)* — menggunakan peranti asli perintah bash milik ekosistem OS Wireguard seperti `wg-quick` maupun `wg show dum`.
+
+Kedua kasta Engine yang berbeda ini dililit dalam satu abstraksi pabrik driver `createVpnDriver(env)`.
+
+## Task Executor & Polling Schedulers
+
+### 1. Polling Task Engine
+Agent secara terus-menerus menarik API eksternal (via HTTP request) yang meminta "Apakah Bos Pusat menugaskan sesuatu kepada ID Node-ku ini?". Permintaan ke API ini dinamakan sinkronisasi task. Ragam yang umumnya diambil dari Database Task berstatus *"pending"* meliputi:
+- `create_user` = Memanggil *EasyRSA/Shell* untuk meramu Certificate `.crt`
+- `revoke_user` = Mencabut kredensial (`SIGHUP` reload + `kick`)
+- `write_client_ccd` = Menabur resep jalur statik subnet di Client Config Dir miliknya
+- `update_server_config` = Modifikasi total berkas biner `.conf` milik Server
+
+### 2. Connection Metrics / Status Heartbeat
+Setiap sekian detik (contoh *20.000 ms* interval), agent juga menyedot lalu lalang bandwidth log di server lokal, serta siapa saja Common Name User yang online dan terputus. Metrik kasar ini dipoles lalu diserahkan rapi balik ke API `PUT /api/v1/nodes/:id/heartbeat`. Pada detik inilah dashboard di luar sana akhirnya di-rekap pergerakan *online* statistiknya secara *live-delay*!

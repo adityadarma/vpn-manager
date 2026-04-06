@@ -1,0 +1,29 @@
+---
+title: Frontend Web Dashboard
+description: Penafsiran visual interaktif dari Single Page Application VPN Manager.
+---
+
+Keseluruhan antarmuka pengguna direpresentasikan dan dirakit pada direktori `apps/web`. Frontend kita diciptakan atas fondasi **Vite** dan dihiasi secara komprehensif menggunakan **React 18** bersanding kencang dengan metode routing _client-side_ yang revolusioner dari kematangan skema ekosistem **Tanstack**.
+
+## Paradigma Styling Visual & Desain UI
+Platform kami tidak tergesa-gesa dalam komitmen penulisan murni _native CSS_ berlapis rumit. Tatanan styling ditanggung dominan oleh **Tailwind CSS v4** menggaransi utilitas _class-based_ yang konsisten (*Atomic Patterning*). 
+
+- **Radix UI Primitives:** Segala unsur interaktif yang butuh manipulasi layar mengambang tajam dan menuntut validasi aksesibilitas ARIA (*Dropdowns, Navbars, Tooltips, Modals*) diotaki oleh Radix. Melahirkan kemudahan *Keyboard Navigasi* out-of-the-box.
+- **Lucide Icons:** Ikon minimalistik, proporsional, serta _scalable_.
+
+Dua perpaduan estetik ini membungkus *Dashboard* Anda bak sebuah Panel Perusahaan kelas atas (*Sleek, Premium, Responsive*).
+
+## State Management lewat React Query
+Pernah bertanya mengapa perpindahan satu menu (misal tabel Node ke tabel User) tidak membuat halaman termuat kosong / loading terus kembali? 
+Atau saat pengguna membuat jaringan _Network_ baru dan menugaskannya, list Node di layar serta-merta bergeser menyesuaikan nilai barunya?
+
+Mekanisme cermin sinkron ini ditangani terpusat oleh **@tanstack/react-query**.
+- Metrik koneksi di-fetch dengan `useQuery` _(Cache Policy)_.
+- Aksi krusial tendang API (*Disconnect / Revoke*) membungkusnya pada `useMutation` di mana setelah tersentuh ia segera menerbangkan perintah `qc.invalidateQueries([...])` menandakan validitas lama rontok memicu pembaruan layar otomatis tanpa mereset DOM HTML murni.
+
+## Arsitektur Type-Safe Routing (TanStack Router)
+Bergeser dari React Router kuno ke TanStack Router; aplikasi tidak akan terjebak kompilasi (*Failed build*) semprot tanpa kebetulan jika seorang pengembang tak sengaja mengetik parameter dinamis atau URI tujuan halaman acak (`/users/:id`). 
+Astro menjamin integrasi rute file-tree kami mutlak di-*generate* *schema-type* TypeScript-nya, membuat navigasi seakan dilinting langsung saat *coding*.
+
+## Autentikasi Frontend
+Sikap web tidak menyimpan token kredensial (*JWT*) langsung dengan telanjang di dalam sandi DOM localStorage (yang rentan diakses script mencurigakan / *XSS Attack*). Segala komunikasi aman diwakilkan kepada pertukaran *HTTPOnly Cookies* dari interceptor Axios global `api.ts`, memperkuat benteng lapisan browser.

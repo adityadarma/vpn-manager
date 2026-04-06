@@ -1,0 +1,30 @@
+---
+title: Database Schema \& Migrations
+description: Penjelasan alur pusat penyimpanan entitas dan perpindahan logika schema.
+---
+
+VPN Manager meniadakan kerumitan eksekusi sinkronisasi skema melalui paket isolasi khususnya di `packages/db`. Basis utama penggerak data kita diikat solid oleh **SQLite 3** berbalutkan kompilator kencang `better-sqlite3`.
+
+Keuntungan utama skema isolasi ini adalah setiap servis (Frontend lewat Node.js lokal, Back-end API pusat, dll) tunduk pada satu format *Type-Scheme* yang tunggal.
+
+## Kerangka Tabel Migrasi Utama
+
+1. **`users`**: Entri rahasia kredensial pengelola dan pengguna akhir. Menyipan hash Password, token login, dan informasi `vpn_ip` global.
+2. **`vpn_nodes`**: Daftar semua *Server Fisik/Virtual* Wireguard dan OpenVPN yang telah dikenalkan kepada Dashboard Pusat.
+3. **`networks` & `groups`**: Repositori pusat pengaturan hak akses *Role Based Network*. (Lihat dokumentasi RBAC di Navigasi).
+4. **`tasks`**: Penyelamat asinkronisasi antar-server. Saat API merequest restart konfigurasi, API cukup memahat _String Parameter_ pada tabel ini di barisan *"pending"*. Agent lantas secara berkala membongkar isi task ini lalu membakarnya (Ubah ke *"completed" / "failed"*).
+5. **`user_node_certificates`**: Bank penyimpan konfigurasi Client-Server Certificate atau *Public Key*. 
+6. **`audit_logs` & `vpn_sessions`**: Buku laporan abadi (Tracking History). Kapan seorang *budi* mendownload konfigurasinya, ganti port server mana, hingga durasi di server tertentu (*Connection Attempts*).
+ 
+## Penambahan Fungsionalitas Skema
+Setiap perubahan logika pada database dikontrol versi secara ketat layaknya git branch (sebutan migrasi/migration). 
+
+Contoh riwayat migrasi kita:
+- `001_create_users.ts` s.d `005_create_certificates.ts` : Konsepsi Inti
+- Secara perlahan mekar melanglang buana, seperti penambahan _Firewall Rules_ pada `019_add_firewall_rules_to_nodes.ts`.
+
+Untuk menjalankan sinkronisasi ulang (*Setup Server Baru*), jalankan perintah magis terminal ini yang diputar melalui bantuan **knex.js**:
+```bash
+pnpm db:migrate
+```
+Bim salabim! Segala struktur, tipe indeks, _Foreign key restrict_, dan referensi *Cascade Delete* akan terkonstruksi otomatis pada sistem SQL baru Anda.

@@ -1,0 +1,31 @@
+---
+title: API Backend Services
+description: Penjelasan mengenai arsitektur logika dan routing Fastify pada server API.
+---
+
+Komponen `apps/api` berfungsi sebagai "Otak Utama" (Central Controller) atas seluruh alur data VPN Manager. Karena ia melayani *request* dari browser Dashboard dan juga bertugas menciptakan instruksi bagi agen VPN, kecepatan komputasinya sangat krusial.
+
+Oleh karena itu, modul ini diarsiteki dengan **Fastify** — salah satu kerangka kerja web Node.js yang memegang titel pelopor pada *high-processing* throughput.
+
+## Skema & Modularisasi Routing
+
+Daripada seluruh fungsi didaftarkan dalam titik index terpusat, sistem ini membelah kapabilitas ke dalam sub-router fungsional (Modular Routes). Bisa ditemukan pada path `apps/api/src/modules/`:
+
+- **/auth**: Validasi identitas pengguna (memegang rute Login dan JWT token issuance).
+- **/users**: Mengatur manajemen lifecycle pengguna (pembuatan user, reset password, hapus, manajemen profil, dan pembuatan `user_node_certificates`).
+- **/groups**: Layanan yang memanipulasi *Role-Group* untuk menentukan kewenangan lintas platform.
+- **/networks**: Pilihan pemisahan subnet atau jalur khusus spesifik yang nantinya dipanggil untuk mengkompilasi file konfigurasi Client (`download_config`).
+- **nodes**: Berfokus menempelkan pengawasan mesin agen (polling / detak jantung Heartbeat). Di sini pulalah task konfigurasi dan trigger tendangan (*kick session*) terjadi.
+- **/dashboard**: Berisi koleksi rekapan dan status ringkas metrik koneksi seluruh entitas untuk keperluan rekap pada monitor web (Summary Counts & Uptime).
+
+## Otentikasi dan Keamanan
+Keseluruhan endpoint (hampir 95%) dilindungi middleware autentikasi *HTTP-only* cookie, memblokir pengintaian *Cross-Site Scripting (XSS)* dari sisi web SPA. 
+
+Setiap interaksi HTTP yang bersifat mengubah kondisi mesin di API, ditangkap rekam jejak historisnya pada helper `audit.ts` dan tumpah ke dalam tabel `audit_logs` — memudahkan admin melacak gerak-gerik penyusup atau modifikasi yang salah.
+
+## Pemrosesan "Task Event" (State Management)
+API ini bersifat merengkuh **Paradigma Asynchronous Tasks**. 
+
+Alih-alih API memaksa koneksi langsung (*SSH* misalnya) kepada Node Agent untuk mencabut pengguna, API akan "Melempar Antrian Pesan". Yaitu mencatat record di tabel `tasks` (Contoh `action: 'revoke_user'`, `node_id: X`). 
+
+Agent yang hidup di bawah *Node X* itulah yang bertugas mendeteksi task baru dan mengeksekusinya. Berkat teknik *stateless-polling* begini, bila agent mati (offline sementara), perintah tendang/pencabutan dari API tidak akan error/menggantung, instruksi dijaga rapi hingga agent bangun dan merapihkan logikanya kelak (*Resilient Architecture*).
