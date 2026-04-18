@@ -70,20 +70,23 @@ export async function buildApp(env: Env) {
     await app.register(staticPlugin)
   }
 
-  // Start node status checker
-  const nodeStatusChecker = new NodeStatusChecker(
-    db,
-    60000,  // Check every 1 minute
-    120000  // Mark offline after 2 minutes without heartbeat
-  )
-  nodeStatusChecker.start()
+  // Background schedulers are disabled in tests to keep test DB setup deterministic.
+  const shouldStartSchedulers = env.NODE_ENV !== 'test'
+  let nodeStatusChecker: NodeStatusChecker | null = null
 
-  // Start certificate renewal scheduler
-  startCertRenewalScheduler(db)
+  if (shouldStartSchedulers) {
+    nodeStatusChecker = new NodeStatusChecker(
+      db,
+      60000,  // Check every 1 minute
+      120000  // Mark offline after 2 minutes without heartbeat
+    )
+    nodeStatusChecker.start()
+    startCertRenewalScheduler(db)
+  }
 
   // Cleanup on shutdown
   app.addHook('onClose', async () => {
-    nodeStatusChecker.stop()
+    nodeStatusChecker?.stop()
     await db.destroy()
   })
 

@@ -124,20 +124,46 @@ export class WireGuardDriver extends EventEmitter implements VpnDriver {
     return clients
   }
 
+  private async resolvePeerPublicKey(commonName: string): Promise<string> {
+    const normalized = commonName.trim()
+    if (!normalized) {
+      throw new Error('Missing peer identifier')
+    }
+
+    // Full public key is typically 44 chars base64 and ends with "=".
+    if (normalized.length >= 40) {
+      return normalized
+    }
+
+    const { stdout } = await execAsync(`wg show ${this.interfaceName} dump`)
+    const lines = stdout.trim().split('\n').slice(1) // Skip interface row
+    const matches: string[] = []
+
+    for (const line of lines) {
+      const parts = line.split('\t')
+      const publicKey = parts[0]?.trim()
+      if (!publicKey) continue
+
+      if (publicKey.startsWith(normalized)) {
+        matches.push(publicKey)
+      }
+    }
+
+    if (matches.length === 0) {
+      throw new Error(`No WireGuard peer found for identifier: ${normalized}`)
+    }
+    if (matches.length > 1) {
+      throw new Error(`Ambiguous peer identifier: ${normalized} (matched ${matches.length} peers)`)
+    }
+
+    return matches[0]
+  }
+
   async disconnectClient(commonName: string): Promise<void> {
     try {
-      // WireGuard doesn't have a direct "disconnect" command
-      // We need to remove the peer temporarily
-      // Note: This requires the full public key, not just commonName
-      // In production, you'd need to maintain a mapping of commonName -> publicKey
-      
-      console.warn('[wireguard-driver] WireGuard disconnect requires full public key')
-      console.warn('[wireguard-driver] Implement peer removal based on your key management')
-      
-      // Example (if you have the public key):
-      // await execAsync(`wg set ${this.interfaceName} peer ${publicKey} remove`)
-      
-      throw new Error('WireGuard disconnect not fully implemented - requires public key mapping')
+      const publicKey = await this.resolvePeerPublicKey(commonName)
+      await execAsync(`wg set ${this.interfaceName} peer ${publicKey} remove`)
+      console.log(`[wireguard-driver] Removed peer ${publicKey.substring(0, 16)}... from ${this.interfaceName}`)
     } catch (err) {
       throw new Error(`Failed to disconnect client ${commonName}: ${(err as Error).message}`)
     }

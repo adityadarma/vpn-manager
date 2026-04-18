@@ -135,6 +135,12 @@ const auditRoutes: FastifyPluginAsync = async (app) => {
 
       // Get total count
       const countResult = await app.db('connection_attempts')
+        .modify((qb: any) => {
+          if (query.user_id) qb.where('user_id', query.user_id)
+          if (query.real_ip) qb.where('real_ip', query.real_ip)
+          if (query.failure_reason) qb.where('failure_reason', query.failure_reason)
+          if (query.from_date) qb.where('attempted_at', '>=', query.from_date)
+        })
         .count('* as count')
         .first()
 
@@ -166,14 +172,18 @@ const auditRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(403).send({ error: 'Forbidden', message: 'Admin access required' })
       }
       // Total attempts last 24h
+      const last24hDate = new Date(Date.now() - (24 * 60 * 60 * 1000))
+      const last7dDate = new Date(Date.now() - (7 * 24 * 60 * 60 * 1000))
+
+      // Total attempts last 24h
       const last24h = await app.db('connection_attempts')
-        .where('attempted_at', '>=', app.db.raw("datetime('now', '-1 day')"))
+        .where('attempted_at', '>=', last24hDate)
         .count('* as count')
         .first()
 
       // By failure reason
       const byReason = await app.db('connection_attempts')
-        .where('attempted_at', '>=', app.db.raw("datetime('now', '-7 days')"))
+        .where('attempted_at', '>=', last7dDate)
         .groupBy('failure_reason')
         .select(
           'failure_reason',
@@ -183,7 +193,7 @@ const auditRoutes: FastifyPluginAsync = async (app) => {
 
       // Top IPs with failed attempts
       const topIPs = await app.db('connection_attempts')
-        .where('attempted_at', '>=', app.db.raw("datetime('now', '-7 days')"))
+        .where('attempted_at', '>=', last7dDate)
         .groupBy('real_ip')
         .select(
           'real_ip',
@@ -195,7 +205,7 @@ const auditRoutes: FastifyPluginAsync = async (app) => {
 
       // Top usernames targeted
       const topUsernames = await app.db('connection_attempts')
-        .where('attempted_at', '>=', app.db.raw("datetime('now', '-7 days')"))
+        .where('attempted_at', '>=', last7dDate)
         .groupBy('username')
         .select(
           'username',

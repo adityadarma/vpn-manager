@@ -3,6 +3,28 @@ import { v7 as uuidv7 } from 'uuid'
 import { TaskResultSchema } from '@vpn/shared'
 
 const taskRoutes: FastifyPluginAsync = async (app) => {
+  const authenticateNodeToken = async (request: any, reply: any) => {
+    const authHeader = request.headers.authorization
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      reply.status(401).send({ error: 'Unauthorized', message: 'Node token required' })
+      return null
+    }
+
+    const token = authHeader.substring(7).trim()
+    if (!token) {
+      reply.status(401).send({ error: 'Unauthorized', message: 'Node token required' })
+      return null
+    }
+
+    const node = await app.db('vpn_nodes').where({ token }).first()
+    if (!node) {
+      reply.status(401).send({ error: 'Unauthorized', message: 'Invalid node token' })
+      return null
+    }
+
+    return node
+  }
+
   // GET /api/v1/tasks  — list all tasks
   app.get(
     '/tasks',
@@ -87,6 +109,9 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
       }
     },
     async (request, reply) => {
+      const authenticatedNode = await authenticateNodeToken(request, reply)
+      if (!authenticatedNode) return
+
       const { id } = request.params
       app.log.info(`[tasks] Received result for task ${id}`)
       app.log.info(`[tasks] Body: ${JSON.stringify(request.body)}`)
@@ -97,6 +122,10 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
       if (!task) {
         app.log.warn(`[tasks] Task ${id} not found`)
         return reply.status(404).send({ error: 'Not Found', message: 'Task not found' })
+      }
+      if (task.node_id !== authenticatedNode.id) {
+        app.log.warn(`[tasks] Node ${authenticatedNode.id} attempted to update task ${id} owned by ${task.node_id}`)
+        return reply.status(403).send({ error: 'Forbidden', message: 'Task does not belong to this node' })
       }
 
       await app.db('tasks').where({ id }).update({

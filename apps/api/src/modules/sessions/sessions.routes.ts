@@ -3,6 +3,13 @@ import { v7 as uuidv7 } from 'uuid'
 import { logAudit, getClientIp } from '../../utils/audit'
 
 const sessionRoutes: FastifyPluginAsync = async (app) => {
+  const dbClient = String(app.db.client.config.client || '')
+  const durationSecondsExpr = dbClient.includes('pg')
+    ? app.db.raw('EXTRACT(EPOCH FROM (NOW() - s.connected_at))::integer as duration_seconds')
+    : dbClient.includes('mysql')
+      ? app.db.raw('TIMESTAMPDIFF(SECOND, s.connected_at, NOW()) as duration_seconds')
+      : app.db.raw("CAST((julianday('now') - julianday(s.connected_at)) * 86400 AS INTEGER) as duration_seconds")
+
   // GET /api/v1/sessions  — active sessions with enhanced details
   app.get(
     '/sessions',
@@ -30,7 +37,7 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
           's.bytes_received',
           's.connected_at',
           's.last_activity_at',
-          app.db.raw("CAST((julianday('now') - julianday(s.connected_at)) * 86400 AS INTEGER) as duration_seconds"),
+          durationSecondsExpr,
         )
         .orderBy('s.connected_at', 'desc')
     },
@@ -144,6 +151,9 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
     '/sessions/stats',
     { onRequest: [app.authenticate], schema: { tags: ['sessions'], summary: 'Session statistics', security: [{ bearerAuth: [] }] } },
     async () => {
+      const last24h = new Date(Date.now() - (24 * 60 * 60 * 1000))
+      const last7d = new Date(Date.now() - (7 * 24 * 60 * 60 * 1000))
+
       // Active sessions count
       const activeCount = await app.db('vpn_sessions')
         .whereNull('disconnected_at')
@@ -152,13 +162,13 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
 
       // Total sessions today
       const todayCount = await app.db('vpn_sessions')
-        .where('connected_at', '>=', app.db.raw("datetime('now', '-1 day')"))
+        .where('connected_at', '>=', last24h)
         .count('* as count')
         .first()
 
       // Total bandwidth today
       const todayBandwidth = await app.db('vpn_sessions')
-        .where('connected_at', '>=', app.db.raw("datetime('now', '-1 day')"))
+        .where('connected_at', '>=', last24h)
         .sum('bytes_sent as sent')
         .sum('bytes_received as received')
         .first()
@@ -166,14 +176,14 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
       // Average session duration (last 24h)
       const avgDuration = await app.db('vpn_sessions')
         .whereNotNull('disconnected_at')
-        .where('connected_at', '>=', app.db.raw("datetime('now', '-1 day')"))
+        .where('connected_at', '>=', last24h)
         .avg('connection_duration_seconds as avg')
         .first()
 
       // Top users by bandwidth (last 7 days)
       const topUsers = await app.db('vpn_sessions as s')
         .join('users as u', 's.user_id', 'u.id')
-        .where('s.connected_at', '>=', app.db.raw("datetime('now', '-7 days')"))
+        .where('s.connected_at', '>=', last7d)
         .groupBy('s.user_id', 'u.username')
         .select(
           's.user_id',

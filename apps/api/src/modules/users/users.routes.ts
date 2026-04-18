@@ -6,6 +6,13 @@ import { nextAvailableIp, getNetmask, cidrToRoute, cidrsToPushRoutes } from '../
 import { logAudit, getClientIp } from '../../utils/audit'
 
 const userRoutes: FastifyPluginAsync = async (app) => {
+  const dbClient = String(app.db.client.config.client || '')
+  const groupConcatExpr = dbClient.includes('pg')
+    ? app.db.raw("string_agg(g.name, ',') as current_groups")
+    : dbClient.includes('mysql')
+      ? app.db.raw("GROUP_CONCAT(g.name SEPARATOR ',') as current_groups")
+      : app.db.raw('GROUP_CONCAT(g.name) as current_groups')
+
   // GET /api/v1/users
   app.get(
     '/users',
@@ -17,9 +24,19 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         .select(
           'u.id', 'u.username', 'u.email', 'u.role', 'u.is_active', 
           'u.last_login', 'u.last_vpn_connect', 'u.created_at', 'u.updated_at',
-          app.db.raw('GROUP_CONCAT(g.name) as current_groups')
+          groupConcatExpr
         )
-        .groupBy('u.id')
+        .groupBy(
+          'u.id',
+          'u.username',
+          'u.email',
+          'u.role',
+          'u.is_active',
+          'u.last_login',
+          'u.last_vpn_connect',
+          'u.created_at',
+          'u.updated_at',
+        )
 
       return usersWithGroups
     },

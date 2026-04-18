@@ -23,6 +23,28 @@ interface NodeConfig {
   firewall_engine: string
 }
 
+async function authenticateNodeToken(app: any, request: any, reply: any) {
+  const authHeader = request.headers.authorization
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    reply.status(401).send({ error: 'Unauthorized', message: 'Node token required' })
+    return null
+  }
+
+  const token = authHeader.substring(7).trim()
+  if (!token) {
+    reply.status(401).send({ error: 'Unauthorized', message: 'Node token required' })
+    return null
+  }
+
+  const node = await app.db('vpn_nodes').where({ token }).first()
+  if (!node) {
+    reply.status(401).send({ error: 'Unauthorized', message: 'Invalid node token' })
+    return null
+  }
+
+  return node
+}
+
 const nodeRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/v1/nodes
   app.get(
@@ -59,20 +81,8 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
     '/nodes/me',
     { schema: { tags: ['nodes'], summary: 'Get current node info (agent auth)', security: [{ bearerAuth: [] }] } },
     async (request, reply) => {
-      // Extract node token from Authorization header
-      const authHeader = request.headers.authorization
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return reply.status(401).send({ error: 'Unauthorized', message: 'Node token required' })
-      }
-
-      const token = authHeader.substring(7)
-      
-      // Find node by token
-      const node = await app.db('vpn_nodes').where({ token }).first()
-      
-      if (!node) {
-        return reply.status(401).send({ error: 'Unauthorized', message: 'Invalid node token' })
-      }
+      const node = await authenticateNodeToken(app, request, reply)
+      if (!node) return
 
       // Return node info without sensitive token
       const { token: _token, ...safeNode } = node
@@ -485,8 +495,17 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
   app.post(
     '/nodes/heartbeat',
     { schema: { tags: ['nodes'], summary: 'Agent heartbeat' } },
-    async (request) => {
+    async (request, reply) => {
+      const authenticatedNode = await authenticateNodeToken(app, request, reply)
+      if (!authenticatedNode) return
+
       const { nodeId, caCert, taKey, firewallRules, clients } = HeartbeatSchema.parse(request.body)
+      if (authenticatedNode.id !== nodeId) {
+        return reply.status(403).send({
+          error: 'Forbidden',
+          message: 'Token does not match nodeId in heartbeat payload'
+        })
+      }
       
       // Get current node status
       const currentNode = await app.db('vpn_nodes').where({ id: nodeId }).first()
@@ -783,7 +802,16 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
   app.get<{ Params: { id: string } }>(
     '/nodes/:id/tasks',
     { schema: { tags: ['nodes'], summary: 'Poll pending tasks for a node (agent)' } },
-    async (request) => {
+    async (request, reply) => {
+      const authenticatedNode = await authenticateNodeToken(app, request, reply)
+      if (!authenticatedNode) return
+      if (authenticatedNode.id !== request.params.id) {
+        return reply.status(403).send({
+          error: 'Forbidden',
+          message: 'Token does not match requested node id'
+        })
+      }
+
       const tasks = await app.db('tasks')
         .where({ node_id: request.params.id, status: 'pending' })
         .orderBy('created_at', 'asc')
