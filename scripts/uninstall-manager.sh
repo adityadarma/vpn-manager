@@ -3,11 +3,9 @@
 # VPN Manager - Production Uninstallation Script
 # ============================================================
 # This script removes VPN Manager installation
-# 
+#
 # Usage:
-#   Interactive: sudo ./uninstall-manager.sh
-#   Auto (full): sudo bash uninstall-manager.sh --full
-#   Auto (keep data): sudo bash uninstall-manager.sh --keep-data
+#   sudo bash uninstall-manager.sh
 # ============================================================
 
 set -e
@@ -20,18 +18,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 INSTALL_DIR="/opt/vpn-manager"
-
-# Parse arguments
-AUTO_MODE=false
 KEEP_DATA=false
-
-if [ "$1" = "--full" ]; then
-    AUTO_MODE=true
-    KEEP_DATA=false
-elif [ "$1" = "--keep-data" ]; then
-    AUTO_MODE=true
-    KEEP_DATA=true
-fi
 
 print_header() {
     echo -e "${RED}"
@@ -65,16 +52,27 @@ check_root() {
 }
 
 confirm_uninstall() {
-    if [ "$AUTO_MODE" = true ]; then
-        print_warning "Running in automatic mode"
-        return 0
-    fi
-    
     echo ""
-    print_warning "This will remove VPN Manager and optionally delete all data!"
+    print_warning "This will remove VPN Manager!"
     echo ""
-    read -p "Are you sure you want to continue? (yes/no): " confirm
-    
+    echo "Choose uninstall mode:"
+    echo "1) Full remove (delete containers, volumes, images, and install directory)"
+    echo "2) Keep data (delete containers and images, keep database volumes)"
+    read -p "Choice [1-2]: " uninstall_choice < /dev/tty
+
+    case $uninstall_choice in
+        2)
+            KEEP_DATA=true
+            print_info "Keeping data volumes"
+            ;;
+        *)
+            KEEP_DATA=false
+            print_info "Full remove selected"
+            ;;
+    esac
+
+    echo ""
+    read -p "Are you sure you want to continue? (yes/no): " confirm < /dev/tty
     if [ "$confirm" != "yes" ]; then
         print_info "Uninstallation cancelled"
         exit 0
@@ -86,7 +84,8 @@ stop_services() {
     
     if [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
         cd "$INSTALL_DIR"
-        docker compose down || true
+        # Stop all profiles so database containers are also removed
+        docker compose --profile postgres --profile mysql down || true
         print_success "Services stopped"
     else
         print_warning "docker-compose.yml not found, skipping service stop"
@@ -104,14 +103,9 @@ check_openvpn() {
 
 remove_openvpn() {
     if check_openvpn; then
-        if [ "$AUTO_MODE" = true ]; then
-            remove_vpn="yes"
-            remove_config="yes"
-        else
-            echo ""
-            print_warning "Detected OpenVPN installation (All-in-One mode)"
-            read -p "Do you want to remove OpenVPN and VPN Node? (yes/no): " remove_vpn
-        fi
+        echo ""
+        print_warning "Detected OpenVPN installation (All-in-One mode)"
+        read -p "Do you want to remove OpenVPN and VPN Node? (yes/no): " remove_vpn < /dev/tty
         
         if [ "$remove_vpn" = "yes" ]; then
             print_info "Removing OpenVPN..."
@@ -131,10 +125,8 @@ remove_openvpn() {
             
             print_success "OpenVPN removed"
             
-            if [ "$AUTO_MODE" = false ]; then
-                echo ""
-                read -p "Do you want to remove OpenVPN configuration and certificates? (yes/no): " remove_config
-            fi
+            echo ""
+            read -p "Do you want to remove OpenVPN configuration and certificates? (yes/no): " remove_config < /dev/tty
             
             if [ "$remove_config" = "yes" ]; then
                 print_info "Removing OpenVPN configuration..."
@@ -152,13 +144,12 @@ remove_openvpn() {
 }
 
 remove_volumes() {
-    if [ "$AUTO_MODE" = true ]; then
-        delete_data=$( [ "$KEEP_DATA" = true ] && echo "no" || echo "yes" )
+    if [ "$KEEP_DATA" = true ]; then
+        delete_data="no"
     else
-        echo ""
-        read -p "Do you want to delete all data (databases, volumes)? (yes/no): " delete_data
+        delete_data="yes"
     fi
-    
+
     if [ "$delete_data" = "yes" ]; then
         print_info "Removing Docker volumes..."
         
@@ -173,12 +164,8 @@ remove_volumes() {
 }
 
 remove_images() {
-    if [ "$AUTO_MODE" = true ]; then
-        remove_imgs="yes"
-    else
-        echo ""
-        read -p "Do you want to remove Docker images? (yes/no): " remove_imgs
-    fi
+    echo ""
+    read -p "Do you want to remove Docker images? (yes/no): " remove_imgs < /dev/tty
     
     if [ "$remove_imgs" = "yes" ]; then
         print_info "Removing Docker images..."
@@ -194,12 +181,8 @@ remove_images() {
 }
 
 backup_before_remove() {
-    if [ "$AUTO_MODE" = true ]; then
-        return 0
-    fi
-    
     echo ""
-    read -p "Do you want to create a backup before uninstalling? (yes/no): " create_backup
+    read -p "Do you want to create a backup before uninstalling? (yes/no): " create_backup < /dev/tty
     
     if [ "$create_backup" = "yes" ]; then
         if [ -f "$INSTALL_DIR/backup.sh" ]; then
@@ -213,11 +196,11 @@ backup_before_remove() {
 }
 
 remove_install_dir() {
-    if [ "$AUTO_MODE" = true ]; then
-        remove_dir="yes"
+    if [ "$KEEP_DATA" = true ]; then
+        remove_dir="no"
     else
         echo ""
-        read -p "Do you want to remove installation directory ($INSTALL_DIR)? (yes/no): " remove_dir
+        read -p "Do you want to remove installation directory ($INSTALL_DIR)? (yes/no): " remove_dir < /dev/tty
     fi
     
     if [ "$remove_dir" = "yes" ]; then
@@ -230,21 +213,17 @@ remove_install_dir() {
 }
 
 remove_cron_jobs() {
-    if [ "$AUTO_MODE" = true ]; then
-        remove_cron="yes"
+    print_info "Checking for cron jobs..."
+
+    if crontab -l 2>/dev/null | grep -q "vpn"; then
+        print_warning "Found VPN-related cron jobs"
+        echo ""
+        crontab -l | grep "vpn"
+        echo ""
+        read -p "Remove these cron jobs? (yes/no): " remove_cron < /dev/tty
     else
-        print_info "Checking for cron jobs..."
-        
-        if crontab -l 2>/dev/null | grep -q "vpn"; then
-            print_warning "Found VPN-related cron jobs"
-            echo ""
-            crontab -l | grep "vpn"
-            echo ""
-            read -p "Remove these cron jobs? (yes/no): " remove_cron
-        else
-            print_info "No cron jobs found"
-            return 0
-        fi
+        print_info "No cron jobs found"
+        return 0
     fi
     
     if [ "$remove_cron" = "yes" ]; then
