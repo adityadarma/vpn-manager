@@ -107,6 +107,15 @@ case $db_choice in
         warn "Invalid choice, defaulting to SQLite"
         ;;
 esac
+
+# Build DATABASE_URL
+if [ "$DATABASE_TYPE" = "postgres" ]; then
+    DATABASE_URL="postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/vpnmanager"
+elif [ "$DATABASE_TYPE" = "mysql" ]; then
+    DATABASE_URL="mysql://vpnmanager:${MYSQL_PASSWORD}@mysql:3306/vpnmanager"
+else
+    DATABASE_URL=""
+fi
 echo ""
 
 # Server address
@@ -153,9 +162,8 @@ PORT=${APP_PORT}
 
 # Database
 DATABASE_TYPE=${DATABASE_TYPE}
-DATABASE_URL=
-DATABASE_SQLITE_PATH=/data/vpn.sqlite
-
+DATABASE_URL=${DATABASE_URL}
+$([ "$DATABASE_TYPE" = "sqlite" ] && echo "DATABASE_SQLITE_PATH=/data/vpn.sqlite")
 $([ -n "$POSTGRES_PASSWORD" ] && echo "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}")
 $([ -n "$MYSQL_PASSWORD" ] && echo "MYSQL_PASSWORD=${MYSQL_PASSWORD}")
 $([ -n "$MYSQL_ROOT_PASSWORD" ] && echo "MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}")
