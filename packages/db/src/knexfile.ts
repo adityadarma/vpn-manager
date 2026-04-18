@@ -44,21 +44,35 @@ const config: { [key: string]: Knex.Config } = {
     migrations: TS_EXTENSIONS,
   },
 
-  production_postgres: {
-    client: 'pg',
-    connection: process.env['DATABASE_URL'],
-    pool: { min: 2, max: 10 },
-    migrations: TS_EXTENSIONS,
-    seeds: TS_SEEDS,
-  },
+  production: (() => {
+    const dbType = process.env['DATABASE_TYPE'] ?? 'sqlite'
+    if (dbType === 'postgres') {
+      return {
+        client: 'pg',
+        connection: process.env['DATABASE_URL'],
+        pool: { min: 2, max: 10 },
+        migrations: TS_EXTENSIONS,
+        seeds: TS_SEEDS,
+      }
+    } else if (dbType === 'mysql') {
+      return {
+        client: 'mysql2',
+        connection: process.env['DATABASE_URL'],
+        pool: { min: 2, max: 10 },
+        migrations: TS_EXTENSIONS,
+        seeds: TS_SEEDS,
+      }
+    } else {
+      return {
+        client: 'better-sqlite3',
+        connection: { filename: SQLITE_FILE },
+        useNullAsDefault: true,
+        migrations: TS_EXTENSIONS,
+        seeds: TS_SEEDS,
+      }
+    }
+  })(),
 
-  production_mysql: {
-    client: 'mysql2',
-    connection: process.env['DATABASE_URL'],
-    pool: { min: 2, max: 10 },
-    migrations: TS_EXTENSIONS,
-    seeds: TS_SEEDS,
-  },
 }
 
 export default config
