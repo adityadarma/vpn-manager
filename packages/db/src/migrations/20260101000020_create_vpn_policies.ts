@@ -5,10 +5,12 @@ export async function up(knex: Knex): Promise<void> {
     table.string('id', 36).primary().notNullable()
     table.string('user_id', 36).nullable()
     table.string('group_id', 36).nullable()
-    
+    table.string('node_id', 36).nullable()
+
     table.foreign('user_id').references('id').inTable('users').onDelete('CASCADE')
     table.foreign('group_id').references('id').inTable('groups').onDelete('CASCADE')
-    
+    table.foreign('node_id').references('id').inTable('vpn_nodes').onDelete('CASCADE')
+
     table.string('target_network', 50).notNullable()
     table.string('protocol', 10).notNullable().defaultTo('all')
     table.string('target_port', 50).nullable().defaultTo(null)
