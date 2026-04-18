@@ -11,6 +11,9 @@
 
 set -e
 
+# Ensure we are in a valid working directory (previous install dir may have been deleted)
+cd /tmp
+
 # Colors
 G='\033[0;32m'; Y='\033[1;33m'; B='\033[0;34m'; R='\033[0;31m'; NC='\033[0m'
 ok()   { echo -e "${G}✓ $1${NC}"; }
@@ -75,7 +78,7 @@ echo ""
 echo "Select database:"
 echo "1) SQLite (default, simple)"
 echo "2) PostgreSQL (production)"
-echo "3) MySQL/MariaDB"
+echo "3) MariaDB"
 read -p "Choice [1-3] (default: 1): " db_choice < /dev/tty
 db_choice=${db_choice:-1}
 
@@ -95,11 +98,11 @@ case $db_choice in
     3)
         DATABASE_TYPE="mysql"
         DATABASE_PROFILE="--profile mysql"
-        read -p "MySQL password (auto-generate if empty): " MYSQL_PASSWORD < /dev/tty
-        MYSQL_PASSWORD=${MYSQL_PASSWORD:-$(openssl rand -base64 32 | tr -d '/')}
-        read -p "MySQL root password (auto-generate if empty): " MYSQL_ROOT_PASSWORD < /dev/tty
-        MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-$(openssl rand -base64 32 | tr -d '/')}
-        ok "Using MySQL"
+        read -p "MariaDB password (auto-generate if empty): " MARIADB_PASSWORD < /dev/tty
+        MARIADB_PASSWORD=${MARIADB_PASSWORD:-$(openssl rand -base64 32 | tr -d '/')}
+        read -p "MariaDB root password (auto-generate if empty): " MARIADB_ROOT_PASSWORD < /dev/tty
+        MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD:-$(openssl rand -base64 32 | tr -d '/')}
+        ok "Using MariaDB"
         ;;
     *)
         DATABASE_TYPE="sqlite"
@@ -110,9 +113,9 @@ esac
 
 # Build DATABASE_URL
 if [ "$DATABASE_TYPE" = "postgres" ]; then
-    DATABASE_URL="postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/vpnmanager"
+    DATABASE_URL="postgresql://vpn:${POSTGRES_PASSWORD}@postgres:5432/vpn"
 elif [ "$DATABASE_TYPE" = "mysql" ]; then
-    DATABASE_URL="mysql://vpnmanager:${MYSQL_PASSWORD}@mysql:3306/vpnmanager"
+    DATABASE_URL="mysql://vpn:${MARIADB_PASSWORD}@mariadb:3306/vpn"
 else
     DATABASE_URL=""
 fi
@@ -140,10 +143,13 @@ read -p "Port (default: 3000): " APP_PORT < /dev/tty
 APP_PORT=${APP_PORT:-3000}
 
 # Build full URL (used by VPN agents to connect to manager API)
-if [[ "$SERVER_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    APP_URL="$PROTOCOL://$SERVER_DOMAIN:$APP_PORT"
+# Always include port unless it matches the default for the protocol
+if [[ "$PROTOCOL" = "https" && "$APP_PORT" = "443" ]]; then
+    APP_URL="https://$SERVER_DOMAIN"
+elif [[ "$PROTOCOL" = "http" && "$APP_PORT" = "80" ]]; then
+    APP_URL="http://$SERVER_DOMAIN"
 else
-    APP_URL="$PROTOCOL://$SERVER_DOMAIN"
+    APP_URL="$PROTOCOL://$SERVER_DOMAIN:$APP_PORT"
 fi
 
 ok "Configuration complete"
@@ -165,8 +171,8 @@ DATABASE_TYPE=${DATABASE_TYPE}
 DATABASE_URL=${DATABASE_URL}
 $([ "$DATABASE_TYPE" = "sqlite" ] && echo "DATABASE_SQLITE_PATH=/data/vpn.sqlite")
 $([ -n "$POSTGRES_PASSWORD" ] && echo "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}")
-$([ -n "$MYSQL_PASSWORD" ] && echo "MYSQL_PASSWORD=${MYSQL_PASSWORD}")
-$([ -n "$MYSQL_ROOT_PASSWORD" ] && echo "MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}")
+$([ -n "$MARIADB_PASSWORD" ] && echo "MARIADB_PASSWORD=${MARIADB_PASSWORD}")
+$([ -n "$MARIADB_ROOT_PASSWORD" ] && echo "MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD}")
 
 # JWT
 JWT_SECRET=${JWT_SECRET}

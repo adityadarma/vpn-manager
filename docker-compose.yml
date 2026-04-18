@@ -36,10 +36,10 @@ services:
     container_name: vpn-mariadb
     restart: unless-stopped
     environment:
-      MARIADB_USER: ${MYSQL_USER:-vpn}
-      MARIADB_PASSWORD: ${MYSQL_PASSWORD:-vpn_secret}
-      MARIADB_DATABASE: ${MYSQL_DATABASE:-vpn}
-      MARIADB_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_secret}
+      MARIADB_USER: ${MARIADB_USER:-vpn}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-vpn_secret}
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-vpn}
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-root_secret}
     volumes:
       - mariadb_data:/var/lib/mysql
     healthcheck:
