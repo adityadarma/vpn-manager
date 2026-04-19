@@ -457,7 +457,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         nodeData.vpn_netmask = config.vpn_netmask || '255.255.255.0'
         nodeData.dns_servers = config.dns_servers || '8.8.8.8,1.1.1.1'
         nodeData.push_routes = config.push_routes || ''
-        nodeData.cipher = config.cipher || 'AES-128-GCM'
+        nodeData.cipher = config.cipher || 'AES-256-GCM'
         nodeData.auth_digest = config.auth_digest || 'SHA256'
         nodeData.compression = config.compression || 'lz4-v2'
         nodeData.keepalive_ping = config.keepalive_ping || 10
@@ -472,7 +472,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         nodeData.vpn_netmask = '255.255.255.0'
         nodeData.dns_servers = '8.8.8.8,1.1.1.1'
         nodeData.push_routes = ''
-        nodeData.cipher = 'AES-128-GCM'
+        nodeData.cipher = 'AES-256-GCM'
         nodeData.auth_digest = 'SHA256'
         nodeData.compression = 'lz4-v2'
         nodeData.keepalive_ping = 10

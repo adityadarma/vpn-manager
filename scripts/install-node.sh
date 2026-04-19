@@ -257,11 +257,11 @@ install_openvpn() {
         
         cd /etc/openvpn/easy-rsa
         
-        # Initialize PKI
+        # Initialize PKI (use ECDSA/prime256v1 — smaller keys, faster handshake, more secure per bit)
         ./easyrsa init-pki
-        ./easyrsa --batch build-ca nopass
-        ./easyrsa --batch build-server-full server nopass
-        ./easyrsa gen-dh
+        ./easyrsa --batch --use-algo ec --curve prime256v1 build-ca nopass
+        ./easyrsa --batch --use-algo ec --curve prime256v1 build-server-full server nopass
+        # DH params not needed for ECDH — skip gen-dh
         openvpn --genkey secret /etc/openvpn/server/tls-crypt.key
         
         # Copy certificates
@@ -367,10 +367,9 @@ ca /etc/openvpn/server/ca.crt
 cert /etc/openvpn/server/server.crt
 key /etc/openvpn/server/server.key
 dh none
-ecdh-curve prime256v1
 tls-crypt /etc/openvpn/server/tls-crypt.key
 
-server 10.8.0.0 255.255.255.0
+server 10.8.1.0 255.255.255.0
 topology subnet
 
 # Client Config Directory — allows per-client overrides (e.g. "disable" to block a kicked user)
@@ -382,12 +381,12 @@ push "redirect-gateway def1 bypass-dhcp"
 
 keepalive 10 60
 explicit-exit-notify 1
-cipher AES-128-GCM
-ncp-ciphers AES-128-GCM
+cipher AES-256-GCM
+ncp-ciphers AES-256-GCM:AES-128-GCM
 auth SHA256
 tls-server
 tls-version-min 1.2
-tls-cipher TLS-ECDHE-ECDSA-WITH-AES-128-GCM-SHA256
+tls-cipher TLS-ECDHE-ECDSA-WITH-AES-256-GCM-SHA384
 persist-key
 persist-tun
 
@@ -639,8 +638,9 @@ EOF
             JSON_PAYLOAD="$JSON_PAYLOAD, \"vpnType\":\"wireguard\", \"publicKey\":\"$wg_pub\", \"privateKey\":\"$wg_priv\""
         fi
         
-        # Construct config object
+        # Construct config object — cipher/auth_digest must match server.conf template
         JSON_PAYLOAD="$JSON_PAYLOAD, \"config\":{\"vpn_network\":\"$VPN_NETWORK\", \"vpn_netmask\":\"$VPN_NETMASK\""
+        JSON_PAYLOAD="$JSON_PAYLOAD, \"cipher\":\"AES-256-GCM\", \"auth_digest\":\"SHA256\""
         if [ -n "$ENV_FIREWALL_ENGINE" ]; then
             JSON_PAYLOAD="$JSON_PAYLOAD, \"firewall_engine\":\"$ENV_FIREWALL_ENGINE\""
         fi

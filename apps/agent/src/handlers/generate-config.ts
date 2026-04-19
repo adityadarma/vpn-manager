@@ -13,7 +13,7 @@ export async function handleGenerateConfig(
   const serverIp = payload['serverIp'] as string
   const serverPort = (payload['serverPort'] as number) ?? 1194
   const protocol = (payload['protocol'] as string) ?? 'udp'
-  const cipher = (payload['cipher'] as string) ?? 'AES-128-GCM' // Changed default to match server
+  const cipher = (payload['cipher'] as string) ?? 'AES-256-GCM'
   const authDigest = (payload['authDigest'] as string) ?? 'SHA256'
 
   if (!username) throw new Error('Missing username in payload')
@@ -42,7 +42,7 @@ export async function handleGenerateConfig(
   // Use tcp-client for TCP protocol
   const protoClient = protocol === 'tcp' ? 'tcp-client' : protocol
   
-  // Determine TLS cipher based on server cipher
+  // Determine TLS cipher based on server cipher (ECDSA — Easy-RSA configured to use EC/prime256v1)
   let tlsCipher = 'TLS-ECDHE-ECDSA-WITH-AES-128-GCM-SHA256'
   if (cipher.includes('256')) {
     tlsCipher = 'TLS-ECDHE-ECDSA-WITH-AES-256-GCM-SHA384'

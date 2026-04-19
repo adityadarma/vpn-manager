@@ -283,7 +283,7 @@ ncp-ciphers ${cipher}
 auth SHA256
 tls-server
 tls-version-min 1.2
-tls-cipher TLS-ECDHE-ECDSA-WITH-AES-128-GCM-SHA256
+tls-cipher TLS-ECDHE-ECDSA-WITH-AES-256-GCM-SHA384
 persist-key
 persist-tun
 `
