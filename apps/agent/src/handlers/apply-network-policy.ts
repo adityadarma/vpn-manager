@@ -139,13 +139,14 @@ async function applyIptablesPolicies(policies: PolicyPayload[], vpnInterface: st
 
 async function applyNftablesPolicies(policies: PolicyPayload[], vpnInterface: string) {
   try {
-    // 1. Ensure table and chain exist
+    // 1. Ensure table and chains exist
     await execFirewall(`nft add table inet filter`, 'nftables').catch(() => {})
+    // Ensure base 'forward' chain with kernel hook exists (idempotent — ignored if already present)
+    await execFirewall(`nft add chain inet filter forward { type filter hook forward priority 0 \\; policy accept \\; }`, 'nftables').catch(() => {})
     await execFirewall(`nft add chain inet filter VPN_FWWD`, 'nftables').catch(() => {})
     await execFirewall(`nft flush chain inet filter VPN_FWWD`, 'nftables').catch(() => {})
 
     // 2. Hook into forward chain if not already hooked
-    // nftables built-in chain name is lowercase 'forward', not 'FORWARD'
     const checkHook = await execAsync(`nft list chain inet filter forward`).catch(() => ({ stdout: '' }))
     if (!checkHook.stdout?.includes('VPN_FWWD')) {
       await execFirewall(`nft add rule inet filter forward iifname "${vpnInterface}" jump VPN_FWWD`, 'nftables').catch(err => {
