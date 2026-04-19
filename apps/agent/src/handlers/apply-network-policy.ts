@@ -145,9 +145,10 @@ async function applyNftablesPolicies(policies: PolicyPayload[], vpnInterface: st
     await execFirewall(`nft flush chain inet filter VPN_FWWD`, 'nftables').catch(() => {})
 
     // 2. Hook into forward chain if not already hooked
-    const checkHook = await execAsync(`nft list chain inet filter FORWARD`).catch(() => ({ stdout: '' }))
+    // nftables built-in chain name is lowercase 'forward', not 'FORWARD'
+    const checkHook = await execAsync(`nft list chain inet filter forward`).catch(() => ({ stdout: '' }))
     if (!checkHook.stdout?.includes('VPN_FWWD')) {
-      await execFirewall(`nft add rule inet filter FORWARD iifname "${vpnInterface}" jump VPN_FWWD`, 'nftables').catch(err => {
+      await execFirewall(`nft add rule inet filter forward iifname "${vpnInterface}" jump VPN_FWWD`, 'nftables').catch(err => {
         console.warn(`[firewall/dev] nft hook failed:`, err.message)
       })
     }

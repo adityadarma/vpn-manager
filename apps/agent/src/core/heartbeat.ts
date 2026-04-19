@@ -51,7 +51,14 @@ export function startHeartbeat(env: AgentEnv, driver: VpnDriver): void {
             return (await execAsync('iptables -S VPN_FWWD')).stdout
           } 
           if (env.FIREWALL_ENGINE === 'nftables') {
-             return (await execAsync('nft list chain inet filter VPN_FWWD')).stdout
+            // Try listing just the VPN_FWWD chain first; if it doesn't exist yet
+            // fall back to the full table dump so we always return something useful.
+            try {
+              return (await execAsync('nft list chain inet filter VPN_FWWD')).stdout
+            } catch {
+              try { return (await execAsync('nft list table inet filter')).stdout } catch {}
+              return ''
+            }
           }
 
           // Fallback to 'auto' mode
