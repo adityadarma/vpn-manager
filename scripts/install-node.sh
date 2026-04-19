@@ -714,6 +714,18 @@ case $mode in
     1)
         if [ "$OPENVPN_INSTALLED" = true ] && [ "$ENV_VPN_TYPE" != "wireguard" ]; then
             update_openvpn_config
+            # Update FIREWALL_ENGINE in agent .env if agent is already installed
+            if [ "$AGENT_INSTALLED" = true ] && [ -f "$INSTALL_DIR/.env" ]; then
+                if grep -q "^FIREWALL_ENGINE=" "$INSTALL_DIR/.env"; then
+                    sed -i "s|^FIREWALL_ENGINE=.*|FIREWALL_ENGINE=${ENV_FIREWALL_ENGINE}|" "$INSTALL_DIR/.env"
+                else
+                    echo "FIREWALL_ENGINE=${ENV_FIREWALL_ENGINE}" >> "$INSTALL_DIR/.env"
+                fi
+                ok "Updated FIREWALL_ENGINE=${ENV_FIREWALL_ENGINE} in agent .env"
+                info "Restarting agent to apply new firewall engine..."
+                cd "$INSTALL_DIR" && docker compose restart
+                ok "Agent restarted"
+            fi
         else
             if [ "$ENV_VPN_TYPE" = "wireguard" ]; then
                 install_wireguard
