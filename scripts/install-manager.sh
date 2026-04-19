@@ -130,7 +130,8 @@ SERVER_DOMAIN=${SERVER_DOMAIN:-$SERVER_IP}
 
 # Protocol
 echo ""
-read -p "Use HTTPS? [y/N]: " USE_HTTPS < /dev/tty
+read -p "Use HTTPS? [Y/n] (default: Y): " USE_HTTPS < /dev/tty
+USE_HTTPS=${USE_HTTPS:-Y}
 if [[ "$USE_HTTPS" == "y" || "$USE_HTTPS" == "Y" ]]; then
     PROTOCOL="https"
 else

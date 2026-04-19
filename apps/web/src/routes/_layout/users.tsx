@@ -260,11 +260,16 @@ function UsersPage() {
       }
 
       // Attempt to get filename from Content-Disposition header
-      let filename = `${user.username}.ovpn`
+      const now = new Date()
+      const timestamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`
+      let filename = `${user.username}_${timestamp}.ovpn`
       const disposition = res.headers.get('Content-Disposition')
       if (disposition && disposition.includes('filename=')) {
         const matches = /filename="([^"]+)"/.exec(disposition)
-        if (matches?.[1]) filename = matches[1]
+        if (matches?.[1]) {
+          const base = matches[1].replace(/\.ovpn$/, '')
+          filename = `${base}_${timestamp}.ovpn`
+        }
       }
 
       const blob = await res.blob()
@@ -1040,6 +1045,11 @@ function UsersPage() {
                               <span className="text-xs font-semibold text-muted-foreground/70 uppercase tracking-widest mb-0.5">Generated</span>
                               <span className="text-foreground">
                                 {cert.generated_at ? new Date(cert.generated_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}
+                                {cert.generated_at && (
+                                  <span className="text-muted-foreground ml-1.5 text-xs">
+                                    {new Date(cert.generated_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                )}
                               </span>
                             </div>
                             <div className="flex flex-col">

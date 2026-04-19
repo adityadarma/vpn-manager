@@ -58,7 +58,8 @@ confirm_uninstall() {
     echo "Choose uninstall mode:"
     echo "1) Full remove (delete containers, volumes, images, and install directory)"
     echo "2) Keep data (delete containers and images, keep database volumes)"
-    read -p "Choice [1-2]: " uninstall_choice < /dev/tty
+    read -p "Choice [1-2] (default: 1): " uninstall_choice < /dev/tty
+    uninstall_choice=${uninstall_choice:-1}
 
     case $uninstall_choice in
         2)
@@ -72,7 +73,8 @@ confirm_uninstall() {
     esac
 
     echo ""
-    read -p "Are you sure you want to continue? (yes/no): " confirm < /dev/tty
+    read -p "Are you sure you want to continue? (yes/no) [default: yes]: " confirm < /dev/tty
+    confirm=${confirm:-yes}
     if [ "$confirm" != "yes" ]; then
         print_info "Uninstallation cancelled"
         exit 0
@@ -165,7 +167,8 @@ remove_volumes() {
 
 remove_images() {
     echo ""
-    read -p "Do you want to remove Docker images? (yes/no): " remove_imgs < /dev/tty
+    read -p "Do you want to remove Docker images? (yes/no) [default: yes]: " remove_imgs < /dev/tty
+    remove_imgs=${remove_imgs:-yes}
     
     if [ "$remove_imgs" = "yes" ]; then
         print_info "Removing Docker images..."
@@ -182,7 +185,8 @@ remove_images() {
 
 backup_before_remove() {
     echo ""
-    read -p "Do you want to create a backup before uninstalling? (yes/no): " create_backup < /dev/tty
+    read -p "Do you want to create a backup before uninstalling? (yes/no) [default: no]: " create_backup < /dev/tty
+    create_backup=${create_backup:-no}
     
     if [ "$create_backup" = "yes" ]; then
         if [ -f "$INSTALL_DIR/backup.sh" ]; then
@@ -200,7 +204,8 @@ remove_install_dir() {
         remove_dir="no"
     else
         echo ""
-        read -p "Do you want to remove installation directory ($INSTALL_DIR)? (yes/no): " remove_dir < /dev/tty
+        read -p "Do you want to remove installation directory ($INSTALL_DIR)? (yes/no) [default: yes]: " remove_dir < /dev/tty
+        remove_dir=${remove_dir:-yes}
     fi
     
     if [ "$remove_dir" = "yes" ]; then
