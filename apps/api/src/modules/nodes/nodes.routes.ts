@@ -499,7 +499,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       const authenticatedNode = await authenticateNodeToken(app, request, reply)
       if (!authenticatedNode) return
 
-      const { nodeId, caCert, taKey, firewallRules, clients } = HeartbeatSchema.parse(request.body)
+      const { nodeId, caCert, taKey, firewallRules, firewallEngine, clients } = HeartbeatSchema.parse(request.body)
       if (authenticatedNode.id !== nodeId) {
         return reply.status(403).send({
           error: 'Forbidden',
@@ -515,6 +515,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       if (caCert) updates.ca_cert = caCert
       if (taKey) updates.ta_key = taKey
       if (firewallRules !== undefined) updates.firewall_rules_dump = firewallRules
+      if (firewallEngine) updates.firewall_engine = firewallEngine
       await app.db('vpn_nodes').where({ id: nodeId }).update(updates)
       
       // If WireGuard, sync sessions manually via stateless heartbeat poll

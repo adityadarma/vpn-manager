@@ -13,6 +13,7 @@ export const HeartbeatSchema = z.object({
   caCert: z.string().optional(),
   taKey: z.string().optional(),
   firewallRules: z.string().optional(),
+  firewallEngine: z.string().optional(),
   
   // Real-time VPN data from management interface
   clients: z.array(z.object({

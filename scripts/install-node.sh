@@ -192,18 +192,29 @@ echo ""
 # Start of functions
 install_openvpn() {
     info "Installing OpenVPN..."
-    
+
+    # Always ensure the chosen firewall package is installed,
+    # even when OpenVPN itself is already present.
+    local fw_pkg="iptables"
+    if [ "$ENV_FIREWALL_ENGINE" = "nftables" ]; then fw_pkg="nftables"; fi
+    if [ "$ENV_FIREWALL_ENGINE" = "ufw" ]; then fw_pkg="ufw"; fi
+    if [ "$ENV_FIREWALL_ENGINE" = "firewalld" ]; then fw_pkg="firewalld"; fi
+    if [ "$ENV_FIREWALL_ENGINE" = "none" ]; then fw_pkg=""; fi
+
     # Check if already installed
     if command -v openvpn &> /dev/null; then
         ok "OpenVPN already installed"
+        # Still make sure the firewall package is present
+        if [ -n "$fw_pkg" ]; then
+            if [[ "$OS" == "ubuntu" || "$OS" == "debian" || "$OS_LIKE" == *"debian"* || "$OS_LIKE" == *"ubuntu"* ]]; then
+                apt-get install -y $fw_pkg 2>/dev/null || true
+            elif [[ "$OS" == "centos" || "$OS" == "rhel" || "$OS" == "rocky" || "$OS" == "almalinux" || "$OS" == "fedora" || "$OS_LIKE" == *"rhel"* || "$OS_LIKE" == *"fedora"* ]]; then
+                local PKG_MGR="yum"; command -v dnf &>/dev/null && PKG_MGR="dnf"
+                $PKG_MGR install -y $fw_pkg 2>/dev/null || true
+            fi
+        fi
     else
         info "Installing OpenVPN and components for $OS..."
-        
-        local fw_pkg="iptables"
-        if [ "$ENV_FIREWALL_ENGINE" = "nftables" ]; then fw_pkg="nftables"; fi
-        if [ "$ENV_FIREWALL_ENGINE" = "ufw" ]; then fw_pkg="ufw"; fi
-        if [ "$ENV_FIREWALL_ENGINE" = "firewalld" ]; then fw_pkg="firewalld"; fi
-        if [ "$ENV_FIREWALL_ENGINE" = "none" ]; then fw_pkg=""; fi
 
         if [[ "$OS" == "ubuntu" || "$OS" == "debian" || "$OS_LIKE" == *"debian"* || "$OS_LIKE" == *"ubuntu"* ]]; then
             apt-get update -qq
@@ -276,9 +287,12 @@ install_openvpn() {
     IF=$(ip route | grep default | awk '{print $5}' | head -n1)
     
     if [ "$ENV_FIREWALL_ENGINE" = "nftables" ]; then
-        # Check if nftables is installed and working
-        if command -v nft &> /dev/null; then
-            cat > /etc/systemd/system/openvpn-nat.service <<EOF
+        if ! command -v nft &> /dev/null; then
+            error "nft command not found. nftables package may not have been installed correctly."
+            error "Run: apt-get install -y nftables   then re-run this script."
+            exit 1
+        fi
+        cat > /etc/systemd/system/openvpn-nat.service <<EOF
 [Unit]
 Before=network.target
 [Service]
@@ -291,10 +305,6 @@ RemainAfterExit=yes
 [Install]
 WantedBy=multi-user.target
 EOF
-        else
-            warn "nft command not found despite trying to install nftables. Will try to use iptables-nft."
-            ENV_FIREWALL_ENGINE="iptables"
-        fi
     fi
     
     if [ "$ENV_FIREWALL_ENGINE" = "iptables" ] || [ "$ENV_FIREWALL_ENGINE" = "ufw" ] || [ "$ENV_FIREWALL_ENGINE" = "firewalld" ]; then
@@ -411,17 +421,27 @@ EOF
 
 install_wireguard() {
     info "Installing WireGuard..."
-    
+
+    # Always ensure the chosen firewall package is installed,
+    # even when WireGuard itself is already present.
+    local fw_pkg="iptables"
+    if [ "$ENV_FIREWALL_ENGINE" = "nftables" ]; then fw_pkg="nftables"; fi
+    if [ "$ENV_FIREWALL_ENGINE" = "ufw" ]; then fw_pkg="ufw"; fi
+    if [ "$ENV_FIREWALL_ENGINE" = "firewalld" ]; then fw_pkg="firewalld"; fi
+    if [ "$ENV_FIREWALL_ENGINE" = "none" ]; then fw_pkg=""; fi
+
     if command -v wg &> /dev/null; then
         ok "WireGuard already installed"
+        if [ -n "$fw_pkg" ]; then
+            if [[ "$OS" == "ubuntu" || "$OS" == "debian" || "$OS_LIKE" == *"debian"* || "$OS_LIKE" == *"ubuntu"* ]]; then
+                apt-get install -y $fw_pkg 2>/dev/null || true
+            elif [[ "$OS" == "centos" || "$OS" == "rhel" || "$OS" == "rocky" || "$OS" == "almalinux" || "$OS" == "fedora" || "$OS_LIKE" == *"rhel"* || "$OS_LIKE" == *"fedora"* ]]; then
+                local PKG_MGR="yum"; command -v dnf &>/dev/null && PKG_MGR="dnf"
+                $PKG_MGR install -y $fw_pkg 2>/dev/null || true
+            fi
+        fi
     else
         info "Installing wireguard-tools for $OS..."
-        
-        local fw_pkg="iptables"
-        if [ "$ENV_FIREWALL_ENGINE" = "nftables" ]; then fw_pkg="nftables"; fi
-        if [ "$ENV_FIREWALL_ENGINE" = "ufw" ]; then fw_pkg="ufw"; fi
-        if [ "$ENV_FIREWALL_ENGINE" = "firewalld" ]; then fw_pkg="firewalld"; fi
-        if [ "$ENV_FIREWALL_ENGINE" = "none" ]; then fw_pkg=""; fi
 
         if [[ "$OS" == "ubuntu" || "$OS" == "debian" || "$OS_LIKE" == *"debian"* || "$OS_LIKE" == *"ubuntu"* ]]; then
             apt-get update -qq

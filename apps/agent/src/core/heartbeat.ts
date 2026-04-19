@@ -83,6 +83,7 @@ export function startHeartbeat(env: AgentEnv, driver: VpnDriver): void {
           caCert,
           taKey,
           firewallRules,
+          firewallEngine: env.FIREWALL_ENGINE,
           clients,
           metrics,
           serverInfo,
