@@ -14,6 +14,7 @@ import { handleSyncServerConfig } from '../handlers/sync-server-config'
 import { handleKickSession } from '../handlers/kick-session'
 import { handleUnkickSession } from '../handlers/unkick-session'
 import { handleWriteClientCcd } from '../handlers/write-client-ccd'
+import { handleDeleteClientCcd } from '../handlers/delete-client-ccd'
 import { handleApplyNetworkPolicy } from '../handlers/apply-network-policy'
 
 interface Task {
@@ -38,6 +39,7 @@ const HANDLERS: Partial<Record<TaskAction, HandlerFn>> = {
   kick_vpn_session: handleKickSession,
   unkick_vpn_session: handleUnkickSession,
   write_client_ccd: handleWriteClientCcd,
+  delete_client_ccd: handleDeleteClientCcd,
   apply_network_policy: handleApplyNetworkPolicy,
 }
 

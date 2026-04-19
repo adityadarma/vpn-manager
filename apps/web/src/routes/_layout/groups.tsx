@@ -65,6 +65,8 @@ interface User {
   email: string | null
   role: string
   is_active: boolean
+  vpn_group_id: string | null
+  vpn_group_name: string | null
 }
 
 interface NetworkItem {
@@ -238,6 +240,9 @@ function GroupsPage() {
     (u.username.toLowerCase().includes(searchQuery.toLowerCase()) || 
      (u.email && u.email.toLowerCase().includes(searchQuery.toLowerCase())))
   )
+
+  // Users selected that are currently in a different group
+  const usersBeingMoved = allUsers.filter(u => selectedUserIds.has(u.id) && u.vpn_group_id && u.vpn_group_id !== detailGroup)
 
   // Filter networks that are not already assigned to the group and match search
   const availableNetworks = allNetworks.filter(n => 
@@ -609,6 +614,14 @@ function GroupsPage() {
             <DialogTitle>Add Members to {groupDetail?.name}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            {usersBeingMoved.length > 0 && (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 px-3 py-2.5 text-sm text-amber-800 dark:text-amber-300">
+                <span className="mt-0.5 shrink-0">⚠️</span>
+                <span>
+                  <strong>{usersBeingMoved.map(u => u.username).join(', ')}</strong> will be moved from their current group and assigned a new IP.
+                </span>
+              </div>
+            )}
             <div className="space-y-3">
               <Input
                 placeholder="Search by username or email..."
@@ -640,6 +653,9 @@ function GroupsPage() {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{u.username}</p>
                         {u.email && <p className="text-xs text-muted-foreground truncate">{u.email}</p>}
+                        {u.vpn_group_name && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400 truncate">in group: {u.vpn_group_name}</p>
+                        )}
                       </div>
                       <Badge variant="outline" className="text-[10px] uppercase font-semibold text-muted-foreground">
                         {u.role}

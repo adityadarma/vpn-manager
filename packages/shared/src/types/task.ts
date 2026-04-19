@@ -15,6 +15,7 @@ export type TaskAction =
   | 'kick_vpn_session'
   | 'unkick_vpn_session'
   | 'write_client_ccd'
+  | 'delete_client_ccd'
 
 export interface Task {
   id: string

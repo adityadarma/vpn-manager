@@ -171,8 +171,7 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
     },
   )
 
-  // POST /api/v1/groups/:id/members — add user to group
-  // If the group has a vpn_subnet and user has no vpn_ip yet, auto-assign one
+  // POST /api/v1/groups/:id/members — add user to group (user can only be in 1 group at a time)
   app.post<{ Params: { id: string }; Body: { user_id: string } }>(
     '/groups/:id/members',
     { onRequest: [app.authenticateAdmin], schema: { tags: ['groups'], summary: 'Add user to group', security: [{ bearerAuth: [] }] } },
@@ -183,18 +182,72 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
       const group = await app.db('groups').where({ id: request.params.id }).first()
       if (!group) return reply.status(404).send({ error: 'Group not found' })
 
-      await app.db('user_groups')
-        .insert({ group_id: request.params.id, user_id })
-        .onConflict(['group_id', 'user_id'])
-        .ignore()
+      const user = await app.db('users').where({ id: user_id }).first()
+      if (!user) return reply.status(404).send({ error: 'User not found' })
+
+      // --- Enforce single-group rule ---
+      // If user is already in this group, no-op
+      const existing = await app.db('user_groups').where({ user_id, group_id: request.params.id }).first()
+      if (existing) {
+        return reply.status(200).send({ ok: true, assigned_vpn_ip: user.vpn_ip ?? null })
+      }
+
+      // If user is in a different group, remove them first (clear IP + CCD)
+      const oldMembership = await app.db('user_groups').where({ user_id }).first()
+      if (oldMembership) {
+        await app.db('user_groups').where({ user_id }).delete()
+        await app.db('users').where({ id: user_id }).update({ vpn_ip: null, vpn_group_id: null })
+
+        const onlineNodes = await app.db('vpn_nodes').where({ status: 'online' }).select('id')
+        if (onlineNodes.length > 0) {
+          const cert = await app.db('user_node_certificates').where({ user_id }).first()
+          const publicKey = cert?.client_cert ?? undefined
+          const deleteTasks = onlineNodes.map((node: { id: string }) => ({
+            id: uuidv7(),
+            node_id: node.id,
+            action: 'delete_client_ccd',
+            payload: JSON.stringify({ username: user.username, public_key: publicKey }),
+            status: 'pending',
+            created_at: new Date(),
+          }))
+          await app.db('tasks').insert(deleteTasks)
+          app.log.info(`[ip-pool] Removed ${user.username} from old group, queued delete_client_ccd on ${deleteTasks.length} node(s)`)
+        }
+      }
+
+      // Add to new group
+      await app.db('user_groups').insert({ group_id: request.params.id, user_id })
 
       let assignedIp: string | null = null
 
-      // Auto-assign VPN IP if: group has subnet AND user has no vpn_ip yet
+      // Auto-assign VPN IP if group has a subnet
       if (group.vpn_subnet) {
-        const user = await app.db('users').where({ id: user_id }).first()
-        if (user && !user.vpn_ip) {
-          assignedIp = await assignVpnIp(app, user_id, request.params.id, group.vpn_subnet)
+        assignedIp = await assignVpnIp(app, user_id, request.params.id, group.vpn_subnet)
+
+        if (assignedIp) {
+          const netmask = getNetmask(group.vpn_subnet)
+
+          const networkCidrs = await app.db('group_networks as gn')
+            .join('networks as n', 'gn.network_id', 'n.id')
+            .where('gn.group_id', request.params.id)
+            .distinct('n.cidr')
+            .pluck('n.cidr') as string[]
+
+          const extraLines = cidrsToPushRoutes(networkCidrs)
+          const onlineNodes = await app.db('vpn_nodes').where({ status: 'online' }).select('id')
+
+          if (onlineNodes.length > 0) {
+            const ccdTasks = onlineNodes.map((node: { id: string }) => ({
+              id: uuidv7(),
+              node_id: node.id,
+              action: 'write_client_ccd',
+              payload: JSON.stringify({ username: user.username, vpn_ip: assignedIp, netmask, extra_lines: extraLines }),
+              status: 'pending',
+              created_at: new Date(),
+            }))
+            await app.db('tasks').insert(ccdTasks)
+            app.log.info(`[ip-pool] Queued write_client_ccd for ${user.username} → ${assignedIp} on ${ccdTasks.length} node(s)`)
+          }
         }
       }
 
@@ -218,19 +271,50 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
     '/groups/:id/members/:userId',
     { onRequest: [app.authenticateAdmin], schema: { tags: ['groups'], summary: 'Remove user from group', security: [{ bearerAuth: [] }] } },
     async (request, reply) => {
-      const deleted = await app.db('user_groups').where({ group_id: request.params.id, user_id: request.params.userId }).delete()
-      if (deleted) {
+      const { id: groupId, userId } = request.params
+
+      // Fetch user before deleting so we have username + public key for CCD cleanup
+      const user = await app.db('users').where({ id: userId }).first()
+
+      const deleted = await app.db('user_groups').where({ group_id: groupId, user_id: userId }).delete()
+
+      if (deleted && user) {
+        // Clear VPN IP if this group was their primary group
+        if (user.vpn_group_id === groupId) {
+          await app.db('users').where({ id: userId }).update({ vpn_ip: null, vpn_group_id: null })
+
+          // Enqueue delete_client_ccd to all online nodes
+          const onlineNodes = await app.db('vpn_nodes').where({ status: 'online' }).select('id')
+          if (onlineNodes.length > 0) {
+            // For WireGuard: fetch the user's public key from any node cert
+            const cert = await app.db('user_node_certificates').where({ user_id: userId }).first()
+            const publicKey = cert?.client_cert ?? undefined
+
+            const ccdTasks = onlineNodes.map((node: { id: string }) => ({
+              id: uuidv7(),
+              node_id: node.id,
+              action: 'delete_client_ccd',
+              payload: JSON.stringify({ username: user.username, public_key: publicKey }),
+              status: 'pending',
+              created_at: new Date(),
+            }))
+            await app.db('tasks').insert(ccdTasks)
+            app.log.info(`[ip-pool] Queued delete_client_ccd for ${user.username} on ${ccdTasks.length} node(s)`)
+          }
+        }
+
         const userObj = request.user as { id: string; username: string }
         await logAudit(app, {
           userId: userObj.id,
           username: userObj.username,
           action: 'group_member_remove',
           resourceType: 'group',
-          resourceId: request.params.id,
+          resourceId: groupId,
           ipAddress: getClientIp(request),
-          metadata: { target_user_id: request.params.userId }
+          metadata: { target_user_id: userId },
         })
       }
+
       return reply.status(204).send()
     },
   )
