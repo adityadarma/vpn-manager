@@ -59,8 +59,8 @@ const policyRoutes: FastifyPluginAsync = async (app) => {
         description: input.description ?? null,
       })
 
-      // Sync policies to agent
-      await enqueueApplyPolicies(app)
+      // Sync policies to agent — only target the specific node if policy is node-scoped
+      await enqueueApplyPolicies(app, input.nodeId ?? null)
 
       const userObj = request.user as { id: string; username: string }
       await logAudit(app, {
@@ -89,11 +89,12 @@ const policyRoutes: FastifyPluginAsync = async (app) => {
     '/policies/:id',
     { onRequest: [app.authenticateAdmin], schema: { tags: ['policies'], summary: 'Delete a network policy', security: [{ bearerAuth: [] }] } },
     async (request, reply) => {
+      const policyBeforeDelete = await app.db('vpn_policies').where({ id: request.params.id }).first()
       const deleted = await app.db('vpn_policies').where({ id: request.params.id }).delete()
       if (!deleted) return reply.status(404).send({ error: 'Not Found', message: 'Policy not found' })
 
-      // Sync policies to agent
-      await enqueueApplyPolicies(app)
+      // Sync policies to agent — only target the specific node if policy was node-scoped
+      await enqueueApplyPolicies(app, policyBeforeDelete?.node_id ?? null)
 
       const userObj = request.user as { id: string; username: string }
       await logAudit(app, {
@@ -111,14 +112,13 @@ const policyRoutes: FastifyPluginAsync = async (app) => {
 }
 
 /**
- * Trigger apply_network_policy task on all online nodes.
- * The payload doesn't need all policies; the agent will fetch them from the database directly if needed,
- * or we just pass them here. Better pass it as payload to be stateless.
+ * Trigger apply_network_policy task on the relevant node(s).
+ *
+ * @param affectedNodeId - when set, only that node receives the task (node-specific policy).
+ *                         Pass null/undefined for global policies → all online nodes get a task.
  */
-async function enqueueApplyPolicies(app: any) {
+async function enqueueApplyPolicies(app: any, affectedNodeId?: string | null) {
   // Fetch fully resolved policies (joining users and groups to get VPN IPs/Subnets)
-  // Because the agent needs the actual source IPs/CIDRs to write iptables.
-  
   const policies = await app.db('vpn_policies as p')
     .leftJoin('users as u', 'p.user_id', 'u.id')
     .leftJoin('groups as g', 'p.group_id', 'g.id')
@@ -137,15 +137,33 @@ async function enqueueApplyPolicies(app: any) {
     )
     .orderBy('p.priority', 'asc')
 
-  const onlineNodes = await app.db('vpn_nodes').where({ status: 'online' }).select('id', 'firewall_engine', 'vpn_type')
-  if (onlineNodes.length === 0) return
+  // Determine which nodes should receive the task:
+  // - node-specific policy → only that node
+  // - global policy (node_id = null) → all online nodes
+  let targetNodes
+  if (affectedNodeId) {
+    targetNodes = await app.db('vpn_nodes')
+      .where({ id: affectedNodeId, status: 'online' })
+      .select('id', 'firewall_engine', 'vpn_type')
+    if (targetNodes.length === 0) {
+      app.log.warn(`[policy] Target node ${affectedNodeId} is offline — task will be applied when it comes online`)
+      // Still queue the task so it's picked up when the node reconnects
+      targetNodes = await app.db('vpn_nodes')
+        .where({ id: affectedNodeId })
+        .select('id', 'firewall_engine', 'vpn_type')
+    }
+  } else {
+    targetNodes = await app.db('vpn_nodes').where({ status: 'online' }).select('id', 'firewall_engine', 'vpn_type')
+  }
+
+  if (targetNodes.length === 0) return
 
   const tasks = []
-  
-  for (const node of onlineNodes) {
+
+  for (const node of targetNodes) {
     // Filter policies for this specific node (include globals where node_id is null)
     const nodePolicies = policies.filter((p: any) => p.node_id === null || p.node_id === node.id)
-    
+
     tasks.push({
       id: uuidv7(),
       node_id: node.id,
@@ -158,7 +176,7 @@ async function enqueueApplyPolicies(app: any) {
 
   if (tasks.length > 0) {
     await app.db('tasks').insert(tasks)
-    app.log.info(`[policy] Queued apply_network_policy to ${tasks.length} online node(s)`)
+    app.log.info(`[policy] Queued apply_network_policy to ${tasks.length} node(s)`)
   }
 }
 
