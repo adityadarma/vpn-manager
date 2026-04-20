@@ -250,10 +250,13 @@ install_openvpn() {
             mkdir -p /etc/openvpn/easy-rsa
             if [ -d "/usr/share/easy-rsa/3" ]; then
                 cp -R /usr/share/easy-rsa/3/* /etc/openvpn/easy-rsa/
-            elif [ -d "/usr/share/easy-rsa" ]; then
+            elif [ -d "/usr/share/easy-rsa" ] && [ -f "/usr/share/easy-rsa/easyrsa" ]; then
                 cp -R /usr/share/easy-rsa/* /etc/openvpn/easy-rsa/
+            elif find /usr/share -name "easyrsa" -type f 2>/dev/null | grep -q .; then
+                EASYRSA_BIN=$(find /usr/share -name "easyrsa" -type f | head -n1)
+                cp -R "$(dirname "$EASYRSA_BIN")"/* /etc/openvpn/easy-rsa/
             else
-                error "Could not find easy-rsa templates"
+                error "Could not find easy-rsa templates. Install easy-rsa package manually."
                 exit 1
             fi
         fi
