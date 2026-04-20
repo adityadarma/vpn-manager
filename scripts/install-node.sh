@@ -237,9 +237,12 @@ install_openvpn() {
     mkdir -p /etc/openvpn/server
     mkdir -p /var/log/openvpn
     
-    # Setup Easy-RSA if not exists
-    if [ ! -d "/etc/openvpn/easy-rsa" ]; then
+    # Setup Easy-RSA if not exists or PKI is incomplete
+    if [ ! -d "/etc/openvpn/easy-rsa" ] || [ ! -f "/etc/openvpn/easy-rsa/pki/ca.crt" ]; then
         info "Setting up Easy-RSA..."
+
+        # Clean up any incomplete previous attempt
+        rm -rf /etc/openvpn/easy-rsa
         
         if command -v make-cadir &> /dev/null; then
             make-cadir /etc/openvpn/easy-rsa
@@ -257,11 +260,12 @@ install_openvpn() {
         
         cd /etc/openvpn/easy-rsa
         
-        # Initialize PKI (use ECDSA/prime256v1 — smaller keys, faster handshake, more secure per bit)
+        # Initialize PKI — use RSA (Easy-RSA default, no extra config needed on any distro)
+        # Key exchange still uses ECDH (dh none in server.conf), so forward secrecy is guaranteed
         ./easyrsa init-pki
-        ./easyrsa --batch --use-algo ec --curve prime256v1 build-ca nopass
-        ./easyrsa --batch --use-algo ec --curve prime256v1 build-server-full server nopass
-        # DH params not needed for ECDH — skip gen-dh
+        ./easyrsa --batch build-ca nopass
+        ./easyrsa --batch build-server-full server nopass
+        # DH params not needed — server.conf uses 'dh none' (ECDH)
         openvpn --genkey secret /etc/openvpn/server/tls-crypt.key
         
         # Copy certificates
@@ -386,7 +390,7 @@ ncp-ciphers AES-256-GCM:AES-128-GCM
 auth SHA256
 tls-server
 tls-version-min 1.2
-tls-cipher TLS-ECDHE-ECDSA-WITH-AES-256-GCM-SHA384
+tls-cipher TLS-ECDHE-RSA-WITH-AES-256-GCM-SHA384
 persist-key
 persist-tun
 

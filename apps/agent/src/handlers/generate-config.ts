@@ -42,10 +42,10 @@ export async function handleGenerateConfig(
   // Use tcp-client for TCP protocol
   const protoClient = protocol === 'tcp' ? 'tcp-client' : protocol
   
-  // Determine TLS cipher based on server cipher (ECDSA — Easy-RSA configured to use EC/prime256v1)
-  let tlsCipher = 'TLS-ECDHE-ECDSA-WITH-AES-128-GCM-SHA256'
+  // Determine TLS cipher based on server cipher (RSA cert + ECDHE key exchange via dh none)
+  let tlsCipher = 'TLS-ECDHE-RSA-WITH-AES-128-GCM-SHA256'
   if (cipher.includes('256')) {
-    tlsCipher = 'TLS-ECDHE-ECDSA-WITH-AES-256-GCM-SHA384'
+    tlsCipher = 'TLS-ECDHE-RSA-WITH-AES-256-GCM-SHA384'
   }
 
   const config = `client
