@@ -47,7 +47,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    profiles: [ mysql ]
+    profiles: [ mariadb ]
     networks:
       - vpn-network
 

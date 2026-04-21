@@ -59,20 +59,10 @@ async function checkCertificatesSync(env: ReturnType<typeof loadAgentEnv>): Prom
 }
 
 /**
- * Sync certificates on startup if needed
+ * Sync certificates on startup — always sync to ensure DB is up to date with current PKI
  */
 async function syncCertificatesOnStartup(driver: VpnDriver): Promise<void> {
-  const env = loadAgentEnv()
-  
-  console.log('[startup] Checking if certificates are synced...')
-  const hasCerts = await checkCertificatesSync(env)
-  
-  if (hasCerts) {
-    console.log('[startup] ✓ Certificates already synced')
-    return
-  }
-  
-  console.log('[startup] Certificates not found in database, syncing now...')
+  console.log('[startup] Syncing certificates with database...')
   
   try {
     await handleSyncCertificates({}, driver)

@@ -8,7 +8,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
-import { Plus, Trash2, MapPin, Clock, Activity, Server, X, Copy, CheckCircle2, Settings, RefreshCw, Edit, Shield } from 'lucide-react'
+import { Plus, Trash2, MapPin, Clock, Activity, Server, X, Copy, CheckCircle2, Settings, RefreshCw, Edit, Shield, CalendarDays } from 'lucide-react'
 import type { VpnNode } from '@vpn/shared'
 import { Button } from '@/components/ui/button'
 
@@ -330,6 +330,12 @@ function NodesPage() {
                   {node.version && (
                     <div className="flex items-center gap-2">
                       <Server className="h-3.5 w-3.5 text-gray-300" /> {node.version}
+                    </div>
+                  )}
+                  {node.created_at && (
+                    <div className="flex items-center gap-2">
+                      <CalendarDays className="h-3.5 w-3.5 text-gray-300" />
+                      Created {new Date(node.created_at).toLocaleString()}
                     </div>
                   )}
                   {node.last_seen && (

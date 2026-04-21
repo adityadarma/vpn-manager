@@ -36,6 +36,9 @@
 #   MANAGER_URL or AGENT_API_MANAGER_URL - Manager API URL
 #   VPN_TOKEN - VPN authentication token
 #   REG_KEY or NODE_REGISTRATION_KEY - Registration key
+#   VPN_SUBNET - VPN network CIDR (e.g. 10.8.0.0/16, default: auto-assigned by manager)
+#   VPN_TYPE - VPN engine: openvpn (default) or wireguard
+#   FIREWALL_ENGINE - Firewall: iptables (default), nftables, ufw, firewalld, none
 #
 # Environment Variables (Manual registration):
 #   MANAGER_URL or AGENT_API_MANAGER_URL - Manager API URL
@@ -388,7 +391,7 @@ key /etc/openvpn/server/server.key
 dh none
 tls-crypt /etc/openvpn/server/tls-crypt.key
 
-server 10.8.1.0 255.255.255.0
+server ${VPN_NETWORK:-10.8.1.0} ${VPN_NETMASK:-255.255.255.0}
 topology subnet
 
 # Client Config Directory — allows per-client overrides (e.g. "disable" to block a kicked user)
@@ -603,17 +606,29 @@ install_agent() {
     
     # Parse VPN CIDR if auto registering
     if [ "$AUTO_REGISTER" = true ]; then
-        ENV_VPN_CIDR="${ENV_VPN_CIDR:-10.8.1.0/24}"
-        VPN_NETWORK="${ENV_VPN_CIDR%/*}"
-        VPN_PREFIX="${ENV_VPN_CIDR#*/}"
-        
-        if [ "$VPN_PREFIX" = "16" ]; then
-            VPN_NETMASK="255.255.0.0"
-        elif [ "$VPN_PREFIX" = "8" ]; then
-            VPN_NETMASK="255.0.0.0"
+        if [ -z "$ENV_VPN_CIDR" ]; then
+            warn "VPN_SUBNET not set — vpn_network will be auto-assigned by the manager"
+            warn "To specify a subnet, set VPN_SUBNET=10.8.0.0/16 (or pass it as an argument)"
+            VPN_NETWORK=""
+            VPN_NETMASK=""
         else
-            VPN_NETMASK="255.255.255.0"
+            VPN_NETWORK="${ENV_VPN_CIDR%/*}"
+            VPN_PREFIX="${ENV_VPN_CIDR#*/}"
+            
+            if [ "$VPN_PREFIX" = "16" ]; then
+                VPN_NETMASK="255.255.0.0"
+            elif [ "$VPN_PREFIX" = "8" ]; then
+                VPN_NETMASK="255.0.0.0"
+            else
+                VPN_NETMASK="255.255.255.0"
+            fi
+            info "VPN Subnet: ${VPN_NETWORK}/${VPN_PREFIX} (netmask: ${VPN_NETMASK})"
         fi
+    fi
+
+    # Update OpenVPN server.conf with the correct subnet now that VPN_NETWORK is known
+    if [ -n "$VPN_NETWORK" ] && [ "$ENV_VPN_TYPE" = "openvpn" ] && command -v openvpn &>/dev/null; then
+        update_openvpn_config
     fi
     
     # Get server info
@@ -658,8 +673,12 @@ EOF
         fi
         
         # Construct config object — cipher/auth_digest must match server.conf template
-        JSON_PAYLOAD="$JSON_PAYLOAD, \"config\":{\"vpn_network\":\"$VPN_NETWORK\", \"vpn_netmask\":\"$VPN_NETMASK\""
-        JSON_PAYLOAD="$JSON_PAYLOAD, \"cipher\":\"AES-256-GCM\", \"auth_digest\":\"SHA256\""
+        # Only include vpn_network if explicitly set; otherwise let the manager assign nextNetwork
+        if [ -n "$VPN_NETWORK" ]; then
+            JSON_PAYLOAD="$JSON_PAYLOAD, \"config\":{\"vpn_network\":\"$VPN_NETWORK\", \"vpn_netmask\":\"$VPN_NETMASK\", \"cipher\":\"AES-256-GCM\", \"auth_digest\":\"SHA256\""
+        else
+            JSON_PAYLOAD="$JSON_PAYLOAD, \"config\":{\"cipher\":\"AES-256-GCM\", \"auth_digest\":\"SHA256\""
+        fi
         if [ -n "$ENV_FIREWALL_ENGINE" ]; then
             JSON_PAYLOAD="$JSON_PAYLOAD, \"firewall_engine\":\"$ENV_FIREWALL_ENGINE\""
         fi
