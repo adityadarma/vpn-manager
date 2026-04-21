@@ -354,6 +354,18 @@ EOF
 update_openvpn_config() {
     info "Creating/updating OpenVPN server configuration..."
     
+    # Detect OpenVPN version to use correct cipher directive
+    # data-ciphers was introduced in 2.5 (renamed from ncp-ciphers)
+    local ovpn_major ovpn_minor CIPHER_DIRECTIVE
+    ovpn_major=$(openvpn --version 2>/dev/null | head -n1 | grep -oP '\d+\.\d+' | head -n1 | cut -d. -f1)
+    ovpn_minor=$(openvpn --version 2>/dev/null | head -n1 | grep -oP '\d+\.\d+' | head -n1 | cut -d. -f2)
+    if [ "${ovpn_major:-0}" -gt 2 ] || { [ "${ovpn_major:-0}" -eq 2 ] && [ "${ovpn_minor:-0}" -ge 5 ]; }; then
+        CIPHER_DIRECTIVE="data-ciphers"
+    else
+        CIPHER_DIRECTIVE="ncp-ciphers"
+    fi
+    info "OpenVPN ${ovpn_major}.${ovpn_minor} detected — using '${CIPHER_DIRECTIVE}'"
+    
     # Backup existing config
     if [ -f "/etc/openvpn/server/server.conf" ]; then
         cp /etc/openvpn/server/server.conf /etc/openvpn/server/server.conf.backup-$(date +%Y%m%d-%H%M%S)
@@ -365,7 +377,7 @@ update_openvpn_config() {
     chmod 755 /etc/openvpn/ccd
 
     # Create new config based on working reference
-    cat > /etc/openvpn/server/server.conf <<'EOF'
+    cat > /etc/openvpn/server/server.conf <<EOF
 port 1194
 proto udp
 dev tun
@@ -389,7 +401,7 @@ push "redirect-gateway def1 bypass-dhcp"
 keepalive 10 60
 explicit-exit-notify 1
 cipher AES-256-GCM
-ncp-ciphers AES-256-GCM:AES-128-GCM
+${CIPHER_DIRECTIVE} AES-256-GCM:AES-128-GCM
 auth SHA256
 tls-server
 tls-version-min 1.2

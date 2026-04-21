@@ -148,6 +148,23 @@ export async function handleUpdateServerConfig(params: Record<string, unknown>, 
   const keepaliveTimeout  = config.keepalive_timeout || 120
   const enableCompression = config.compression === 'lz4-v2'
 
+  // Detect OpenVPN version — data-ciphers was introduced in 2.5 (renamed from ncp-ciphers)
+  let cipherDirective = 'data-ciphers'
+  try {
+    const { stdout } = await execAsync('openvpn --version 2>/dev/null || true')
+    const match = stdout.match(/OpenVPN\s+(\d+)\.(\d+)/)
+    if (match) {
+      const major = parseInt(match[1], 10)
+      const minor = parseInt(match[2], 10)
+      if (major < 2 || (major === 2 && minor < 5)) {
+        cipherDirective = 'ncp-ciphers'
+      }
+    }
+  } catch {
+    // fallback to data-ciphers (safe for OpenVPN 2.5+)
+  }
+  console.log(`[update-config] Using cipher directive: ${cipherDirective}`)
+
   const customRoutes = config.push_routes
     ? config.push_routes.split(',').map(r => r.trim()).filter(Boolean)
     : []
@@ -279,7 +296,7 @@ topology subnet
 keepalive ${keepalivePing} ${keepaliveTimeout}
 explicit-exit-notify 1
 cipher ${cipher}
-ncp-ciphers ${cipher}
+${cipherDirective} ${cipher}
 auth SHA256
 tls-server
 tls-version-min 1.2
