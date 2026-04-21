@@ -15,6 +15,49 @@ err() { echo -e "${R}✗ $1${NC}"; }
 ok() { echo -e "${G}✓ $1${NC}"; }
 warn() { echo -e "${Y}⚠ $1${NC}"; }
 
+notify_manager_node_deleted() {
+    local env_file="/opt/vpn-agent/.env"
+
+    if [ ! -f "$env_file" ]; then
+        warn "Agent .env not found, skipping manager node deletion notification"
+        return 0
+    fi
+
+    local manager_url node_id secret_token
+    manager_url=$(grep -e "^AGENT_MANAGER_URL=" "$env_file" | tail -n1 | cut -d '=' -f2- | tr -d '"' | tr -d "'" || true)
+    node_id=$(grep -e "^AGENT_NODE_ID=" "$env_file" | tail -n1 | cut -d '=' -f2- | tr -d '"' | tr -d "'" || true)
+    secret_token=$(grep -e "^AGENT_SECRET_TOKEN=" "$env_file" | tail -n1 | cut -d '=' -f2- | tr -d '"' | tr -d "'" || true)
+
+    if [ -z "$manager_url" ] || [ -z "$secret_token" ]; then
+        warn "Manager URL/token not found in .env, skipping manager notification"
+        return 0
+    fi
+
+    local endpoint="${manager_url%/}/api/v1/nodes/me"
+    local response http_code body
+
+    response=$(curl -sS -m 12 -w "\n%{http_code}" -X DELETE "$endpoint" \
+        -H "Authorization: Bearer ${secret_token}" \
+        -H "Content-Type: application/json" 2>/dev/null || true)
+
+    http_code=$(echo "$response" | tail -n1)
+    body=$(echo "$response" | sed '$d')
+
+    if [ "$http_code" = "204" ]; then
+        ok "Node ${node_id:-unknown} deleted on manager"
+        return 0
+    fi
+
+    if [ -z "$http_code" ] || [ "$http_code" = "000" ]; then
+        warn "Failed to reach manager while deleting node; uninstall will continue locally"
+    else
+        warn "Manager node deletion returned HTTP ${http_code}; uninstall will continue locally"
+        [ -n "$body" ] && warn "Manager response: $body"
+    fi
+
+    return 0
+}
+
 [ "$EUID" -ne 0 ] && { err "Must run as root"; exit 1; }
 
 echo -e "${Y}============================================================"
@@ -41,6 +84,10 @@ warn "This will remove $DETECTED_VPN, the Agent, and all matching certificates/k
 echo ""
 read -p "Continue? [y/N]: " confirm
 [[ "$confirm" != "y" && "$confirm" != "Y" ]] && { echo "Aborted."; exit 0; }
+
+echo ""
+echo "Notifying manager to delete this node..."
+notify_manager_node_deleted
 
 # Detect OS
 [ -f /etc/os-release ] && . /etc/os-release || OS="unknown"

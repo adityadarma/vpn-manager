@@ -90,6 +90,24 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
     },
   )
 
+  // DELETE /api/v1/nodes/me (called by node uninstall script)
+  app.delete(
+    '/nodes/me',
+    { schema: { tags: ['nodes'], summary: 'Delete current node (agent auth)', security: [{ bearerAuth: [] }] } },
+    async (request, reply) => {
+      const node = await authenticateNodeToken(app, request, reply)
+      if (!node) return
+
+      const deleted = await app.db('vpn_nodes').where({ id: node.id }).delete()
+      if (!deleted) {
+        return reply.status(404).send({ error: 'Not Found', message: 'Node not found' })
+      }
+
+      app.log.info(`[node-self-delete] Node ${node.id} deleted via node token`)
+      return reply.status(204).send()
+    },
+  )
+
   // GET /api/v1/nodes/:id
   app.get<{ Params: { id: string } }>(
     '/nodes/:id',
