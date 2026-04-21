@@ -29,6 +29,18 @@ interface PolicyPayload {
   group_id: string | null
 }
 
+function getVpnInterfaceMatcher(
+  vpnType: string,
+  firewallEngine: string,
+): string {
+  // iptables prefix wildcard uses '+', nftables uses '*'.
+  if (firewallEngine === 'nftables') {
+    return vpnType === 'wireguard' ? 'wg*' : 'tun*'
+  }
+
+  return vpnType === 'wireguard' ? 'wg+' : 'tun+'
+}
+
 export async function handleApplyNetworkPolicy(
   payload: Record<string, unknown>,
   _driver: VpnDriver,
@@ -37,10 +49,8 @@ export async function handleApplyNetworkPolicy(
   const firewallEngine = (payload.firewall_engine || 'iptables') as string
   const vpnType = (payload.vpn_type || 'openvpn') as string
 
-  // Determine the network interface to match on:
-  // OpenVPN uses tun0/tun1/... → match with tun+
-  // WireGuard uses wg0/wg1/...  → match with wg+
-  const vpnInterface = vpnType === 'wireguard' ? 'wg+' : 'tun+'
+  // Determine interface matcher per firewall engine syntax.
+  const vpnInterface = getVpnInterfaceMatcher(vpnType, firewallEngine)
 
   if (firewallEngine === 'none') {
     console.log('[firewall] Firewall engine set to NONE. Skipping policy application.')
@@ -149,12 +159,17 @@ async function applyNftablesPolicies(policies: PolicyPayload[], vpnInterface: st
     // 2. Hook into forward chain if not already hooked
     const checkHook = await execAsync(`nft list chain inet filter forward`).catch(() => ({ stdout: '' }))
     if (!checkHook.stdout?.includes('VPN_FWWD')) {
-      await execFirewall(`nft add rule inet filter forward iifname "${vpnInterface}" jump VPN_FWWD`, 'nftables').catch(err => {
-        console.warn(`[firewall/dev] nft hook failed:`, err.message)
-      })
+      await execFirewall(`nft add rule inet filter forward iifname "${vpnInterface}" jump VPN_FWWD`, 'nftables')
+
+      // Verify the hook exists after insertion; if not, fail task so manager sees real status.
+      const verifyHook = await execAsync(`nft list chain inet filter forward`).catch(() => ({ stdout: '' }))
+      if (!verifyHook.stdout?.includes('VPN_FWWD')) {
+        throw new Error(`nftables hook insertion failed for interface matcher ${vpnInterface}`)
+      }
     }
 
     let appliedCount = 0
+    const failedRuleIds: string[] = []
     for (const p of policies) {
       try {
         let rule = `nft add rule inet filter VPN_FWWD`
@@ -189,7 +204,12 @@ async function applyNftablesPolicies(policies: PolicyPayload[], vpnInterface: st
         appliedCount++
       } catch (err: any) {
         console.error(`[firewall] Failed to apply nftables rule ${p.id}: ${err.message}`)
+        failedRuleIds.push(p.id)
       }
+    }
+
+    if (failedRuleIds.length > 0) {
+      throw new Error(`Failed to apply nftables rules: ${failedRuleIds.join(', ')}`)
     }
 
     await execFirewall(`nft add rule inet filter VPN_FWWD return`, 'nftables').catch(() => {})
