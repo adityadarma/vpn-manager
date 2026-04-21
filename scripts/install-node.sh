@@ -56,6 +56,68 @@ info() { echo -e "${B}ℹ $1${NC}"; }
 warn() { echo -e "${Y}⚠ $1${NC}"; }
 error() { echo -e "${R}✗ $1${NC}"; }
 
+mask_to_prefix() {
+    local mask="$1"
+    local old_ifs="$IFS"
+    local prefix=0
+    IFS='.'
+    read -r o1 o2 o3 o4 <<< "$mask"
+    IFS="$old_ifs"
+
+    for octet in "$o1" "$o2" "$o3" "$o4"; do
+        case "$octet" in
+            255) prefix=$((prefix + 8)) ;;
+            254) prefix=$((prefix + 7)) ;;
+            252) prefix=$((prefix + 6)) ;;
+            248) prefix=$((prefix + 5)) ;;
+            240) prefix=$((prefix + 4)) ;;
+            224) prefix=$((prefix + 3)) ;;
+            192) prefix=$((prefix + 2)) ;;
+            128) prefix=$((prefix + 1)) ;;
+            0) ;;
+            *) echo ""; return 1 ;;
+        esac
+    done
+
+    echo "$prefix"
+}
+
+get_openvpn_vpn_cidr() {
+    local network="${VPN_NETWORK:-10.8.1.0}"
+    local netmask="${VPN_NETMASK:-255.255.255.0}"
+    local prefix
+
+    prefix=$(mask_to_prefix "$netmask")
+    if [ -z "$prefix" ]; then
+        prefix=24
+    fi
+
+    echo "${network}/${prefix}"
+}
+
+configure_firewalld_openvpn_rules() {
+    local vpn_cidr="$1"
+    local lan_cidr="$2"
+
+    if ! command -v firewall-cmd &>/dev/null; then
+        warn "firewall-cmd not found, falling back to iptables-compatible rules"
+        return 1
+    fi
+
+    systemctl enable --now firewalld 2>/dev/null || true
+
+    local forward_rule="rule family=ipv4 source address=${vpn_cidr} destination address=${lan_cidr} accept"
+    local return_rule="rule family=ipv4 source address=${lan_cidr} destination address=${vpn_cidr} accept"
+
+    firewall-cmd --permanent --add-masquerade >/dev/null 2>&1 || true
+    firewall-cmd --permanent --add-rich-rule="$forward_rule" >/dev/null 2>&1 || true
+    firewall-cmd --permanent --add-rich-rule="$return_rule" >/dev/null 2>&1 || true
+    firewall-cmd --reload >/dev/null 2>&1 || true
+
+    ok "firewalld rules configured"
+    return 0
+}
+
 INSTALL_DIR="/opt/vpn-agent"
 
 # Check root
@@ -293,9 +355,27 @@ install_openvpn() {
         sysctl -p >/dev/null 2>&1
     fi
     
-    # Setup NAT
+    # Setup NAT + forwarding rules for VPN clients to reach LAN subnets
     IF=$(ip route | grep default | awk '{print $5}' | head -n1)
+    VPN_CIDR=$(get_openvpn_vpn_cidr)
+    LAN_CIDR=$(ip route show dev "$IF" proto kernel scope link | awk 'NR==1{print $1}')
+    if [ -z "$LAN_CIDR" ]; then
+        LAN_CIDR=$(ip -o -f inet addr show "$IF" | awk 'NR==1{print $4}')
+    fi
+    [ -z "$LAN_CIDR" ] && LAN_CIDR="0.0.0.0/0"
+    info "Firewall bootstrap: VPN=${VPN_CIDR}, LAN=${LAN_CIDR}, IF=${IF}"
     
+    if [ "$ENV_FIREWALL_ENGINE" = "firewalld" ]; then
+        configure_firewalld_openvpn_rules "$VPN_CIDR" "$LAN_CIDR" || ENV_FIREWALL_ENGINE="iptables"
+        if [ "$ENV_FIREWALL_ENGINE" = "firewalld" ]; then
+            systemctl disable --now openvpn-iptables.service 2>/dev/null || true
+            systemctl disable --now openvpn-nat.service 2>/dev/null || true
+            rm -f /etc/systemd/system/openvpn-iptables.service
+            rm -f /etc/systemd/system/openvpn-nat.service
+            systemctl daemon-reload
+        fi
+    fi
+
     if [ "$ENV_FIREWALL_ENGINE" = "nftables" ]; then
         if ! command -v nft &> /dev/null; then
             error "nft command not found. nftables package may not have been installed correctly."
@@ -307,32 +387,42 @@ install_openvpn() {
 Before=network.target
 [Service]
 Type=oneshot
-ExecStart=/usr/sbin/nft add table ip nat
-ExecStart=/usr/sbin/nft add chain ip nat POSTROUTING { type nat hook postrouting priority 100 \; }
-ExecStart=/usr/sbin/nft add rule ip nat POSTROUTING oifname "$IF" ip saddr 10.8.0.0/24 masquerade
-ExecStop=/usr/sbin/nft delete table ip nat
+ExecStart=/usr/sbin/nft add table ip vpn_manager_nat
+ExecStart=/usr/sbin/nft add chain ip vpn_manager_nat POSTROUTING { type nat hook postrouting priority 100 \; }
+ExecStart=/usr/sbin/nft add rule ip vpn_manager_nat POSTROUTING oifname "$IF" ip saddr ${VPN_CIDR} masquerade
+ExecStart=/usr/sbin/nft add table inet vpn_manager_filter
+ExecStart=/usr/sbin/nft add chain inet vpn_manager_filter FORWARD { type filter hook forward priority 0 \; policy accept \; }
+ExecStart=/usr/sbin/nft add rule inet vpn_manager_filter FORWARD ip saddr ${VPN_CIDR} ip daddr ${LAN_CIDR} accept
+ExecStart=/usr/sbin/nft add rule inet vpn_manager_filter FORWARD ip daddr ${VPN_CIDR} ct state related,established accept
+ExecStop=/usr/sbin/nft delete table ip vpn_manager_nat
+ExecStop=/usr/sbin/nft delete table inet vpn_manager_filter
 RemainAfterExit=yes
 [Install]
 WantedBy=multi-user.target
 EOF
     fi
     
-    if [ "$ENV_FIREWALL_ENGINE" = "iptables" ] || [ "$ENV_FIREWALL_ENGINE" = "ufw" ] || [ "$ENV_FIREWALL_ENGINE" = "firewalld" ]; then
-        # Default to standard iptables syntax for compatibility layers
+    if [ "$ENV_FIREWALL_ENGINE" = "iptables" ] || [ "$ENV_FIREWALL_ENGINE" = "ufw" ]; then
+        # Default to standard iptables syntax for compatibility layers.
+        # For UFW mode, we intentionally use direct iptables rules for deterministic server-side routing.
         cat > /etc/systemd/system/openvpn-nat.service <<EOF
 [Unit]
 Before=network.target
 [Service]
 Type=oneshot
-ExecStart=/sbin/iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o $IF -j MASQUERADE
-ExecStop=/sbin/iptables -t nat -D POSTROUTING -s 10.8.0.0/24 -o $IF -j MASQUERADE
+ExecStart=/sbin/iptables -t nat -A POSTROUTING -s ${VPN_CIDR} -o $IF -j MASQUERADE
+ExecStart=/sbin/iptables -A FORWARD -s ${VPN_CIDR} -d ${LAN_CIDR} -j ACCEPT
+ExecStart=/sbin/iptables -A FORWARD -d ${VPN_CIDR} -m state --state RELATED,ESTABLISHED -j ACCEPT
+ExecStop=/sbin/iptables -D POSTROUTING -s ${VPN_CIDR} -o $IF -j MASQUERADE
+ExecStop=/sbin/iptables -D FORWARD -s ${VPN_CIDR} -d ${LAN_CIDR} -j ACCEPT
+ExecStop=/sbin/iptables -D FORWARD -d ${VPN_CIDR} -m state --state RELATED,ESTABLISHED -j ACCEPT
 RemainAfterExit=yes
 [Install]
 WantedBy=multi-user.target
 EOF
     fi
     
-    if [ "$ENV_FIREWALL_ENGINE" != "none" ]; then
+    if [ "$ENV_FIREWALL_ENGINE" != "none" ] && [ "$ENV_FIREWALL_ENGINE" != "firewalld" ]; then
         systemctl daemon-reload
         # Disable old specific service if exists
         systemctl disable --now openvpn-iptables.service 2>/dev/null || true
