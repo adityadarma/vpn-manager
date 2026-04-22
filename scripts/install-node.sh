@@ -56,6 +56,8 @@ info() { echo -e "${B}ℹ $1${NC}"; }
 warn() { echo -e "${Y}⚠ $1${NC}"; }
 error() { echo -e "${R}✗ $1${NC}"; }
 
+VPN_MANAGER_IP_FORWARD_MARKER="# vpn-manager-ip-forward"
+
 mask_to_prefix() {
     local mask="$1"
     local old_ifs="$IFS"
@@ -95,6 +97,15 @@ get_openvpn_vpn_cidr() {
     echo "${network}/${prefix}"
 }
 
+ensure_ip_forward_enabled() {
+    if ! grep -q '^net.ipv4.ip_forward=1$' /etc/sysctl.conf; then
+        echo "$VPN_MANAGER_IP_FORWARD_MARKER" >> /etc/sysctl.conf
+        echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+    fi
+
+    sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
+}
+
 configure_firewalld_openvpn_rules() {
     local vpn_cidr="$1"
     local lan_cidr="$2"
@@ -109,13 +120,32 @@ configure_firewalld_openvpn_rules() {
     local forward_rule="rule family=ipv4 source address=${vpn_cidr} destination address=${lan_cidr} accept"
     local return_rule="rule family=ipv4 source address=${lan_cidr} destination address=${vpn_cidr} accept"
 
-    firewall-cmd --permanent --add-masquerade >/dev/null 2>&1 || true
+    # Keep client source IP for LAN destinations, NAT only for non-LAN targets.
+    firewall-cmd --permanent --direct --add-rule ipv4 nat POSTROUTING 0 -s "$vpn_cidr" -d "$lan_cidr" -j RETURN >/dev/null 2>&1 || true
+    firewall-cmd --permanent --direct --add-rule ipv4 nat POSTROUTING 1 -s "$vpn_cidr" ! -d "$lan_cidr" -j MASQUERADE >/dev/null 2>&1 || true
     firewall-cmd --permanent --add-rich-rule="$forward_rule" >/dev/null 2>&1 || true
     firewall-cmd --permanent --add-rich-rule="$return_rule" >/dev/null 2>&1 || true
     firewall-cmd --reload >/dev/null 2>&1 || true
 
     ok "firewalld rules configured"
     return 0
+}
+
+neutralize_legacy_openvpn_nat_execstop() {
+    local unit_file="/etc/systemd/system/openvpn-nat.service"
+
+    if [ ! -f "$unit_file" ]; then
+        return 0
+    fi
+
+    if grep -Eq 'ExecStop=.*/nft delete table (ip nat|inet filter)' "$unit_file"; then
+        sed -i.bak \
+            -e 's|^ExecStop=.*/nft delete table ip nat$|ExecStop=/usr/bin/true|' \
+            -e 's|^ExecStop=.*/nft delete table inet filter$|ExecStop=/usr/bin/true|' \
+            "$unit_file"
+        systemctl daemon-reload 2>/dev/null || true
+        warn "Neutralized legacy openvpn-nat ExecStop to avoid deleting shared nftables tables"
+    fi
 }
 
 INSTALL_DIR="/opt/vpn-agent"
@@ -349,11 +379,8 @@ install_openvpn() {
     # Create/update server config
     update_openvpn_config
     
-    # Enable IP forwarding
-    if ! grep -q "net.ipv4.ip_forward=1" /etc/sysctl.conf; then
-        echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
-        sysctl -p >/dev/null 2>&1
-    fi
+    # Enable IP forwarding for VPN routing.
+    ensure_ip_forward_enabled
     
     # Setup NAT + forwarding rules for VPN clients to reach LAN subnets
     IF=$(ip route | grep default | awk '{print $5}' | head -n1)
@@ -368,6 +395,7 @@ install_openvpn() {
     if [ "$ENV_FIREWALL_ENGINE" = "firewalld" ]; then
         configure_firewalld_openvpn_rules "$VPN_CIDR" "$LAN_CIDR" || ENV_FIREWALL_ENGINE="iptables"
         if [ "$ENV_FIREWALL_ENGINE" = "firewalld" ]; then
+            neutralize_legacy_openvpn_nat_execstop
             systemctl disable --now openvpn-iptables.service 2>/dev/null || true
             systemctl disable --now openvpn-nat.service 2>/dev/null || true
             rm -f /etc/systemd/system/openvpn-iptables.service
@@ -389,7 +417,8 @@ Before=network.target
 Type=oneshot
 ExecStart=/usr/sbin/nft add table ip vpn_manager_nat
 ExecStart=/usr/sbin/nft add chain ip vpn_manager_nat POSTROUTING { type nat hook postrouting priority 100 \; }
-ExecStart=/usr/sbin/nft add rule ip vpn_manager_nat POSTROUTING oifname "$IF" ip saddr ${VPN_CIDR} masquerade
+ExecStart=/usr/sbin/nft add rule ip vpn_manager_nat POSTROUTING ip saddr ${VPN_CIDR} ip daddr ${LAN_CIDR} return
+ExecStart=/usr/sbin/nft add rule ip vpn_manager_nat POSTROUTING oifname "$IF" ip saddr ${VPN_CIDR} ip daddr != ${LAN_CIDR} masquerade
 ExecStart=/usr/sbin/nft add table inet vpn_manager_filter
 ExecStart=/usr/sbin/nft add chain inet vpn_manager_filter FORWARD { type filter hook forward priority 0 \; policy accept \; }
 ExecStart=/usr/sbin/nft add rule inet vpn_manager_filter FORWARD ip saddr ${VPN_CIDR} ip daddr ${LAN_CIDR} accept
@@ -410,10 +439,12 @@ EOF
 Before=network.target
 [Service]
 Type=oneshot
-ExecStart=/sbin/iptables -t nat -A POSTROUTING -s ${VPN_CIDR} -o $IF -j MASQUERADE
+ExecStart=/sbin/iptables -t nat -I POSTROUTING 1 -s ${VPN_CIDR} -d ${LAN_CIDR} -j RETURN
+ExecStart=/sbin/iptables -t nat -A POSTROUTING -s ${VPN_CIDR} ! -d ${LAN_CIDR} -o $IF -j MASQUERADE
 ExecStart=/sbin/iptables -A FORWARD -s ${VPN_CIDR} -d ${LAN_CIDR} -j ACCEPT
 ExecStart=/sbin/iptables -A FORWARD -d ${VPN_CIDR} -m state --state RELATED,ESTABLISHED -j ACCEPT
-ExecStop=/sbin/iptables -D POSTROUTING -s ${VPN_CIDR} -o $IF -j MASQUERADE
+ExecStop=/sbin/iptables -t nat -D POSTROUTING -s ${VPN_CIDR} -d ${LAN_CIDR} -j RETURN
+ExecStop=/sbin/iptables -t nat -D POSTROUTING -s ${VPN_CIDR} ! -d ${LAN_CIDR} -o $IF -j MASQUERADE
 ExecStop=/sbin/iptables -D FORWARD -s ${VPN_CIDR} -d ${LAN_CIDR} -j ACCEPT
 ExecStop=/sbin/iptables -D FORWARD -d ${VPN_CIDR} -m state --state RELATED,ESTABLISHED -j ACCEPT
 RemainAfterExit=yes
@@ -593,11 +624,8 @@ ListenPort = 51820
 EOF
     chmod 600 /etc/wireguard/wg0.conf
     
-    # Enable IP forwarding
-    if ! grep -q "net.ipv4.ip_forward=1" /etc/sysctl.conf; then
-        echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
-        sysctl -p >/dev/null 2>&1
-    fi
+    # Enable IP forwarding for VPN routing.
+    ensure_ip_forward_enabled
     
     # Enable and start WireGuard
     systemctl enable wg-quick@wg0

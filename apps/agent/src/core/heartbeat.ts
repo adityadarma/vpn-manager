@@ -2,6 +2,11 @@ import type { AgentEnv } from '../config/env'
 import type { VpnDriver } from '../drivers'
 import fs from 'node:fs/promises'
 
+const IPTABLES_POLICY_CHAIN = 'VPN_POLICY_FWWD'
+const IPTABLES_LEGACY_POLICY_CHAIN = 'VPN_FWWD'
+const NFTABLES_FILTER_TABLE = 'vpn_manager_filter'
+const NFTABLES_POLICY_CHAIN = 'VPN_POLICY_FWWD'
+
 export function startHeartbeat(env: AgentEnv, driver: VpnDriver): void {
   console.log(`💓 Heartbeat started (interval: ${env.AGENT_HEARTBEAT_INTERVAL_MS}ms)`)
 
@@ -48,21 +53,29 @@ export function startHeartbeat(env: AgentEnv, driver: VpnDriver): void {
           if (env.FIREWALL_ENGINE === 'none') return ''
           
           if (['iptables', 'ufw', 'firewalld'].includes(env.FIREWALL_ENGINE)) {
-            return (await execAsync('iptables -S VPN_FWWD')).stdout
+            try {
+              return (await execAsync(`iptables -S ${IPTABLES_POLICY_CHAIN}`)).stdout
+            } catch {
+              return (await execAsync(`iptables -S ${IPTABLES_LEGACY_POLICY_CHAIN}`)).stdout
+            }
           } 
           if (env.FIREWALL_ENGINE === 'nftables') {
-            // Try listing just the VPN_FWWD chain first; if it doesn't exist yet
-            // fall back to the full table dump so we always return something useful.
+            // Try listing the dedicated policy chain first; if it doesn't exist yet
+            // fall back to table dumps so we always return something useful.
             try {
-              return (await execAsync('nft list chain inet filter VPN_FWWD')).stdout
+              return (await execAsync(`nft list chain inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_POLICY_CHAIN}`)).stdout
             } catch {
+              try { return (await execAsync(`nft list table inet ${NFTABLES_FILTER_TABLE}`)).stdout } catch {}
+              try { return (await execAsync('nft list chain inet filter VPN_FWWD')).stdout } catch {}
               try { return (await execAsync('nft list table inet filter')).stdout } catch {}
               return ''
             }
           }
 
           // Fallback to 'auto' mode
-          try { return (await execAsync('iptables -S VPN_FWWD')).stdout } catch {}
+          try { return (await execAsync(`iptables -S ${IPTABLES_POLICY_CHAIN}`)).stdout } catch {}
+          try { return (await execAsync(`iptables -S ${IPTABLES_LEGACY_POLICY_CHAIN}`)).stdout } catch {}
+          try { return (await execAsync(`nft list chain inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_POLICY_CHAIN}`)).stdout } catch {}
           try { return (await execAsync('nft list chain inet filter VPN_FWWD')).stdout } catch {}
           return ''
         }

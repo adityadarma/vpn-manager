@@ -15,6 +15,25 @@ err() { echo -e "${R}✗ $1${NC}"; }
 ok() { echo -e "${G}✓ $1${NC}"; }
 warn() { echo -e "${Y}⚠ $1${NC}"; }
 
+VPN_MANAGER_IP_FORWARD_MARKER="# vpn-manager-ip-forward"
+
+neutralize_legacy_openvpn_nat_execstop() {
+    local unit_file="/etc/systemd/system/openvpn-nat.service"
+
+    if [ ! -f "$unit_file" ]; then
+        return 0
+    fi
+
+    if grep -Eq 'ExecStop=.*/nft delete table (ip nat|inet filter)' "$unit_file"; then
+        sed -i.bak \
+            -e 's|^ExecStop=.*/nft delete table ip nat$|ExecStop=/usr/bin/true|' \
+            -e 's|^ExecStop=.*/nft delete table inet filter$|ExecStop=/usr/bin/true|' \
+            "$unit_file"
+        systemctl daemon-reload 2>/dev/null || true
+        warn "Neutralized legacy openvpn-nat ExecStop to avoid deleting shared nftables tables"
+    fi
+}
+
 cleanup_firewalld_rules() {
     local vpn_cidr="$1"
     local lan_cidr="$2"
@@ -26,10 +45,32 @@ cleanup_firewalld_rules() {
     local forward_rule="rule family=ipv4 source address=${vpn_cidr} destination address=${lan_cidr} accept"
     local return_rule="rule family=ipv4 source address=${lan_cidr} destination address=${vpn_cidr} accept"
 
+    firewall-cmd --permanent --direct --remove-rule ipv4 nat POSTROUTING 0 -s "$vpn_cidr" -d "$lan_cidr" -j RETURN >/dev/null 2>&1 || true
+    firewall-cmd --permanent --direct --remove-rule ipv4 nat POSTROUTING 1 -s "$vpn_cidr" ! -d "$lan_cidr" -j MASQUERADE >/dev/null 2>&1 || true
     firewall-cmd --permanent --remove-rich-rule="$forward_rule" >/dev/null 2>&1 || true
     firewall-cmd --permanent --remove-rich-rule="$return_rule" >/dev/null 2>&1 || true
-    firewall-cmd --permanent --remove-masquerade >/dev/null 2>&1 || true
     firewall-cmd --reload >/dev/null 2>&1 || true
+}
+
+cleanup_vpn_manager_ip_forward() {
+    if grep -q "^${VPN_MANAGER_IP_FORWARD_MARKER}$" /etc/sysctl.conf 2>/dev/null; then
+        sed -i.bak "/^${VPN_MANAGER_IP_FORWARD_MARKER}$/d;/^net\.ipv4\.ip_forward=1$/d" /etc/sysctl.conf
+        sysctl -p >/dev/null 2>&1 || true
+        ok "Removed VPN Manager-managed IP forwarding setting"
+    else
+        warn "Leaving existing host IP forwarding setting unchanged"
+    fi
+}
+
+cleanup_iptables_policy_chains() {
+    for chain in VPN_POLICY_FWWD VPN_FWWD; do
+        for iface in tun+ wg+; do
+            iptables -D FORWARD -i "$iface" -j "$chain" 2>/dev/null || true
+        done
+
+        iptables -F "$chain" 2>/dev/null || true
+        iptables -X "$chain" 2>/dev/null || true
+    done
 }
 
 notify_manager_node_deleted() {
@@ -149,12 +190,16 @@ if [ "$VPN_TYPE" = "openvpn" ] || [ "$VPN_TYPE" = "both" ]; then
     rm -f /etc/systemd/system/openvpn-iptables.service
 
     # Stop NAT service (current installer-managed wrapper)
+    neutralize_legacy_openvpn_nat_execstop
     systemctl stop openvpn-nat.service 2>/dev/null || true
     systemctl disable openvpn-nat.service 2>/dev/null || true
     rm -f /etc/systemd/system/openvpn-nat.service
 
     # Cleanup native firewalld rules if configured
     cleanup_firewalld_rules "$VPN_CIDR" "$LAN_CIDR"
+
+    # Cleanup dynamic policy chains created by the agent.
+    cleanup_iptables_policy_chains
 
     # Cleanup nftables dedicated tables if they still exist
     nft delete table ip vpn_manager_nat 2>/dev/null || true
@@ -216,8 +261,7 @@ ok "Files removed"
 echo ""
 echo "Reverting network config..."
 
-sed -i '/net.ipv4.ip_forward=1/d' /etc/sysctl.conf 2>/dev/null || true
-sysctl -p >/dev/null 2>&1 || true
+cleanup_vpn_manager_ip_forward
 
 ok "Network config reverted"
 

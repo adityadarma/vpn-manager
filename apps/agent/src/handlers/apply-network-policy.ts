@@ -4,6 +4,12 @@ import type { VpnDriver } from '../drivers'
 
 const execAsync = promisify(exec)
 
+const IPTABLES_POLICY_CHAIN = 'VPN_POLICY_FWWD'
+const IPTABLES_LEGACY_POLICY_CHAIN = 'VPN_FWWD'
+const NFTABLES_FILTER_TABLE = 'vpn_manager_filter'
+const NFTABLES_FORWARD_CHAIN = 'FORWARD'
+const NFTABLES_POLICY_CHAIN = 'VPN_POLICY_FWWD'
+
 async function execFirewall(cmd: string, engine: 'iptables' | 'nftables') {
   try {
     await execAsync(cmd)
@@ -69,19 +75,24 @@ export async function handleApplyNetworkPolicy(
 
 async function applyIptablesPolicies(policies: PolicyPayload[], vpnInterface: string) {
   try {
+    // Clean up legacy dynamic hook/chain from older installs.
+    await execFirewall(`iptables -D FORWARD -i ${vpnInterface} -j ${IPTABLES_LEGACY_POLICY_CHAIN}`, 'iptables').catch(() => {})
+    await execFirewall(`iptables -F ${IPTABLES_LEGACY_POLICY_CHAIN}`, 'iptables').catch(() => {})
+    await execFirewall(`iptables -X ${IPTABLES_LEGACY_POLICY_CHAIN}`, 'iptables').catch(() => {})
+
     // 1. Ensure custom chain exists
-    await execFirewall(`iptables -N VPN_FWWD`, 'iptables').catch(() => { /* ignore if already exists */ })
+    await execFirewall(`iptables -N ${IPTABLES_POLICY_CHAIN}`, 'iptables').catch(() => { /* ignore if already exists */ })
 
     // 2. Flush current rules from the custom chain
-    await execFirewall(`iptables -F VPN_FWWD`, 'iptables')
+    await execFirewall(`iptables -F ${IPTABLES_POLICY_CHAIN}`, 'iptables')
 
     // 3. Ensure FORWARD jumps to our custom chain BEFORE default accept
     try {
-      await execAsync(`iptables -C FORWARD -i ${vpnInterface} -j VPN_FWWD`)
+      await execAsync(`iptables -C FORWARD -i ${vpnInterface} -j ${IPTABLES_POLICY_CHAIN}`)
     } catch (checkErr: any) {
       if (checkErr.message?.includes('not found') || checkErr.code === 1) { // code 1 = rule doesn't exist
-        await execFirewall(`iptables -I FORWARD 1 -i ${vpnInterface} -j VPN_FWWD`, 'iptables')
-        console.log(`[firewall] Hooked VPN_FWWD into FORWARD chain for interface ${vpnInterface}.`)
+        await execFirewall(`iptables -I FORWARD 1 -i ${vpnInterface} -j ${IPTABLES_POLICY_CHAIN}`, 'iptables')
+        console.log(`[firewall] Hooked ${IPTABLES_POLICY_CHAIN} into FORWARD chain for interface ${vpnInterface}.`)
       } else if (!checkErr.message?.includes('not found')) {
          throw checkErr
       }
@@ -92,7 +103,7 @@ async function applyIptablesPolicies(policies: PolicyPayload[], vpnInterface: st
     // 4. Apply policies ordered by priority (DB already sorts it, so we append them in sequence)
     for (const p of policies) {
       try {
-        let rule = `iptables -A VPN_FWWD`
+        let rule = `iptables -A ${IPTABLES_POLICY_CHAIN}`
 
         // Source IP / Subnet
         if (p.user_id) {
@@ -136,7 +147,7 @@ async function applyIptablesPolicies(policies: PolicyPayload[], vpnInterface: st
     }
 
     // Default action: if it passes all above rules, RETURN to FORWARD chain
-    await execFirewall(`iptables -A VPN_FWWD -j RETURN`, 'iptables')
+    await execFirewall(`iptables -A ${IPTABLES_POLICY_CHAIN} -j RETURN`, 'iptables')
 
     console.log(`[firewall] Successfully applied ${appliedCount}/${policies.length} rules.`)
     
@@ -149,21 +160,26 @@ async function applyIptablesPolicies(policies: PolicyPayload[], vpnInterface: st
 
 async function applyNftablesPolicies(policies: PolicyPayload[], vpnInterface: string) {
   try {
+    // Clean up legacy dynamic hook/chain from older installs.
+    await execFirewall(`nft delete rule inet filter forward iifname "${vpnInterface}" jump ${IPTABLES_LEGACY_POLICY_CHAIN}`, 'nftables').catch(() => {})
+    await execFirewall(`nft flush chain inet filter ${IPTABLES_LEGACY_POLICY_CHAIN}`, 'nftables').catch(() => {})
+    await execFirewall(`nft delete chain inet filter ${IPTABLES_LEGACY_POLICY_CHAIN}`, 'nftables').catch(() => {})
+
     // 1. Ensure table and chains exist
-    await execFirewall(`nft add table inet filter`, 'nftables').catch(() => {})
-    // Ensure base 'forward' chain with kernel hook exists (idempotent — ignored if already present)
-    await execFirewall(`nft add chain inet filter forward { type filter hook forward priority 0 \\; policy accept \\; }`, 'nftables').catch(() => {})
-    await execFirewall(`nft add chain inet filter VPN_FWWD`, 'nftables').catch(() => {})
-    await execFirewall(`nft flush chain inet filter VPN_FWWD`, 'nftables').catch(() => {})
+    await execFirewall(`nft add table inet ${NFTABLES_FILTER_TABLE}`, 'nftables').catch(() => {})
+    // Ensure base FORWARD hook chain exists (idempotent — ignored if already present)
+    await execFirewall(`nft add chain inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_FORWARD_CHAIN} { type filter hook forward priority 0 \\; policy accept \\; }`, 'nftables').catch(() => {})
+    await execFirewall(`nft add chain inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_POLICY_CHAIN}`, 'nftables').catch(() => {})
+    await execFirewall(`nft flush chain inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_POLICY_CHAIN}`, 'nftables').catch(() => {})
 
     // 2. Hook into forward chain if not already hooked
-    const checkHook = await execAsync(`nft list chain inet filter forward`).catch(() => ({ stdout: '' }))
-    if (!checkHook.stdout?.includes('VPN_FWWD')) {
-      await execFirewall(`nft add rule inet filter forward iifname "${vpnInterface}" jump VPN_FWWD`, 'nftables')
+    const checkHook = await execAsync(`nft list chain inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_FORWARD_CHAIN}`).catch(() => ({ stdout: '' }))
+    if (!checkHook.stdout?.includes(NFTABLES_POLICY_CHAIN)) {
+      await execFirewall(`nft add rule inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_FORWARD_CHAIN} iifname "${vpnInterface}" jump ${NFTABLES_POLICY_CHAIN}`, 'nftables')
 
       // Verify the hook exists after insertion; if not, fail task so manager sees real status.
-      const verifyHook = await execAsync(`nft list chain inet filter forward`).catch(() => ({ stdout: '' }))
-      if (!verifyHook.stdout?.includes('VPN_FWWD')) {
+      const verifyHook = await execAsync(`nft list chain inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_FORWARD_CHAIN}`).catch(() => ({ stdout: '' }))
+      if (!verifyHook.stdout?.includes(NFTABLES_POLICY_CHAIN)) {
         throw new Error(`nftables hook insertion failed for interface matcher ${vpnInterface}`)
       }
     }
@@ -172,7 +188,7 @@ async function applyNftablesPolicies(policies: PolicyPayload[], vpnInterface: st
     const failedRuleIds: string[] = []
     for (const p of policies) {
       try {
-        let rule = `nft add rule inet filter VPN_FWWD`
+        let rule = `nft add rule inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_POLICY_CHAIN}`
 
         if (p.user_id) {
           if (!p.user_ip) {
@@ -212,7 +228,7 @@ async function applyNftablesPolicies(policies: PolicyPayload[], vpnInterface: st
       throw new Error(`Failed to apply nftables rules: ${failedRuleIds.join(', ')}`)
     }
 
-    await execFirewall(`nft add rule inet filter VPN_FWWD return`, 'nftables').catch(() => {})
+    await execFirewall(`nft add rule inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_POLICY_CHAIN} return`, 'nftables').catch(() => {})
     console.log(`[firewall] Successfully applied ${appliedCount}/${policies.length} nftables rules.`)
     return { success: true, count: appliedCount }
   } catch (error: any) {
