@@ -58,6 +58,28 @@ error() { echo -e "${R}✗ $1${NC}"; }
 
 VPN_MANAGER_IP_FORWARD_MARKER="# vpn-manager-ip-forward"
 
+detect_active_firewall() {
+    # Returns the name of the firewall engine that is currently active/installed on this OS.
+    # Priority: ufw > firewalld > nftables > iptables
+    local detected="iptables"
+
+    # Check ufw
+    if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q 'Status: active'; then
+        detected="ufw"
+    # Check firewalld
+    elif command -v firewall-cmd &>/dev/null && systemctl is-active --quiet firewalld 2>/dev/null; then
+        detected="firewalld"
+    # Check nftables
+    elif command -v nft &>/dev/null && systemctl is-active --quiet nftables 2>/dev/null; then
+        detected="nftables"
+    # Check if nftables is installed but service not running (still preferred over iptables on modern systems)
+    elif command -v nft &>/dev/null; then
+        detected="nftables"
+    fi
+
+    echo "$detected"
+}
+
 mask_to_prefix() {
     local mask="$1"
     local old_ifs="$IFS"
@@ -264,21 +286,50 @@ fi
 echo ""
 
 if [ -z "$FIREWALL_ENGINE" ]; then
+    # Auto-detect the firewall that is currently active on this system
+    AUTO_DETECTED_FW=$(detect_active_firewall)
+
+    # Map detected name to menu number for the default hint
+    case "$AUTO_DETECTED_FW" in
+        nftables) FW_DEFAULT_NUM=2 ;;
+        ufw)      FW_DEFAULT_NUM=3 ;;
+        firewalld) FW_DEFAULT_NUM=4 ;;
+        *)        FW_DEFAULT_NUM=1 ;;
+    esac
+
+    info "Detected active firewall on this system: ${AUTO_DETECTED_FW}"
+    echo ""
     echo "Firewall Engine (NAT/Routing & Agent Firewall):"
     echo "1) iptables (Legacy/Standard)"
     echo "2) nftables (Modern Linux/Debian 12+)"
     echo "3) ufw (Ubuntu)"
     echo "4) firewalld (RHEL/CentOS)"
     echo "5) none (Manage manually)"
-    read -p "Choice [1-5] (default 1): " fw_choice </dev/tty
-    
+    echo ""
+    warn "Recommended: option ${FW_DEFAULT_NUM} [${AUTO_DETECTED_FW}] — already active on this system."
+    warn "Choosing a different firewall may cause rule conflicts."
+    read -p "Choice [1-5] (default ${FW_DEFAULT_NUM}): " fw_choice </dev/tty
+
     case $fw_choice in
+        1) FIREWALL_ENGINE="iptables" ;;
         2) FIREWALL_ENGINE="nftables" ;;
         3) FIREWALL_ENGINE="ufw" ;;
         4) FIREWALL_ENGINE="firewalld" ;;
         5) FIREWALL_ENGINE="none" ;;
-        *) FIREWALL_ENGINE="iptables" ;;
+        *) FIREWALL_ENGINE="$AUTO_DETECTED_FW" ;;
     esac
+
+    # Warn if user picked something different from what's already active
+    if [ -n "$fw_choice" ] && [ "$FIREWALL_ENGINE" != "$AUTO_DETECTED_FW" ] && [ "$FIREWALL_ENGINE" != "none" ]; then
+        echo ""
+        warn "You selected '${FIREWALL_ENGINE}' but '${AUTO_DETECTED_FW}' is currently active on this system."
+        warn "This may cause firewall rule conflicts. Make sure '${FIREWALL_ENGINE}' is properly set up."
+        read -p "Continue anyway? [y/N]: " fw_confirm </dev/tty
+        if [[ "$fw_confirm" != "y" && "$fw_confirm" != "Y" ]]; then
+            FIREWALL_ENGINE="$AUTO_DETECTED_FW"
+            info "Reverting to detected firewall: ${AUTO_DETECTED_FW}"
+        fi
+    fi
 fi
 export ENV_FIREWALL_ENGINE="$FIREWALL_ENGINE"
 
@@ -459,6 +510,13 @@ EOF
         systemctl disable --now openvpn-iptables.service 2>/dev/null || true
         systemctl enable --now openvpn-nat.service
     fi
+
+    # For UFW mode: open the VPN port via ufw with a comment marker so uninstall
+    # can identify and safely remove only VPN Manager's own rules.
+    if [ "$ENV_FIREWALL_ENGINE" = "ufw" ] && command -v ufw &>/dev/null; then
+        ufw allow 1194/udp comment 'vpn-manager' >/dev/null 2>&1 || true
+        ok "UFW: opened port 1194/udp (tagged vpn-manager)"
+    fi
     
     # Start OpenVPN
     systemctl enable --now openvpn-server@server.service 2>/dev/null || \
@@ -631,6 +689,13 @@ EOF
     systemctl enable wg-quick@wg0
     systemctl restart wg-quick@wg0
     ok "WireGuard service restarted"
+
+    # For UFW mode: open the WireGuard port via ufw with a comment marker so uninstall
+    # can identify and safely remove only VPN Manager's own rules.
+    if [ "$ENV_FIREWALL_ENGINE" = "ufw" ] && command -v ufw &>/dev/null; then
+        ufw allow 51820/udp comment 'vpn-manager' >/dev/null 2>&1 || true
+        ok "UFW: opened port 51820/udp (tagged vpn-manager)"
+    fi
 }
 
 install_agent() {

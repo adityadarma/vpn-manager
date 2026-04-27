@@ -69,7 +69,15 @@ export async function handleApplyNetworkPolicy(
     return applyNftablesPolicies(policies, vpnInterface)
   }
 
-  // Default: iptables / iptables-nft wrapper
+  if (firewallEngine === 'firewalld') {
+    return applyFirewalldPolicies(policies, vpnInterface)
+  }
+
+  // iptables — covers both 'iptables' and 'ufw' modes.
+  // UFW uses direct iptables rules for server-side routing (intentional, see install-node.sh).
+  if (firewallEngine === 'ufw') {
+    console.log('[firewall] UFW mode: applying policies via iptables (server-side routing, not ufw cli).')
+  }
   return applyIptablesPolicies(policies, vpnInterface)
 }
 
@@ -238,4 +246,60 @@ async function applyNftablesPolicies(policies: PolicyPayload[], vpnInterface: st
     }
     throw error
   }
+}
+
+async function applyFirewalldPolicies(policies: PolicyPayload[], _vpnInterface: string) {
+  // firewalld does not support custom chains — policies are applied as rich-rules.
+  // Note: unlike iptables/nftables, we cannot flush a single "chain" atomically.
+  // The manager should always send the complete desired policy set.
+  let appliedCount = 0
+  const failedRuleIds: string[] = []
+
+  for (const p of policies) {
+    try {
+      let richRule = `rule family=ipv4`
+
+      if (p.user_id) {
+        if (!p.user_ip) {
+          console.warn(`[firewall] Policy ${p.id} targets user ${p.user_id} but has no VPN IP. Skipping.`)
+          continue
+        }
+        richRule += ` source address=${p.user_ip}/32`
+      } else if (p.group_id) {
+        if (!p.group_subnet) {
+          console.warn(`[firewall] Policy ${p.id} targets group ${p.group_id} but has no VPN Subnet. Skipping.`)
+          continue
+        }
+        richRule += ` source address=${p.group_subnet}`
+      }
+
+      richRule += ` destination address=${p.target_network}`
+
+      if (p.protocol !== 'all') {
+        if (p.target_port && ['tcp', 'udp'].includes(p.protocol)) {
+          richRule += ` ${p.protocol} port port=${p.target_port}`
+        }
+      }
+
+      const action = p.action.toUpperCase() === 'ALLOW' ? 'accept' : 'drop'
+      richRule += ` ${action}`
+
+      await execFirewall(`firewall-cmd --permanent --add-rich-rule="${richRule}"`, 'firewalld')
+      appliedCount++
+    } catch (err: any) {
+      console.error(`[firewall] Failed to apply firewalld rule ${p.id}: ${err.message}`)
+      failedRuleIds.push(p.id)
+    }
+  }
+
+  if (appliedCount > 0) {
+    await execFirewall('firewall-cmd --reload', 'firewalld').catch(() => {})
+  }
+
+  if (failedRuleIds.length > 0) {
+    throw new Error(`Failed to apply firewalld rules: ${failedRuleIds.join(', ')}`)
+  }
+
+  console.log(`[firewall] Successfully applied ${appliedCount}/${policies.length} firewalld rules.`)
+  return { success: true, count: appliedCount }
 }

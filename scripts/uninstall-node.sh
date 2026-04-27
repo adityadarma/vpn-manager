@@ -52,6 +52,39 @@ cleanup_firewalld_rules() {
     firewall-cmd --reload >/dev/null 2>&1 || true
 }
 
+cleanup_ufw_rules() {
+    # Safety: only delete UFW rules that were explicitly added with the 'vpn-manager' comment.
+    # This prevents accidentally removing Docker rules, manually added rules, or other services
+    # that happen to use the same port/CIDR.
+
+    if ! command -v ufw &>/dev/null; then
+        return 0
+    fi
+
+    # UFW stores rules in /etc/ufw/user.rules and /etc/ufw/user6.rules
+    # We only delete lines tagged with our marker comment.
+    local MARKER="# vpn-manager"
+    local changed=false
+
+    for rules_file in /etc/ufw/user.rules /etc/ufw/user6.rules; do
+        if [ -f "$rules_file" ] && grep -q "$MARKER" "$rules_file" 2>/dev/null; then
+            # Remove lines containing our marker (and the -A rule line immediately preceding it)
+            # UFW rule format: -A ufw-user-input -p udp --dport 1194 -j ACCEPT\n### vpn-manager
+            sed -i.bak "/^### ${MARKER#'# '}/{ N; d; }" "$rules_file" 2>/dev/null || true
+            # Also remove standalone marker-tagged lines
+            sed -i "/.*${MARKER}/d" "$rules_file" 2>/dev/null || true
+            changed=true
+        fi
+    done
+
+    if [ "$changed" = true ]; then
+        ufw reload >/dev/null 2>&1 || true
+        ok "UFW vpn-manager rules removed"
+    else
+        warn "No UFW rules tagged with 'vpn-manager' found — nothing to remove"
+    fi
+}
+
 cleanup_vpn_manager_ip_forward() {
     if grep -q "^${VPN_MANAGER_IP_FORWARD_MARKER}$" /etc/sysctl.conf 2>/dev/null; then
         sed -i.bak "/^${VPN_MANAGER_IP_FORWARD_MARKER}$/d;/^net\.ipv4\.ip_forward=1$/d" /etc/sysctl.conf
@@ -122,11 +155,14 @@ echo -e "${Y}============================================================"
 echo "  VPN Manager - Uninstaller"
 echo "============================================================${NC}"
 echo ""
-# Attempt to detect VPN engine from agent environment
+# Attempt to detect VPN engine and firewall engine from agent environment
 DETECTED_VPN="Unknown"
+FIREWALL_ENGINE=""
 if [ -f "/opt/vpn-agent/.env" ]; then
     VPN_TYPE=$(grep -e "^VPN_TYPE=" /opt/vpn-agent/.env | cut -d '=' -f2 | tr -d '"' | tr -d "'" || echo "openvpn")
     [ -z "$VPN_TYPE" ] && VPN_TYPE="openvpn"
+    FIREWALL_ENGINE=$(grep -e "^FIREWALL_ENGINE=" /opt/vpn-agent/.env | cut -d '=' -f2 | tr -d '"' | tr -d "'" || true)
+    [ -z "$FIREWALL_ENGINE" ] || [ "$FIREWALL_ENGINE" = "auto" ] && FIREWALL_ENGINE="iptables"
     if [ "$VPN_TYPE" = "wireguard" ]; then
         DETECTED_VPN="WireGuard"
     elif [ "$VPN_TYPE" = "openvpn" ]; then
@@ -135,9 +171,12 @@ if [ -f "/opt/vpn-agent/.env" ]; then
 else
     VPN_TYPE="both"
     DETECTED_VPN="OpenVPN & WireGuard (Force Purge All)"
+    # No .env: attempt cleanup for all firewall types
+    FIREWALL_ENGINE="all"
 fi
 
 warn "Detected Engine: $DETECTED_VPN"
+warn "Detected Firewall: ${FIREWALL_ENGINE}"
 warn "This will remove $DETECTED_VPN, the Agent, and all matching certificates/keys!"
 echo ""
 read -p "Continue? [y/N]: " confirm
@@ -195,16 +234,38 @@ if [ "$VPN_TYPE" = "openvpn" ] || [ "$VPN_TYPE" = "both" ]; then
     systemctl disable openvpn-nat.service 2>/dev/null || true
     rm -f /etc/systemd/system/openvpn-nat.service
 
-    # Cleanup native firewalld rules if configured
-    cleanup_firewalld_rules "$VPN_CIDR" "$LAN_CIDR"
+    # Targeted firewall cleanup based on what was configured during install
+    case "$FIREWALL_ENGINE" in
+        firewalld)
+            cleanup_firewalld_rules "$VPN_CIDR" "$LAN_CIDR"
+            ok "firewalld rules cleaned up"
+            ;;
+        nftables)
+            nft delete table ip vpn_manager_nat 2>/dev/null || true
+            nft delete table inet vpn_manager_filter 2>/dev/null || true
+            ok "nftables tables cleaned up"
+            ;;
+        ufw)
+            cleanup_ufw_rules "$VPN_CIDR"
+            ok "ufw rules cleaned up"
+            ;;
+        all)
+            # No .env found: attempt all cleanup types as a best-effort purge
+            cleanup_firewalld_rules "$VPN_CIDR" "$LAN_CIDR"
+            cleanup_ufw_rules "$VPN_CIDR"
+            nft delete table ip vpn_manager_nat 2>/dev/null || true
+            nft delete table inet vpn_manager_filter 2>/dev/null || true
+            ok "All firewall rules cleaned up (force purge)"
+            ;;
+        *) # iptables (default)
+            # iptables NAT rules are removed via ExecStop in openvpn-nat.service (done above).
+            # Only clean up dynamic agent policy chains here.
+            ;;
+    esac
 
-    # Cleanup dynamic policy chains created by the agent.
+    # Always clean up dynamic policy chains created by the agent (iptables-based, agent uses these regardless of engine)
     cleanup_iptables_policy_chains
 
-    # Cleanup nftables dedicated tables if they still exist
-    nft delete table ip vpn_manager_nat 2>/dev/null || true
-    nft delete table inet vpn_manager_filter 2>/dev/null || true
-    
     systemctl daemon-reload
     ok "OpenVPN services stopped"
 fi

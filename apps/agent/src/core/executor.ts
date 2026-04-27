@@ -55,7 +55,15 @@ export async function executeTask(env: AgentEnv, task: Task, driver: VpnDriver):
     errorMessage = `Unknown action: ${task.action}`
   } else {
     try {
-      result = await handler(task.payload, driver)
+      // Enrich payload with local agent env values.
+      // env.FIREWALL_ENGINE / env.VPN_TYPE are authoritative for this node —
+      // they override any stale/mismatched values the server may have sent.
+      const enrichedPayload: Record<string, unknown> = {
+        ...task.payload,
+        firewall_engine: env.FIREWALL_ENGINE,
+        vpn_type: env.VPN_TYPE,
+      }
+      result = await handler(enrichedPayload, driver)
       status = 'success'
     } catch (err) {
       console.error(`[executor] Task ${task.id} failed:`, (err as Error).message)
