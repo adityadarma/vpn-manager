@@ -333,6 +333,41 @@ if [ -z "$FIREWALL_ENGINE" ]; then
 fi
 export ENV_FIREWALL_ENGINE="$FIREWALL_ENGINE"
 
+# ─── Early VPN Subnet Prompt ─────────────────────────────────────────────────
+# Ask for VPN_SUBNET before any install function runs so both install_wireguard()
+# and install_openvpn() (update_openvpn_config) can use the user-supplied value.
+# Only prompt when: fresh install mode, VPN_SUBNET not already provided via env.
+_needs_vpn_install=false
+if [ "$ENV_VPN_TYPE" = "wireguard" ] && [ "$WIREGUARD_INSTALLED" = false ] && [[ "$mode" == "1" || "$mode" == "2" ]]; then
+    _needs_vpn_install=true
+elif [ "$ENV_VPN_TYPE" = "openvpn" ] && [ "$OPENVPN_INSTALLED" = false ] && [[ "$mode" == "1" || "$mode" == "2" ]]; then
+    _needs_vpn_install=true
+fi
+
+if [ "$_needs_vpn_install" = true ] && [ -z "$VPN_SUBNET" ]; then
+    echo ""
+    read -p "VPN Subnet CIDR (e.g. 10.8.1.0/24) [press Enter to auto-assign]: " _vpn_subnet_input </dev/tty
+    if [ -n "$_vpn_subnet_input" ]; then
+        VPN_SUBNET="$_vpn_subnet_input"
+        export VPN_SUBNET
+    fi
+fi
+
+# Parse VPN_SUBNET into VPN_NETWORK / VPN_NETMASK so install_openvpn / update_openvpn_config
+# and install_wireguard() can reference them directly.
+if [ -n "$VPN_SUBNET" ]; then
+    VPN_NETWORK="${VPN_SUBNET%/*}"
+    _vpn_prefix="${VPN_SUBNET#*/}"
+    case "$_vpn_prefix" in
+        8)  VPN_NETMASK="255.0.0.0" ;;
+        16) VPN_NETMASK="255.255.0.0" ;;
+        *)  VPN_NETMASK="255.255.255.0" ;;
+    esac
+    export VPN_NETWORK VPN_NETMASK
+    info "VPN Subnet: ${VPN_NETWORK}/${_vpn_prefix} (netmask: ${VPN_NETMASK})"
+fi
+# ─────────────────────────────────────────────────────────────────────────────
+
 echo ""
 
 # Start of functions
@@ -672,12 +707,20 @@ install_wireguard() {
         ok "WireGuard keys generated"
     fi
     
-    # Setup wg0.conf
+    # Setup wg0.conf — use user-supplied subnet if given, fallback to default
     local wg_priv=$(cat /etc/wireguard/privatekey)
+    local wg_address="10.8.0.1/24"
+    if [ -n "$VPN_SUBNET" ]; then
+        # Derive server address (.1) from the given subnet CIDR (e.g. 10.9.0.0/24 → 10.9.0.1/24)
+        local wg_base="${VPN_SUBNET%/*}"
+        local wg_prefix="${VPN_SUBNET#*/}"
+        wg_address="${wg_base%.*}.1/${wg_prefix}"
+        info "WireGuard server address set to ${wg_address} (from VPN_SUBNET)"
+    fi
     cat > /etc/wireguard/wg0.conf <<EOF
 [Interface]
 PrivateKey = $wg_priv
-Address = 10.8.0.1/24
+Address = $wg_address
 ListenPort = 51820
 EOF
     chmod 600 /etc/wireguard/wg0.conf
@@ -774,8 +817,14 @@ install_agent() {
             read -p "Node registration key: " REG_KEY </dev/tty
             ENV_REG_KEY="$REG_KEY"
 
-            read -p "VPN Subnet CIDR (e.g. 10.8.1.0/24) [default: 10.8.1.0/24]: " VPN_CIDR_INPUT </dev/tty
-            ENV_VPN_CIDR="${VPN_CIDR_INPUT:-10.8.1.0/24}"
+            # Skip subnet prompt if already collected by the early section (fresh install mode)
+            if [ -n "$VPN_SUBNET" ]; then
+                ENV_VPN_CIDR="$VPN_SUBNET"
+                info "Using VPN Subnet: ${ENV_VPN_CIDR}"
+            else
+                read -p "VPN Subnet CIDR (e.g. 10.8.1.0/24) [press Enter to auto-assign]: " VPN_CIDR_INPUT </dev/tty
+                ENV_VPN_CIDR="${VPN_CIDR_INPUT}"
+            fi
 
             AUTO_REGISTER=true
         else
@@ -790,10 +839,13 @@ install_agent() {
     # Parse VPN CIDR if auto registering
     if [ "$AUTO_REGISTER" = true ]; then
         if [ -z "$ENV_VPN_CIDR" ]; then
-            warn "VPN_SUBNET not set — vpn_network will be auto-assigned by the manager"
-            warn "To specify a subnet, set VPN_SUBNET=10.8.0.0/16 (or pass it as an argument)"
-            VPN_NETWORK=""
-            VPN_NETMASK=""
+            # VPN_NETWORK may already be set from the early subnet parse (fresh install flow)
+            if [ -z "$VPN_NETWORK" ]; then
+                warn "VPN_SUBNET not set — vpn_network will be auto-assigned by the manager"
+                warn "To specify a subnet, set VPN_SUBNET=10.8.0.0/16 (or pass it as an argument)"
+                VPN_NETMASK=""
+            fi
+            # else: VPN_NETWORK/VPN_NETMASK already correct from early parse, keep them
         else
             VPN_NETWORK="${ENV_VPN_CIDR%/*}"
             VPN_PREFIX="${ENV_VPN_CIDR#*/}"
@@ -813,7 +865,19 @@ install_agent() {
     if [ -n "$VPN_NETWORK" ] && [ "$ENV_VPN_TYPE" = "openvpn" ] && command -v openvpn &>/dev/null; then
         update_openvpn_config
     fi
-    
+
+    # Update WireGuard wg0.conf Address if VPN_NETWORK was specified and differs from install default
+    if [ -n "$VPN_NETWORK" ] && [ "$ENV_VPN_TYPE" = "wireguard" ] && command -v wg &>/dev/null; then
+        local wg_prefix
+        wg_prefix=$(mask_to_prefix "${VPN_NETMASK:-255.255.255.0}") || wg_prefix=24
+        local wg_address="${VPN_NETWORK%.*}.1/${wg_prefix}"
+        if [ -f /etc/wireguard/wg0.conf ]; then
+            sed -i "s|^Address = .*|Address = ${wg_address}|" /etc/wireguard/wg0.conf
+            info "WireGuard wg0.conf Address updated to ${wg_address}"
+            systemctl restart wg-quick@wg0 2>/dev/null || true
+        fi
+    fi
+
     # Get server info
     SERVER_IP=$(curl -s ifconfig.me || hostname -I | awk '{print $1}')
     HOSTNAME=$(hostname)

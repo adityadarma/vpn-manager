@@ -29,5 +29,21 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id: string) {
+          if (id.includes('node_modules')) {
+            if (id.includes('/react-dom/') || id.includes('/react/')) return 'vendor-react'
+            if (id.includes('@tanstack/react-router'))                  return 'vendor-router'
+            if (id.includes('@tanstack/react-query'))                   return 'vendor-query'
+            if (id.includes('@radix-ui/') || id.includes('@base-ui/'))  return 'vendor-radix'
+            if (id.includes('lucide-react'))                            return 'vendor-icons'
+            if (id.includes('/zod/'))                                   return 'vendor-utils'
+          }
+        },
+      },
+    },
+  },
 })
 
