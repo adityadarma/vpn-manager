@@ -10,7 +10,7 @@ const NFTABLES_FILTER_TABLE = 'vpn_manager_filter'
 const NFTABLES_FORWARD_CHAIN = 'FORWARD'
 const NFTABLES_POLICY_CHAIN = 'VPN_POLICY_FWWD'
 
-async function execFirewall(cmd: string, engine: 'iptables' | 'nftables') {
+async function execFirewall(cmd: string, engine: 'iptables' | 'nftables' | 'firewalld' | 'ufw') {
   try {
     await execAsync(cmd)
   } catch (err: any) {
