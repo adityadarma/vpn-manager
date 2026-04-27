@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { buildApp } from '../src/app'
 import type { FastifyInstance } from 'fastify'
+import { loginAsAdmin } from './helpers'
 
 describe('Policies API', () => {
   let app: FastifyInstance
-  let adminToken: string
+  let adminCookie: string
   let userId: string
 
   beforeAll(async () => {
@@ -18,14 +19,14 @@ describe('Policies API', () => {
 
     await app.db.migrate.latest()
     await app.db.seed.run()
+    adminCookie = await loginAsAdmin(app)
 
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/v1/auth/login',
-      payload: { username: 'admin', password: 'Admin@1234!' }
+    const meRes = await app.inject({
+      method: 'GET',
+      url: '/api/v1/auth/me',
+      headers: { Cookie: adminCookie },
     })
-    adminToken = res.json().token
-    userId = res.json().user.id
+    userId = meRes.json().id
   })
 
   afterAll(async () => {
@@ -36,10 +37,10 @@ describe('Policies API', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/policies',
-      headers: { Authorization: `Bearer ${adminToken}` },
+      headers: { Cookie: adminCookie },
       payload: { userId, targetNetwork: '10.8.0.0/24', action: 'allow', priority: 10 }
     })
-    
+
     expect(res.statusCode).toBe(201)
     expect(res.json().target_network).toBe('10.8.0.0/24')
   })
@@ -48,9 +49,9 @@ describe('Policies API', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/v1/policies',
-      headers: { Authorization: `Bearer ${adminToken}` }
+      headers: { Cookie: adminCookie }
     })
-    
+
     expect(res.statusCode).toBe(200)
     expect(Array.isArray(res.json())).toBe(true)
     expect(res.json().length).toBeGreaterThan(0)

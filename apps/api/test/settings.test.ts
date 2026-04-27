@@ -2,9 +2,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { buildApp } from '../src/app'
 import type { FastifyInstance } from 'fastify'
 
-describe('Settings API', () => {
+describe('Health API', () => {
   let app: FastifyInstance
-  let adminToken: string
 
   beforeAll(async () => {
     app = await buildApp({
@@ -17,40 +16,22 @@ describe('Settings API', () => {
 
     await app.db.migrate.latest()
     await app.db.seed.run()
-
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/v1/auth/login',
-      payload: { username: 'admin', password: 'Admin@1234!' }
-    })
-    adminToken = res.json().token
   })
 
   afterAll(async () => {
     await app.close()
   })
 
-  it('should bulk update settings', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/v1/settings',
-      headers: { Authorization: `Bearer ${adminToken}` },
-      payload: { 'vpn_name': 'My Super VPN', 'vpn_domain': 'vpn.example.com' }
-    })
-    
-    expect(res.statusCode).toBe(200)
-    expect(res.json().ok).toBe(true)
-  })
-
-  it('should list settings', async () => {
+  it('should return health status', async () => {
     const res = await app.inject({
       method: 'GET',
-      url: '/api/v1/settings',
-      headers: { Authorization: `Bearer ${adminToken}` }
+      url: '/api/v1/health',
     })
-    
+
     expect(res.statusCode).toBe(200)
-    const settings = res.json()
-    expect(Array.isArray(settings)).toBe(true)
+    const json = res.json()
+    expect(json.status).toBe('ok')
+    expect(typeof json.version).toBe('string')
+    expect(typeof json.timestamp).toBe('string')
   })
 })

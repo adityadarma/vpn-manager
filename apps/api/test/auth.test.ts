@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { buildApp } from '../src/app'
 import type { FastifyInstance } from 'fastify'
+import { loginAsAdmin } from './helpers'
 
 describe('Auth API', () => {
   let app: FastifyInstance
-  let adminToken: string
+  let adminCookie: string
 
   beforeAll(async () => {
     app = await buildApp({
@@ -17,6 +18,7 @@ describe('Auth API', () => {
 
     await app.db.migrate.latest()
     await app.db.seed.run()
+    adminCookie = await loginAsAdmin(app)
   })
 
   afterAll(async () => {
@@ -29,14 +31,12 @@ describe('Auth API', () => {
       url: '/api/v1/auth/login',
       payload: { username: 'admin', password: 'Admin@1234!' }
     })
-    
+
     expect(res.statusCode).toBe(200)
     const json = res.json()
-    expect(json.token).toBeDefined()
     expect(json.user.username).toBe('admin')
     expect(json.user.role).toBe('admin')
-
-    adminToken = json.token
+    expect(res.headers['set-cookie']).toBeDefined()
   })
 
   it('should reject invalid credentials', async () => {
@@ -45,7 +45,7 @@ describe('Auth API', () => {
       url: '/api/v1/auth/login',
       payload: { username: 'admin', password: 'wrongpassword' }
     })
-    
+
     expect(res.statusCode).toBe(401)
   })
 
@@ -53,9 +53,9 @@ describe('Auth API', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/v1/auth/me',
-      headers: { Authorization: `Bearer ${adminToken}` }
+      headers: { Cookie: adminCookie }
     })
-    
+
     expect(res.statusCode).toBe(200)
     expect(res.json().username).toBe('admin')
   })

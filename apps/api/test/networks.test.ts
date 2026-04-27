@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { buildApp } from '../src/app'
 import type { FastifyInstance } from 'fastify'
+import { loginAsAdmin } from './helpers'
 
 describe('Groups & Networks API', () => {
   let app: FastifyInstance
-  let adminToken: string
+  let adminCookie: string
 
   beforeAll(async () => {
     app = await buildApp({
@@ -17,13 +18,7 @@ describe('Groups & Networks API', () => {
 
     await app.db.migrate.latest()
     await app.db.seed.run()
-
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/v1/auth/login',
-      payload: { username: 'admin', password: 'Admin@1234!' }
-    })
-    adminToken = res.json().token
+    adminCookie = await loginAsAdmin(app)
   })
 
   afterAll(async () => {
@@ -34,8 +29,8 @@ describe('Groups & Networks API', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/groups',
-      headers: { Authorization: `Bearer ${adminToken}` },
-      payload: { name: 'IT Staff', description: 'Tech team' }
+      headers: { Cookie: adminCookie },
+      payload: { name: 'IT Staff', description: 'Tech team', vpn_subnet: '10.8.10.0/24' }
     })
     expect(res.statusCode).toBe(201)
     expect(res.json().name).toBe('IT Staff')
@@ -45,7 +40,7 @@ describe('Groups & Networks API', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/networks',
-      headers: { Authorization: `Bearer ${adminToken}` },
+      headers: { Cookie: adminCookie },
       payload: { name: 'DB Servers', cidr: '10.0.1.0/24' }
     })
     expect(res.statusCode).toBe(201)

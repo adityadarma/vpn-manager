@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { buildApp } from '../src/app'
 import type { FastifyInstance } from 'fastify'
+import { loginAsAdmin } from './helpers'
 
 describe('Tasks API', () => {
   let app: FastifyInstance
-  let adminToken: string
+  let adminCookie: string
 
   beforeAll(async () => {
     app = await buildApp({
@@ -17,13 +18,7 @@ describe('Tasks API', () => {
 
     await app.db.migrate.latest()
     await app.db.seed.run()
-
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/v1/auth/login',
-      payload: { username: 'admin', password: 'Admin@1234!' }
-    })
-    adminToken = res.json().token
+    adminCookie = await loginAsAdmin(app)
   })
 
   afterAll(async () => {
@@ -34,9 +29,9 @@ describe('Tasks API', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/v1/tasks',
-      headers: { Authorization: `Bearer ${adminToken}` }
+      headers: { Cookie: adminCookie }
     })
-    
+
     expect(res.statusCode).toBe(200)
     expect(Array.isArray(res.json())).toBe(true)
   })

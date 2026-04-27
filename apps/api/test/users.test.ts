@@ -1,33 +1,24 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { buildApp } from '../src/app'
 import type { FastifyInstance } from 'fastify'
+import { loginAsAdmin } from './helpers'
 
 describe('Users API', () => {
   let app: FastifyInstance
-  let adminToken: string
+  let adminCookie: string
 
   beforeAll(async () => {
     app = await buildApp({
       DATABASE_TYPE: 'sqlite',
-      DATABASE_SQLITE_PATH: ':memory:', // Use in-memory DB for tests
+      DATABASE_SQLITE_PATH: ':memory:',
       JWT_SECRET: 'test-secret-test-secret-test-secret',
       JWT_EXPIRES_IN: '1h',
       NODE_ENV: 'test',
     } as any)
 
-    // Run migrations & seeds required
     await app.db.migrate.latest()
     await app.db.seed.run()
-
-    // Get admin token
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/v1/auth/login',
-      payload: { username: 'admin', password: 'Admin@1234!' }
-    })
-    
-    expect(res.statusCode).toBe(200)
-    adminToken = res.json().token
+    adminCookie = await loginAsAdmin(app)
   })
 
   afterAll(async () => {
@@ -38,7 +29,7 @@ describe('Users API', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/v1/users',
-      headers: { Authorization: `Bearer ${adminToken}` }
+      headers: { Cookie: adminCookie }
     })
     expect(res.statusCode).toBe(200)
     expect(Array.isArray(res.json())).toBe(true)
@@ -48,7 +39,7 @@ describe('Users API', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/users',
-      headers: { Authorization: `Bearer ${adminToken}` },
+      headers: { Cookie: adminCookie },
       payload: {
         username: 'testuser',
         email: 'test@example.com',
@@ -56,7 +47,7 @@ describe('Users API', () => {
         role: 'user'
       }
     })
-    
+
     expect(res.statusCode).toBe(201)
     const json = res.json()
     expect(json.username).toBe('testuser')

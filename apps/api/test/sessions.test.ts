@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { buildApp } from '../src/app'
 import type { FastifyInstance } from 'fastify'
+import { loginAsAdmin } from './helpers'
 
 describe('Sessions API', () => {
   let app: FastifyInstance
-  let adminToken: string
+  let adminCookie: string
 
   beforeAll(async () => {
     app = await buildApp({
@@ -17,13 +18,7 @@ describe('Sessions API', () => {
 
     await app.db.migrate.latest()
     await app.db.seed.run()
-
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/v1/auth/login',
-      payload: { username: 'admin', password: 'Admin@1234!' }
-    })
-    adminToken = res.json().token
+    adminCookie = await loginAsAdmin(app)
   })
 
   afterAll(async () => {
@@ -34,9 +29,9 @@ describe('Sessions API', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/v1/sessions',
-      headers: { Authorization: `Bearer ${adminToken}` }
+      headers: { Cookie: adminCookie }
     })
-    
+
     expect(res.statusCode).toBe(200)
     expect(Array.isArray(res.json())).toBe(true)
   })
@@ -45,10 +40,11 @@ describe('Sessions API', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/v1/sessions/history',
-      headers: { Authorization: `Bearer ${adminToken}` }
+      headers: { Cookie: adminCookie }
     })
-    
+
     expect(res.statusCode).toBe(200)
-    expect(Array.isArray(res.json())).toBe(true)
+    const json = res.json() as { sessions: unknown[] }
+    expect(Array.isArray(json.sessions)).toBe(true)
   })
 })
