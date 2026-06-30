@@ -1,684 +1,242 @@
-# Getting Started - VPN Manager
+# VPN Manager — Installation Guide
 
-Complete installation guide for VPN Manager in production and development environments.
+A quick guide to install VPN Manager. Pick one of the methods below based on your needs.
 
-## 🎯 Choose Your Installation Mode
+> **Important:** Install the **Manager** first, then the **VPN Node**.
 
-VPN Manager supports two installation modes:
+## Table of Contents
 
-1. **All-in-One:** Manager + VPN Node on same server (simplest)
-2. **Separate Servers:** Manager and VPN Node on different servers (production)
-
----
-
-## 📋 Table of Contents
-
-- [All-in-One Installation](#-all-in-one-installation-single-server)
-- [Separate Servers Installation](#-separate-servers-installation)
-- [Development Installation](#-development-installation)
-- [Initial Configuration](#-initial-configuration)
-- [Troubleshooting](#-troubleshooting)
+- [Quick Concept](#quick-concept)
+- [Method 1: Install on a Server (Production)](#method-1-install-on-a-server-production)
+- [Method 2: Run Locally (Development)](#method-2-run-locally-development)
+- [Initial Configuration](#initial-configuration)
+- [Useful Commands](#useful-commands)
+- [Troubleshooting](#troubleshooting)
 
 ---
 
-## 🚀 All-in-One Installation (Single Server)
+## Quick Concept
 
-Install everything (Manager + VPN Node) on one server.
+VPN Manager has 2 parts:
 
-### Prerequisites
+| Part | Purpose | Installed on |
+| --- | --- | --- |
+| **Manager** | Web dashboard + API to manage users, certificates, and access policies | 1 server |
+| **VPN Node** | The actual VPN server (OpenVPN/WireGuard) that users connect to | same or a different server |
 
-- Linux server (Ubuntu 20.04+, Debian 11+, CentOS 8+)
-- Docker & Docker Compose v2
-- Root/sudo access
-- Open ports: 5173 (Web UI), 3000 (API), 1194 (OpenVPN UDP)
+You can install both on a **single server** (simplest) or on **separate servers** (recommended for production). The steps are the same; only the server address differs.
 
-### Install
+---
+
+## Method 1: Install on a Server (Production)
+
+### Requirements
+
+- Linux server (Ubuntu 20.04+, Debian 11+, or CentOS 8+)
+- root/sudo access
+- Docker & Docker Compose v2 (installed automatically if missing)
+
+### Step 1 — Install the Manager
+
+Run this on the server where the Manager will live:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-manager.sh | sudo bash
 ```
 
-During installation:
-1. Select **Installation mode:** `2) All-in-One`
-2. Choose database type (SQLite recommended for single server)
-3. Enter server domain/IP
-4. Configure ports
-5. Choose HTTP/HTTPS
+During installation you'll be asked for:
 
-The script will:
-- Install Manager (API + Web UI)
-- Install OpenVPN on host
-- Install Agent in Docker
-- Auto-register VPN Node
-- Configure VPN hooks
+1. **Database type** — pick `1) SQLite` if unsure (simplest, no extra setup)
+2. **Server domain/IP** — the address used to reach the Manager
+3. **Use HTTPS?** — choose `Y` for production
+4. **Port** — keep the default `3000` unless it conflicts
 
-### Access
+When it finishes, the screen shows important info. **Save all of it:**
 
 ```
-Web UI: http://YOUR_SERVER_IP:5173
-Login: admin / Admin@1234!
+Web UI + API : http://YOUR-SERVER-IP:3000
+Login        : admin / Admin@1234!
+
+Node Registration Key : xxxxxxxx   ← for installing the VPN Node
+VPN Token             : xxxxxxxx   ← for installing the VPN Node
 ```
 
-**Done!** Your VPN server is ready. Skip to [Initial Configuration](#-initial-configuration)
+> Open `Web UI + API` in your browser and log in. **Change the admin password immediately** after the first login.
+
+### Step 2 — Install the VPN Node
+
+Move to the server where the VPN will run (can be the same server). Run the single command below, replacing the values with the ones from Step 1:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-node.sh | sudo bash -s -- \
+  MANAGER_URL=http://MANAGER-SERVER-IP:3000 \
+  VPN_TOKEN=vpn-token-from-step-1 \
+  REG_KEY=registration-key-from-step-1
+```
+
+The script automatically installs Docker (if needed), installs and configures OpenVPN, then starts the Agent and registers the node with the Manager. It also auto-detects the active firewall (iptables, nftables, ufw, or firewalld) and sets up the routing/NAT rules for you.
+
+> **No arguments?** Just run `sudo bash` without arguments and the script will prompt you for each value one by one — including which firewall engine to use (the detected one is recommended).
+
+> **Want to override the firewall?** Add `FIREWALL_ENGINE=...` to the command, e.g. `FIREWALL_ENGINE=nftables` (options: `iptables`, `nftables`, `ufw`, `firewalld`, `none`). When passed as an argument, the firewall prompt is skipped.
+
+### Step 3 — Verify
+
+```bash
+docker logs vpn-agent                          # Is the Agent running?
+systemctl status openvpn-server@server         # Is OpenVPN running?
+```
+
+Then open **Nodes** in the Web UI — your node should appear with status **Online**.
 
 ---
 
-## 🏢 Separate Servers Installation
+## Method 2: Run Locally (Development)
 
-Install Manager and VPN Node on different servers (recommended for production).
+For trying out or developing on your own machine (without a real VPN server).
 
-### Step 1: Install VPN Manager
+### Requirements
 
-VPN Manager consists of API and Web UI. Install this first on a server.
-
-#### Prerequisites
-
-- Linux server (Ubuntu 20.04+, Debian 11+, CentOS 8+)
-- Docker & Docker Compose v2
-- Root/sudo access
-- Open ports: 5173 (Web UI), 3000 (API)
-
-#### Install Manager
-
-**One-line install:**
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-manager.sh | sudo bash
-```
-
-During installation:
-1. Select **Installation mode:** `1) Manager Only`
-2. Choose database type
-3. Enter server domain/IP
-4. Configure ports
-5. Choose HTTP/HTTPS
-
-#### Access Web UI
-
-```
-http://YOUR_SERVER_IP:3000
-```
-
-**Default credentials:**
-- Username: `admin`
-- Password: `Admin@1234!`
-
-⚠️ **IMPORTANT:** Change password after first login!
-
----
-
-### Step 2: Configure Manager
-
-Before installing VPN Node, get credentials from Manager:
-
-```bash
-cd /opt/vpn-manager
-grep NODE_REGISTRATION_KEY .env
-grep VPN_TOKEN .env
-```
-
-Save these values for VPN Node installation.
-
----
-
-### Step 3: Install VPN Node
-
-Set up auto-registration for easy node installation:
-
-```bash
-cd /opt/vpn-manager
-
-# Generate and save registration key
-echo "NODE_REGISTRATION_KEY=$(openssl rand -hex 32)" >> .env
-
-# Restart API to apply changes
-docker compose restart api
-
-# Note the registration key (you'll need this for node installation)
-grep NODE_REGISTRATION_KEY .env
-
-# Note the VPN token (you'll need this for node installation)
-grep VPN_TOKEN .env
-```
-
-### Option B: Manual Register
-
-If you prefer manual registration:
-
-1. Login to Web UI: http://YOUR_SERVER_IP:3000
-2. Go to **Nodes** → **Add Node**
-3. Fill in:
-   - Hostname: your-vpn-server.com
-   - IP Address: 203.0.113.10
-   - Region: (select your region)
-4. Click **Save**
-5. **Important:** Copy and save the:
-   - **Node ID**
-   - **Secret Token**
-
----
-
-## 🔧 Step 3: Install VPN Node
-
-Now install VPN Node on a separate server. This server will run OpenVPN or WireGuard.
-
-### Prerequisites
-
-- Separate Linux server with public IP
-- Root/sudo access
-- Open ports: 1194/UDP (OpenVPN) or 51820/UDP (WireGuard)
-
-### Install VPN Node
-
-**Using Auto-Register (if you set up registration key in Step 2):**
-
-```bash
-# On VPN Node server - Download script first
-curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-node.sh -o install-node.sh
-chmod +x install-node.sh
-
-# Run with environment variables
-sudo MANAGER_URL=http://YOUR_MANAGER_SERVER_IP:3001 \
-VPN_TOKEN=your-vpn-token-from-step2 \
-REG_KEY=your-registration-key-from-step2 \
-./install-node.sh
-```
-
-**Using Manual Register (if you registered node in Web UI):**
-
-```bash
-# On VPN Node server - Download script first
-curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-node.sh -o install-node.sh
-chmod +x install-node.sh
-
-# Run with environment variables
-sudo MANAGER_URL=http://YOUR_MANAGER_SERVER_IP:3001 \
-VPN_TOKEN=your-vpn-token-from-step2 \
-NODE_ID=your-node-id-from-webui \
-SECRET_TOKEN=your-secret-token-from-webui \
-./install-node.sh
-```
-
-### Verify Installation
-
-```bash
-# Check agent is running
-docker logs vpn-agent
-
-# Check OpenVPN is running
-systemctl status openvpn-server@server
-
-# Check node status in Web UI
-# Go to http://YOUR_MANAGER_IP:3000/nodes
-# The node should show as "Online"
-```
-
----
-
-## 💻 Development Installation
-
-For local development testing:
-
-### Prerequisites
-
-- Node.js >= 24.x
-- pnpm >= 9.x
+- Node.js >= 24
+- pnpm >= 9
 - Git
 
-### Step 1: Clone Repository
+### Steps
 
 ```bash
+# 1. Get the code
 git clone https://github.com/adityadarma/vpn-manager.git
 cd vpn-manager
-```
 
-### Step 2: Install Dependencies
-
-```bash
+# 2. Install dependencies
 pnpm install
-```
 
-### Step 3: Setup Environment
-
-```bash
-# Copy environment template
+# 3. Set up config (defaults are fine for development)
 cp .env.example .env
 
-# Edit configuration
-nano .env
-```
-
-### Step 4: Setup Database
-
-```bash
+# 4. Set up the database + admin account
 pnpm db:migrate
 pnpm db:seed
-```
 
-### Step 5: Build and Start
-
-```bash
+# 5. Build & run
 pnpm build
 pnpm dev
 ```
 
 **Access:**
-- Web UI: http://localhost:3000
+
+- Web UI: http://localhost:5173
 - API: http://localhost:3001
 - Login: `admin` / `Admin@1234!`
 
----
-
-## 🎯 Initial Configuration
-
-```bash
-git clone https://github.com/adityadarma/vpn-manager.git
-cd vpn-manager
-```
-
-### Step 2: Install Dependencies
-
-```bash
-pnpm install
-```
-
-### Step 3: Setup Environment
-
-```bash
-# Copy environment template
-cp .env.example .env
-
-# Edit configuration (optional, defaults are OK for development)
-nano .env
-```
-
-**Minimal configuration for development:**
-
-```env
-# Database (SQLite - no setup needed)
-DATABASE_TYPE=sqlite
-
-# JWT Secret (generate or use default for dev)
-JWT_SECRET=dev-secret-please-change-in-production-32chars
-
-# VPN Token (for hooks authentication)
-VPN_TOKEN=dev-vpn-token-change-in-production
-```
-
-### Step 4: Setup Database
-
-```bash
-# Run migrations
-pnpm db:migrate
-
-# Seed database (create admin user)
-pnpm db:seed
-```
-
-### Step 5: Build Packages
-
-```bash
-pnpm build
-```
-
-### Step 6: Start Development Server
-
-```bash
-# Start all services (API + Web + Agent)
-pnpm dev
-```
-
-**Or start individually:**
-
-```bash
-# API only
-pnpm dev:api
-
-# Web UI only
-pnpm dev:web
-
-# Agent only (requires VPN server)
-pnpm dev:agent
-```
-
-### Step 7: Access Development
-
-- **Web UI:** http://localhost:3000
-- **API:** http://localhost:3001
-- **API Docs:** http://localhost:3001/docs
-
-**Default credentials:**
-- Username: `admin`
-- Password: `Admin@1234!`
+> To run the Agent locally (optional, needs a VPN server): `pnpm agent:dev`
 
 ---
 
-### WireGuard Node (Experimental)
+## Initial Configuration
 
-If you prefer WireGuard over OpenVPN:
+Once the Manager & Node are ready, do this from the Web UI:
 
-**1. Install WireGuard:**
+1. **Change the admin password** — go to **Profile** → **Change Password**.
+2. **Create a Network** — go to **Networks** → **Add Network**. Enter a name (e.g. `Office LAN`) and CIDR (e.g. `10.0.1.0/24`). Networks define the internal subnets reachable through the VPN.
+3. **Configure the Node** (optional) — go to **Nodes** → **Configure** to change port, protocol, tunnel mode, DNS, or encryption.
+4. **Create a User** — go to **Users** → **Add User**. Enter a username, email, and password.
+5. **Generate a Certificate** — select the user → **Generate Certificate** → choose a node & validity period → **Generate**.
+6. **Download the Config** — click **Download .ovpn**, then send the file to the user. The user imports it into a VPN client (OpenVPN Connect, Tunnelblick, etc.).
+7. **Set a Policy** (optional) — go to **Policies** → **Add Policy** to decide which user/group may access which network (Allow/Deny).
 
-```bash
-# Ubuntu/Debian
-sudo apt update
-sudo apt install wireguard wireguard-tools
+---
 
-# CentOS/RHEL
-sudo yum install wireguard-tools
-```
+## Useful Commands
 
-**2. Setup WireGuard interface:**
-
-```bash
-# Generate keys
-wg genkey | sudo tee /etc/wireguard/server_private.key
-sudo cat /etc/wireguard/server_private.key | wg pubkey | sudo tee /etc/wireguard/server_public.key
-
-# Create config
-sudo nano /etc/wireguard/wg0.conf
-```
-
-```conf
-[Interface]
-Address = 10.8.0.1/24
-ListenPort = 51820
-PrivateKey = <paste-server-private-key>
-PostUp = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
-```
-
-**3. Start WireGuard:**
+### Manager
 
 ```bash
-sudo wg-quick up wg0
-sudo systemctl enable wg-quick@wg0
+cd /opt/vpn-manager
+docker compose up -d       # start
+docker compose down        # stop
+docker compose restart     # restart
+docker compose logs -f     # view logs
+docker compose pull && docker compose up -d   # update
 ```
 
-**4. Install Agent with WireGuard:**
+### VPN Node
 
 ```bash
-mkdir -p /opt/vpn-agent
-cd /opt/vpn-agent
-curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/docker-compose.agent.yml -o docker-compose.yml
-curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/.env.agent -o .env
+docker logs -f vpn-agent                       # agent logs
+systemctl status openvpn-server@server         # OpenVPN status
+tail -f /var/log/openvpn/openvpn.log           # OpenVPN logs
 
-# Configure for WireGuard
-nano .env
+# Update the node
+curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/update-node.sh | sudo bash
+
+# Remove the node
+curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/uninstall-node.sh | sudo bash
 ```
 
-```env
-VPN_TYPE=wireguard
-AGENT_MANAGER_URL=http://YOUR_MANAGER_SERVER_IP:3001
-AGENT_NODE_ID=your-node-id
-AGENT_SECRET_TOKEN=your-secret-token
-VPN_TOKEN=your-vpn-token
-```
-
-**5. Start agent:**
+### Development
 
 ```bash
-docker compose up -d
-```
-
-### Verify Node Installation
-
-```bash
-# Check agent
-docker logs vpn-agent
-
-# Check OpenVPN
-systemctl status openvpn-server@server
-
-# Check WireGuard
-sudo wg show
-
-# In Web UI, go to Nodes - should show "Online"
+pnpm dev          # run everything (API + Web)
+pnpm agent:dev    # run the agent
+pnpm build        # build everything
+pnpm typecheck    # TypeScript type checks
+pnpm db:migrate   # database migrations
+pnpm db:seed      # seed initial data (admin account)
 ```
 
 ---
 
-## ⚙️ Initial Configuration
+## Troubleshooting
 
-### 1. Change Admin Password
-
-- Login to Web UI
-- Go to **Profile** → **Change Password**
-- Enter strong new password
-
-### 2. Create Network
-
-Networks define internal subnets accessible via VPN.
-
-- Go to **Networks** → **Add Network**
-- Name: `Office LAN`
-- CIDR: `10.0.1.0/24`
-- Click **Save**
-
-### 3. Configure Node
-
-After node is registered, customize VPN settings:
-
-- Go to **Nodes** → Click **Configure** (⚙️)
-- Adjust settings:
-  - Port & Protocol (UDP/TCP)
-  - Tunnel Mode (Full/Split)
-  - DNS Servers
-  - Encryption settings
-- Click **Update Configuration**
-
-### 4. Create User
-
-- Go to **Users** → **Add User**
-- Username: `john.doe`
-- Email: `john@example.com`
-- Password: (auto-generated or custom)
-- Click **Save**
-
-### 5. Generate Certificate
-
-- Go to **Users** → Select user → **Generate Certificate**
-- Select VPN node
-- Choose validity period (1 day - unlimited)
-- Optional: Enable password protection
-- Click **Generate**
-
-### 6. Download Config
-
-- Click **Download .ovpn** button
-- Send file to user securely
-- User imports to VPN client (OpenVPN Connect, Tunnelblick, etc)
-
-### 7. Create Policy (Optional)
-
-Policies control user access to specific networks.
-
-- Go to **Policies** → **Add Policy**
-- Select user/group
-- Select network
-- Action: Allow/Deny
-- Click **Save**
-
----
-
-## 🔍 Troubleshooting
-
-### Manager not accessible
+### Manager not reachable
 
 ```bash
-# Check services
-docker compose ps
-
-# Check logs
-docker compose logs api
-docker compose logs web
-
-# Restart services
-docker compose restart
+cd /opt/vpn-manager
+docker compose ps        # check container status
+docker compose logs      # view errors
+docker compose restart   # try restarting
 ```
 
 ### Agent not connecting
 
 ```bash
-# Check agent logs
-docker logs vpn-agent
-
-# Check network connectivity
-docker exec vpn-agent ping api.example.com
-
-# Verify credentials
-docker exec vpn-agent env | grep AGENT_
+docker logs vpn-agent                  # view errors
+docker exec vpn-agent env | grep AGENT_   # check config
 ```
 
-### OpenVPN not starting
+Make sure `MANAGER_URL`, `VPN_TOKEN`, and the registration key are correct.
+
+### OpenVPN not running
 
 ```bash
-# Check status
 systemctl status openvpn-server@server
-
-# Check logs
 tail -f /var/log/openvpn/openvpn.log
-
-# Check config
-cat /etc/openvpn/server/server.conf
-
-# Restart
 systemctl restart openvpn-server@server
-```
-
-### WireGuard not starting
-
-```bash
-# Check interface
-ip link show wg0
-
-# Check status
-sudo wg show wg0
-
-# Check logs
-journalctl -u wg-quick@wg0
-
-# Restart
-sudo wg-quick down wg0
-sudo wg-quick up wg0
-```
-
-### Database error
-
-```bash
-# Check database
-docker compose exec postgres psql -U vpn -d vpn -c "SELECT 1;"
-
-# Run migrations
-docker compose exec api pnpm db:migrate
-
-# Reset database (WARNING: deletes all data!)
-docker compose down -v
-docker compose up -d
 ```
 
 ### Port already in use
 
 ```bash
-# Check what's using the port
-sudo netstat -tulpn | grep -E '3000|3001|1194'
+sudo lsof -i :3000        # see what's using the port
 
-# Change ports in .env
-nano .env
-# API_PORT=3011
-# WEB_PORT=3010
-
-# Restart
+cd /opt/vpn-manager
+nano .env                 # change PORT, then:
 docker compose restart
 ```
 
----
-
-## 📚 Next Steps
-
-After successful installation:
-
-1. ✅ Read [Architecture](docs/ARCHITECTURE.md) to understand the system
-2. ✅ Read [Multi-VPN Support](docs/MULTI-VPN-SUPPORT.md) for WireGuard
-3. ✅ Read [Security Hardening](docs/SECURITY-HARDENING.md) for production
-4. ✅ Setup SSL/TLS with Nginx/Caddy
-5. ✅ Setup automatic backups
-6. ✅ Setup monitoring (Prometheus/Grafana)
-
----
-
-## 🆘 Need Help?
-
-- **Documentation:** [docs/](docs/)
-- **GitHub Issues:** https://github.com/adityadarma/vpn-manager/issues
-- **GitHub Discussions:** https://github.com/adityadarma/vpn-manager/discussions
-
----
-
-## 📝 Quick Reference
-
-### Manager Commands
+### Reset the database (CAUTION: deletes all data)
 
 ```bash
-# Start
-docker compose up -d
-
-# Stop
-docker compose down
-
-# Logs
-docker compose logs -f
-
-# Restart
-docker compose restart
-
-# Update
-docker compose pull
+cd /opt/vpn-manager
+docker compose down -v
 docker compose up -d
 ```
 
-### VPN Node Commands
-
-```bash
-# Agent logs
-docker logs vpn-agent -f
-
-# OpenVPN status
-systemctl status openvpn-server@server
-
-# OpenVPN logs
-tail -f /var/log/openvpn/openvpn.log
-
-# WireGuard status
-sudo wg show
-
-# Update agent
-curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/update-node.sh | sudo bash
-```
-
-### Development Commands
-
-```bash
-# Install dependencies
-pnpm install
-
-# Build all
-pnpm build
-
-# Start dev
-pnpm dev
-
-# Run migrations
-pnpm db:migrate
-
-# Seed database
-pnpm db:seed
-
-# Type check
-pnpm typecheck
-
-# Run tests
-pnpm test
-```
-
 ---
+
+## Need Help?
+
+- **Project description & architecture:** [README.md](README.md)
+- **Full documentation:** the [docs/](docs/) folder
+- **Report an issue:** https://github.com/adityadarma/vpn-manager/issues
