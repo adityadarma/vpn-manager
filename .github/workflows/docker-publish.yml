@@ -1,7 +1,6 @@
-name: Build and Push Docker Images
+name: CI / CD
 
 on:
-  # Manual trigger
   workflow_dispatch:
     inputs:
       images:
@@ -16,11 +15,8 @@ on:
         type: boolean
 
   push:
-    # Auto-trigger on version tags
     tags:
       - 'v*.*.*'
-
-    # Auto-trigger on main branch changes
     branches:
       - main
     paths:
@@ -37,17 +33,16 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  # ── Step 1: Run tests before building anything ──────────────────────────────
+  # ── Job 1: Type check + unit tests (always runs on push) ──────────────────
   test:
+    name: Test
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v5
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -61,19 +56,21 @@ jobs:
       - name: Type check
         run: pnpm typecheck
 
-      - name: Run tests
+      - name: Unit tests
         run: pnpm --filter @vpn/api test run
         env:
           ADMIN_PASSWORD: ci-test-admin-password-32chars!!
 
-  # ── Step 2: Determine which images to build ─────────────────────────────────
+  # ── Job 2: Determine which images to build (only on tag or manual) ─────────
   prepare:
+    name: Prepare
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     outputs:
       images: ${{ steps.set-images.outputs.images }}
       should_build: ${{ steps.set-images.outputs.should_build }}
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v5
         with:
           fetch-depth: 2
@@ -81,11 +78,9 @@ jobs:
       - name: Determine images to build
         id: set-images
         run: |
-          # Default: build all images
           IMAGES='["manager","agent"]'
           SHOULD_BUILD="true"
 
-          # If manual trigger with specific images
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             INPUT="${{ inputs.images }}"
             if [ "$INPUT" != "all" ]; then
@@ -94,44 +89,14 @@ jobs:
             SHOULD_BUILD="${{ inputs.push_images }}"
           fi
 
-          # If triggered by tag, build all
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            IMAGES='["manager","agent"]'
-            SHOULD_BUILD="true"
-          fi
-
-          # If triggered by push to main, detect changed files
-          if [ "${{ github.event_name }}" = "push" ] && [[ "${{ github.ref }}" != refs/tags/* ]]; then
-            CHANGED_IMAGES=()
-
-            if git diff --name-only HEAD^ HEAD | grep -qE "^(apps/api/|apps/web/|Dockerfile)"; then
-              CHANGED_IMAGES+=("manager")
-            fi
-
-            if git diff --name-only HEAD^ HEAD | grep -q "^apps/agent/"; then
-              CHANGED_IMAGES+=("agent")
-            fi
-
-            # Shared packages changed → rebuild all
-            if git diff --name-only HEAD^ HEAD | grep -q "^packages/"; then
-              CHANGED_IMAGES=("manager" "agent")
-            fi
-
-            if [ ${#CHANGED_IMAGES[@]} -eq 0 ]; then
-              echo "No image files changed, skipping build"
-              SHOULD_BUILD="false"
-            else
-              IMAGES=$(printf '%s\n' "${CHANGED_IMAGES[@]}" | jq -R -s -c 'split("\n") | map(select(length > 0))')
-            fi
-          fi
-
           echo "images=$IMAGES" >> $GITHUB_OUTPUT
           echo "should_build=$SHOULD_BUILD" >> $GITHUB_OUTPUT
           echo "Images to build: $IMAGES"
           echo "Should build: $SHOULD_BUILD"
 
-  # ── Step 3: Build & push Docker images ──────────────────────────────────────
+  # ── Job 3: Build & push Docker images (only on tag or manual) ─────────────
   build-and-push:
+    name: Build & Push (${{ matrix.image }})
     needs: [test, prepare]
     if: needs.prepare.outputs.should_build == 'true'
     runs-on: ubuntu-latest
@@ -144,14 +109,13 @@ jobs:
         image: ${{ fromJson(needs.prepare.outputs.images) }}
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -177,19 +141,18 @@ jobs:
           flavor: |
             latest=auto
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
-            type=ref,event=branch
-            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-
 
-      - name: Build and push Docker image
+      - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ${{ steps.image-config.outputs.dockerfile }}
-          push: ${{ github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.push_images == true) }}
+          push: ${{ github.event_name != 'workflow_dispatch' || inputs.push_images == true }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: |
@@ -202,11 +165,12 @@ jobs:
 
       - name: Image digest
         run: |
-          echo "Image: ${{ steps.image-config.outputs.image_name }}"
-          echo "Tags: ${{ steps.meta.outputs.tags }}"
+          echo "Image : ${{ steps.image-config.outputs.image_name }}"
+          echo "Tags  : ${{ steps.meta.outputs.tags }}"
 
-  # ── Step 4: Smoke-test the deployed manager image ───────────────────────────
+  # ── Job 4: Smoke-test the deployed manager image (only on tag or manual) ───
   test-deployment:
+    name: Smoke Test Deployment
     needs: [prepare, build-and-push]
     if: >
       needs.prepare.outputs.should_build == 'true' &&
@@ -215,7 +179,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v5
 
       - name: Log in to GitHub Container Registry
@@ -230,7 +194,6 @@ jobs:
           cp .env.production .env
           sed -i 's/CHANGE_ME_TO_SECURE_RANDOM_STRING_MIN_32_CHARS/test-secret-key-for-ci-testing-only-32chars/' .env
           echo "VPN_TOKEN=test-vpn-token-for-ci" >> .env
-          # Explicit admin password so seeder does not generate random (avoids log noise)
           echo "ADMIN_PASSWORD=ci-deploy-test-admin-pw-32c!!" >> .env
 
       - name: Pull and start manager
@@ -245,13 +208,13 @@ jobs:
           echo "Waiting for API to be ready (max 2 min)..."
           for i in $(seq 1 24); do
             if curl -sf http://localhost:3000/api/v1/health > /dev/null; then
-              echo "API is ready after $((i*5))s"
+              echo "API ready after $((i*5))s"
               exit 0
             fi
             echo "  attempt $i/24 — sleeping 5s"
             sleep 5
           done
-          echo "Timeout waiting for API"
+          echo "Timeout — dumping logs"
           docker compose logs manager
           exit 1
 
@@ -273,24 +236,23 @@ jobs:
         if: always()
         run: docker compose down -v
 
-  # ── Step 5: Bump version in package.json & create GitHub Release ────────────
+  # ── Job 5: Bump version + create GitHub Release (only on tag) ─────────────
   release:
-    needs: [prepare, build-and-push, test-deployment]
+    name: Release
+    needs: [test, build-and-push, test-deployment]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v5
         with:
-          fetch-depth: 0   # full history for changelog generation
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -308,38 +270,30 @@ jobs:
       - name: Bump version in package.json files
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          # Update root package.json
           jq --arg v "$VERSION" '.version = $v' package.json > tmp.json && mv tmp.json package.json
-          # Update app package.json files
           for pkg in apps/api/package.json apps/web/package.json apps/agent/package.json; do
             jq --arg v "$VERSION" '.version = $v' "$pkg" > tmp.json && mv tmp.json "$pkg"
           done
-          echo "Bumped version to $VERSION in package.json files"
+          echo "Bumped all package.json to $VERSION"
 
-      - name: Generate changelog from git log
+      - name: Generate changelog
         id: changelog
         run: |
-          VERSION="${{ steps.version.outputs.tag }}"
-
-          # Get previous tag for range
+          TAG="${{ steps.version.outputs.tag }}"
           PREV_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]' | sed -n '2p')
 
           if [ -n "$PREV_TAG" ]; then
-            RANGE="${PREV_TAG}..${VERSION}"
-            echo "Generating changelog from $PREV_TAG to $VERSION"
+            RANGE="${PREV_TAG}..${TAG}"
           else
             RANGE="HEAD"
-            echo "No previous tag found, using full history"
           fi
 
-          # Generate categorized changelog from conventional commits
           FEATURES=$(git log $RANGE --pretty=format:"- %s (%h)" --no-merges | grep -iE "^- feat" | head -20 || true)
           FIXES=$(git log $RANGE --pretty=format:"- %s (%h)" --no-merges | grep -iE "^- fix" | head -20 || true)
           SECURITY=$(git log $RANGE --pretty=format:"- %s (%h)" --no-merges | grep -iE "^- (sec|security)" | head -20 || true)
           BREAKING=$(git log $RANGE --pretty=format:"- %s (%h)" --no-merges | grep -iE "BREAKING CHANGE|^- (feat|fix)!:" | head -10 || true)
           OTHER=$(git log $RANGE --pretty=format:"- %s (%h)" --no-merges | grep -ivE "^- (feat|fix|chore|docs|style|refactor|test|ci|sec)" | head -10 || true)
 
-          # Build changelog body
           BODY=""
           [ -n "$BREAKING" ] && BODY="${BODY}### ⚠️ Breaking Changes\n${BREAKING}\n\n"
           [ -n "$SECURITY" ] && BODY="${BODY}### 🔒 Security\n${SECURITY}\n\n"
@@ -352,9 +306,7 @@ jobs:
             BODY="### Changes\n${ALL}\n\n"
           fi
 
-          # Write to file to preserve multiline
           printf "$BODY" > /tmp/changelog.md
-          echo "Changelog generated"
           cat /tmp/changelog.md
 
       - name: Create GitHub Release
@@ -363,26 +315,21 @@ jobs:
           tag_name: ${{ steps.version.outputs.tag }}
           name: "v${{ steps.version.outputs.version }}"
           body_path: /tmp/changelog.md
-          append_body: true
           draft: false
           prerelease: ${{ contains(steps.version.outputs.version, '-') }}
           generate_release_notes: true
+          append_body: true
           body: |
             ## Docker Images
 
-            **Manager (Web + API):**
+            **Manager:**
             ```bash
-            # Specific version
             docker pull ghcr.io/${{ github.repository_owner }}/vpn-manager:${{ steps.version.outputs.version }}
-
-            # Latest
-            docker pull ghcr.io/${{ github.repository_owner }}/vpn-manager:latest
             ```
 
             **Agent:**
             ```bash
             docker pull ghcr.io/${{ github.repository_owner }}/vpn-agent:${{ steps.version.outputs.version }}
-            docker pull ghcr.io/${{ github.repository_owner }}/vpn-agent:latest
             ```
 
             ### Install / Update
