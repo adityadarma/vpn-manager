@@ -55,11 +55,13 @@ When it finishes, the screen shows important info. **Save all of it:**
 
 ```
 Web UI + API : http://YOUR-SERVER-IP:3000
-Login        : admin / Admin@1234!
+Login        : admin / <password shown by the installer>
 
 Node Registration Key : xxxxxxxx   ← for installing the VPN Node
 VPN Token             : xxxxxxxx   ← for installing the VPN Node
 ```
+
+> The admin password is randomly generated and shown **once** by the installer (or set it yourself beforehand via the `ADMIN_PASSWORD` environment variable). Save it now.
 
 > Open `Web UI + API` in your browser and log in. **Change the admin password immediately** after the first login.
 
@@ -115,6 +117,7 @@ pnpm install
 cp .env.example .env
 
 # 4. Set up the database + admin account
+#    Tip: set ADMIN_PASSWORD in .env first, or the seed will print a random one.
 pnpm db:migrate
 pnpm db:seed
 
@@ -127,7 +130,7 @@ pnpm dev
 
 - Web UI: http://localhost:5173
 - API: http://localhost:3001
-- Login: `admin` / `Admin@1234!`
+- Login: `admin` / the password from the `pnpm db:seed` output (or your `ADMIN_PASSWORD`)
 
 > To run the Agent locally (optional, needs a VPN server): `pnpm agent:dev`
 

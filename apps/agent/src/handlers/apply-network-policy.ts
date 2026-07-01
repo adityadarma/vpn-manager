@@ -35,6 +35,71 @@ interface PolicyPayload {
   group_id: string | null
 }
 
+// ── Input validation (defense-in-depth) ─────────────────────────────────────
+// Policy values are interpolated into privileged firewall shell commands. They
+// must NEVER contain shell metacharacters. We accept only strict IPv4 / CIDR /
+// port formats and reject everything else, regardless of upstream validation.
+const IPV4_RE = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/
+const IPV4_CIDR_RE = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/
+const PORT_RE = /^\d{1,5}(:\d{1,5})?$/
+
+function octetsValid(parts: string[]): boolean {
+  return parts.every((o) => {
+    const n = Number(o)
+    return Number.isInteger(n) && n >= 0 && n <= 255
+  })
+}
+
+function isValidIpv4(value: string): boolean {
+  const m = IPV4_RE.exec(value)
+  return !!m && octetsValid(m.slice(1, 5))
+}
+
+function isValidIpv4Cidr(value: string): boolean {
+  const m = IPV4_CIDR_RE.exec(value)
+  if (!m) return false
+  if (!octetsValid(m.slice(1, 5))) return false
+  const prefix = Number(m[5])
+  return prefix >= 0 && prefix <= 32
+}
+
+function isValidIpOrCidr(value: string): boolean {
+  return isValidIpv4(value) || isValidIpv4Cidr(value)
+}
+
+function isValidPort(value: string): boolean {
+  const m = PORT_RE.exec(value)
+  if (!m) return false
+  return value.split(':').every((p) => {
+    const n = Number(p)
+    return Number.isInteger(n) && n >= 0 && n <= 65535
+  })
+}
+
+// Returns a sanitized copy of the policy if every user-controlled field is safe,
+// or null if the policy must be skipped (logged by caller).
+function sanitizePolicy(p: PolicyPayload): PolicyPayload | null {
+  if (p.target_network != null && !isValidIpOrCidr(p.target_network)) return null
+  if (p.user_ip != null && !isValidIpv4(p.user_ip)) return null
+  if (p.group_subnet != null && !isValidIpOrCidr(p.group_subnet)) return null
+  if (p.target_port != null && p.target_port !== '' && !isValidPort(p.target_port)) return null
+  return p
+}
+
+function filterSafePolicies(policies: PolicyPayload[]): PolicyPayload[] {
+  const safe: PolicyPayload[] = []
+  for (const p of policies) {
+    if (sanitizePolicy(p)) {
+      safe.push(p)
+    } else {
+      console.warn(
+        `[firewall] Policy ${p?.id} rejected: invalid IP/CIDR/port value (possible injection). Skipping.`,
+      )
+    }
+  }
+  return safe
+}
+
 function getVpnInterfaceMatcher(
   vpnType: string,
   firewallEngine: string,
@@ -51,9 +116,13 @@ export async function handleApplyNetworkPolicy(
   payload: Record<string, unknown>,
   _driver: VpnDriver,
 ): Promise<Record<string, unknown>> {
-  const policies = (payload.policies || []) as PolicyPayload[]
+  const rawPolicies = (payload.policies || []) as PolicyPayload[]
   const firewallEngine = (payload.firewall_engine || 'iptables') as string
   const vpnType = (payload.vpn_type || 'openvpn') as string
+
+  // Reject any policy whose user-controlled fields contain non-IP/CIDR/port
+  // values before they reach privileged firewall shell commands.
+  const policies = filterSafePolicies(rawPolicies)
 
   // Determine interface matcher per firewall engine syntax.
   const vpnInterface = getVpnInterfaceMatcher(vpnType, firewallEngine)

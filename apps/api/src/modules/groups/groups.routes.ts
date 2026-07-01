@@ -17,7 +17,7 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/v1/groups — list all groups with member & network counts
   app.get(
     '/groups',
-    { onRequest: [app.authenticate], schema: { tags: ['groups'], summary: 'List all groups', security: [{ bearerAuth: [] }] } },
+    { onRequest: [app.authenticateAdmin], schema: { tags: ['groups'], summary: 'List all groups', security: [{ bearerAuth: [] }] } },
     async () => {
       const groups = await app.db('groups as g')
         .select(
@@ -36,7 +36,7 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/v1/groups/:id — get group with its members and networks
   app.get<{ Params: { id: string } }>(
     '/groups/:id',
-    { onRequest: [app.authenticate], schema: { tags: ['groups'], summary: 'Get group details', security: [{ bearerAuth: [] }] } },
+    { onRequest: [app.authenticateAdmin], schema: { tags: ['groups'], summary: 'Get group details', security: [{ bearerAuth: [] }] } },
     async (request, reply) => {
       const group = await app.db('groups').where({ id: request.params.id }).first()
       if (!group) return reply.status(404).send({ error: 'Group not found' })

@@ -5,7 +5,7 @@ const auditRoutes: FastifyPluginAsync = async (app) => {
   app.get(
     '/audit/logs',
     { 
-      onRequest: [app.authenticate],
+      onRequest: [app.authenticateAdmin],
       schema: { tags: ['audit'], summary: 'List audit logs (admin only)', security: [{ bearerAuth: [] }] },
     },
     async (request, reply) => {
@@ -82,7 +82,7 @@ const auditRoutes: FastifyPluginAsync = async (app) => {
   app.get(
     '/audit/connection-attempts',
     { 
-      onRequest: [app.authenticate],
+      onRequest: [app.authenticateAdmin],
       schema: { tags: ['audit'], summary: 'List failed connection attempts (admin only)', security: [{ bearerAuth: [] }] },
     },
     async (request, reply) => {
@@ -162,7 +162,7 @@ const auditRoutes: FastifyPluginAsync = async (app) => {
   app.get(
     '/audit/connection-attempts/stats',
     { 
-      onRequest: [app.authenticate],
+      onRequest: [app.authenticateAdmin],
       schema: { tags: ['audit'], summary: 'Failed connection attempts statistics (admin only)', security: [{ bearerAuth: [] }] },
     },
     async (request, reply) => {

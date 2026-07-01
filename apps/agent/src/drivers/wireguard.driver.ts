@@ -17,6 +17,7 @@ import type {
   WriteClientConfigOptions,
   ServerConfigParams,
 } from './vpn-driver.interface'
+import { assertWgKey, assertIpv4, assertPortNumber } from '../core/net-validate'
 
 const execAsync = promisify(exec)
 
@@ -226,6 +227,7 @@ export class WireGuardDriver extends EventEmitter implements VpnDriver {
 
   async revokeUser(username: string, clientCert?: string): Promise<Record<string, unknown>> {
     if (!clientCert) throw new Error('Missing client_cert (public key) for WireGuard revocation')
+    assertWgKey(clientCert, 'client_cert')
     try {
       await execAsync(`wg set ${this.interfaceName} peer ${clientCert} remove`)
       await execAsync(`wg-quick save ${this.interfaceName}`)
@@ -285,6 +287,7 @@ PersistentKeepalive = 25`
       result.error = 'missing_public_key'
       return result
     }
+    assertWgKey(publicKey, 'publicKey')
 
     if (permanent) {
       execSync(`wg set ${this.interfaceName} peer ${publicKey} remove`)
@@ -298,6 +301,7 @@ PersistentKeepalive = 25`
         console.warn(`[wireguard] kickSession: missing vpnIp for temporary kick of ${commonName}`)
         return result
       }
+      assertIpv4(vpnIp, 'vpnIp')
       execSync(`wg set ${this.interfaceName} peer ${publicKey} remove`)
       setTimeout(() => {
         try {
@@ -319,6 +323,8 @@ PersistentKeepalive = 25`
       console.warn(`[wireguard] unkickSession: missing publicKey or vpnIp for ${commonName}`)
       return { unkicked: false, common_name: commonName, error: 'missing_payload_data' }
     }
+    assertWgKey(publicKey, 'publicKey')
+    assertIpv4(vpnIp, 'vpnIp')
     execSync(`wg set ${this.interfaceName} peer ${publicKey} allowed-ips ${vpnIp}/32`)
     execSync(`wg-quick save ${this.interfaceName}`)
     console.log(`[wireguard] ✓ Peer ${commonName} restored`)
@@ -391,6 +397,7 @@ PersistentKeepalive = 25`
 
     await execAsync(`sed -i 's|^Address = .*|Address = ${serverIp}/${prefix}|' ${WG_CONF}`)
     if (params.port) {
+      assertPortNumber(params.port, 'port')
       await execAsync(`sed -i 's|^ListenPort = .*|ListenPort = ${params.port}|' ${WG_CONF}`)
     }
 
@@ -414,6 +421,8 @@ PersistentKeepalive = 25`
       console.warn(`[wireguard] writeClientConfig: no publicKey for ${username}, skipping peer injection`)
       return { success: false, reason: 'missing_public_key' }
     }
+    assertWgKey(publicKey, 'publicKey')
+    assertIpv4(vpnIp, 'vpnIp')
     execSync(`wg set ${this.interfaceName} peer ${publicKey} allowed-ips ${vpnIp}/32`)
     execSync(`wg-quick save ${this.interfaceName}`)
     console.log(`[wireguard] ✓ Peer injected for ${username} with IP ${vpnIp}/32`)
@@ -426,6 +435,7 @@ PersistentKeepalive = 25`
       console.warn(`[wireguard] deleteClientConfig: no publicKey for ${username}, skipping`)
       return { success: false, reason: 'missing_public_key' }
     }
+    assertWgKey(publicKey, 'publicKey')
     execSync(`wg set ${this.interfaceName} peer ${publicKey} remove`)
     execSync(`wg-quick save ${this.interfaceName}`)
     console.log(`[wireguard] ✓ Peer removed for ${username}`)

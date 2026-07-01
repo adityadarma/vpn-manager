@@ -1,6 +1,7 @@
 import { exec } from 'node:child_process'
 import { promisify } from 'node:util'
 import type { VpnDriver } from '../drivers'
+import { assertIpOrCidr } from '../core/net-validate'
 
 const execAsync = promisify(exec)
 
@@ -27,6 +28,10 @@ export async function handleAddFirewallRule(
   if (firewallEngine === 'none') return { success: true, skipped: true }
 
   if (!sourceIp || !destNetwork) throw new Error('Missing sourceIp or destNetwork')
+
+  // Validate before interpolating into privileged firewall commands.
+  assertIpOrCidr(sourceIp, 'sourceIp')
+  assertIpOrCidr(destNetwork, 'destNetwork')
 
   if (firewallEngine === 'nftables') {
     const rule = `nft add rule inet filter FORWARD ip saddr ${sourceIp} ip daddr ${destNetwork} accept`

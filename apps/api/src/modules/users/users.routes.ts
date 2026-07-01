@@ -16,7 +16,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/v1/users
   app.get(
     '/users',
-    { onRequest: [app.authenticate], schema: { tags: ['users'], summary: 'List all VPN users', security: [{ bearerAuth: [] }] } },
+    { onRequest: [app.authenticateAdmin], schema: { tags: ['users'], summary: 'List all VPN users', security: [{ bearerAuth: [] }] } },
     async () => {
       const usersWithGroups = await app.db('users as u')
         .leftJoin('user_groups as ug', 'u.id', 'ug.user_id')
@@ -631,7 +631,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
   app.get<{ Querystring: { days?: number } }>(
     '/users/expiring-certs',
     {
-      onRequest: [app.authenticate],
+      onRequest: [app.authenticateAdmin],
       schema: {
         tags: ['users'],
         summary: 'Get certificates expiring soon',

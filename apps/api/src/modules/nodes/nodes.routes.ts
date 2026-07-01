@@ -49,7 +49,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/v1/nodes
   app.get(
     '/nodes',
-    { onRequest: [app.authenticate], schema: { tags: ['nodes'], summary: 'List all VPN nodes', security: [{ bearerAuth: [] }] } },
+    { onRequest: [app.authenticateAdmin], schema: { tags: ['nodes'], summary: 'List all VPN nodes', security: [{ bearerAuth: [] }] } },
     async () => {
       // Get all nodes
       const nodes = await app.db('vpn_nodes')
@@ -84,8 +84,8 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       const node = await authenticateNodeToken(app, request, reply)
       if (!node) return
 
-      // Return node info without sensitive token
-      const { token: _token, ...safeNode } = node
+      // Return node info without sensitive token or key material
+      const { token: _token, private_key: _pk, ca_cert: _ca, ta_key: _ta, ...safeNode } = node
       return safeNode
     },
   )
@@ -111,11 +111,12 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/v1/nodes/:id
   app.get<{ Params: { id: string } }>(
     '/nodes/:id',
-    { onRequest: [app.authenticate], schema: { tags: ['nodes'], summary: 'Get node by ID', security: [{ bearerAuth: [] }] } },
+    { onRequest: [app.authenticateAdmin], schema: { tags: ['nodes'], summary: 'Get node by ID', security: [{ bearerAuth: [] }] } },
     async (request, reply) => {
       const node = await app.db('vpn_nodes').where({ id: request.params.id }).first()
       if (!node) return reply.status(404).send({ error: 'Not Found', message: 'Node not found' })
-      const { token: _token, ...safeNode } = node
+      // Strip all sensitive material — never expose key material via this route.
+      const { token: _token, private_key: _pk, ca_cert: _ca, ta_key: _ta, ...safeNode } = node
       return safeNode
     },
   )
@@ -193,7 +194,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       await app.db('vpn_nodes').where({ id: request.params.id }).update(updates)
 
       const updated = await app.db('vpn_nodes').where({ id: request.params.id }).first()
-      const { token: _token, ...safeNode } = updated
+      const { token: _token, private_key: _pk, ca_cert: _ca, ta_key: _ta, ...safeNode } = updated
 
       const userObj = request.user as { id: string; username: string }
       await logAudit(app, {
@@ -213,7 +214,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/v1/nodes/:id/config
   app.get<{ Params: { id: string } }>(
     '/nodes/:id/config',
-    { onRequest: [app.authenticate], schema: { tags: ['nodes'], summary: 'Get node configuration', security: [{ bearerAuth: [] }] } },
+    { onRequest: [app.authenticateAdmin], schema: { tags: ['nodes'], summary: 'Get node configuration', security: [{ bearerAuth: [] }] } },
     async (request, reply) => {
       const config = await app.db('vpn_nodes').where({ id: request.params.id }).first()
       if (!config) return reply.status(404).send({ error: 'Not Found', message: 'Node not found' })

@@ -28,7 +28,7 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/v1/tasks  — list all tasks
   app.get(
     '/tasks',
-    { onRequest: [app.authenticate], schema: { tags: ['tasks'], summary: 'List all tasks', security: [{ bearerAuth: [] }] } },
+    { onRequest: [app.authenticateAdmin], schema: { tags: ['tasks'], summary: 'List all tasks', security: [{ bearerAuth: [] }] } },
     async (request) => {
       const query = request.query as { nodeId?: string; status?: string }
       const builder = app.db('tasks as t')
@@ -48,7 +48,7 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
   app.post<{ Body: { node_id: string; action: string; payload: Record<string, unknown> } }>(
     '/tasks',
     { 
-      onRequest: [app.authenticate], 
+      onRequest: [app.authenticateAdmin], 
       schema: { 
         tags: ['tasks'], 
         summary: 'Create a new task',

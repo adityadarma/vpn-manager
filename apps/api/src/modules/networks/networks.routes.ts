@@ -18,7 +18,7 @@ const networkRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/v1/networks — list all networks with group & node count
   app.get(
     '/networks',
-    { onRequest: [app.authenticate], schema: { tags: ['networks'], summary: 'List all VPN networks', security: [{ bearerAuth: [] }] } },
+    { onRequest: [app.authenticateAdmin], schema: { tags: ['networks'], summary: 'List all VPN networks', security: [{ bearerAuth: [] }] } },
     async () => {
       const networks = await app.db('networks as n')
         .select(
@@ -45,7 +45,7 @@ const networkRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/v1/networks/:id
   app.get<{ Params: { id: string } }>(
     '/networks/:id',
-    { onRequest: [app.authenticate], schema: { tags: ['networks'], summary: 'Get network by ID', security: [{ bearerAuth: [] }] } },
+    { onRequest: [app.authenticateAdmin], schema: { tags: ['networks'], summary: 'Get network by ID', security: [{ bearerAuth: [] }] } },
     async (request, reply) => {
       const network = await app.db('networks').where({ id: request.params.id }).first()
       if (!network) return reply.status(404).send({ error: 'Network not found' })

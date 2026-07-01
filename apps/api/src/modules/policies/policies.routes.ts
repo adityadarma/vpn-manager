@@ -7,7 +7,7 @@ const policyRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/v1/policies
   app.get(
     '/policies',
-    { onRequest: [app.authenticate], schema: { tags: ['policies'], summary: 'List all network policies', security: [{ bearerAuth: [] }] } },
+    { onRequest: [app.authenticateAdmin], schema: { tags: ['policies'], summary: 'List all network policies', security: [{ bearerAuth: [] }] } },
     async () => {
       const policies = await app.db('vpn_policies as p')
         .leftJoin('users as u', 'p.user_id', 'u.id')

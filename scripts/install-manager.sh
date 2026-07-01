@@ -71,6 +71,8 @@ info "Generating secrets..."
 JWT_SECRET=$(openssl rand -base64 32)
 VPN_TOKEN=$(openssl rand -hex 32)
 NODE_REGISTRATION_KEY=$(openssl rand -hex 16)
+# Strong random admin password (alphanumeric to avoid shell/.env escaping issues)
+ADMIN_PASSWORD=$(openssl rand -base64 18 | tr -dc 'A-Za-z0-9' | head -c 20)
 ok "Secrets generated"
 echo ""
 
@@ -182,6 +184,7 @@ JWT_EXPIRES_IN=7d
 # Security
 VPN_TOKEN=${VPN_TOKEN}
 NODE_REGISTRATION_KEY=${NODE_REGISTRATION_KEY}
+ADMIN_PASSWORD=${ADMIN_PASSWORD}
 EOF
 
 ok ".env file created"
@@ -225,7 +228,7 @@ echo "  Web UI + API: $APP_URL"
 echo ""
 echo -e "${G}Default Credentials:${NC}"
 echo "  Username: admin"
-echo "  Password: Admin@1234!"
+echo "  Password: $ADMIN_PASSWORD"
 echo "  ⚠ Change password after first login!"
 echo ""
 echo -e "${G}Node Registration Key (for VPN node install):${NC}"

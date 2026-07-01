@@ -14,12 +14,12 @@ on:
         required: true
         default: true
         type: boolean
-  
+
   push:
     # Auto-trigger on version tags
     tags:
       - 'v*.*.*'
-    
+
     # Auto-trigger on main branch changes
     branches:
       - main
@@ -37,7 +37,36 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  # Determine which images to build
+  # ── Step 1: Run tests before building anything ──────────────────────────────
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm typecheck
+
+      - name: Run tests
+        run: pnpm --filter @vpn/api test run
+        env:
+          ADMIN_PASSWORD: ci-test-admin-password-32chars!!
+
+  # ── Step 2: Determine which images to build ─────────────────────────────────
   prepare:
     runs-on: ubuntu-latest
     outputs:
@@ -48,50 +77,46 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 2
-      
+
       - name: Determine images to build
         id: set-images
         run: |
           # Default: build all images
           IMAGES='["manager","agent"]'
           SHOULD_BUILD="true"
-          
+
           # If manual trigger with specific images
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             INPUT="${{ inputs.images }}"
             if [ "$INPUT" != "all" ]; then
-              # Convert comma-separated to JSON array
               IMAGES=$(echo "$INPUT" | jq -R -s -c 'split(",") | map(gsub("^\\s+|\\s+$";""))')
             fi
             SHOULD_BUILD="${{ inputs.push_images }}"
           fi
-          
+
           # If triggered by tag, build all
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             IMAGES='["manager","agent"]'
             SHOULD_BUILD="true"
           fi
-          
-          # If triggered by push, detect changed files
+
+          # If triggered by push to main, detect changed files
           if [ "${{ github.event_name }}" = "push" ] && [[ "${{ github.ref }}" != refs/tags/* ]]; then
             CHANGED_IMAGES=()
-            
-            # Check if manager files changed (web, api, or Dockerfile)
+
             if git diff --name-only HEAD^ HEAD | grep -qE "^(apps/api/|apps/web/|Dockerfile)"; then
               CHANGED_IMAGES+=("manager")
             fi
-            
-            # Check if agent files changed
+
             if git diff --name-only HEAD^ HEAD | grep -q "^apps/agent/"; then
               CHANGED_IMAGES+=("agent")
             fi
-            
-            # Check if shared packages changed (rebuild all)
+
+            # Shared packages changed → rebuild all
             if git diff --name-only HEAD^ HEAD | grep -q "^packages/"; then
               CHANGED_IMAGES=("manager" "agent")
             fi
-            
-            # If no images changed, skip build
+
             if [ ${#CHANGED_IMAGES[@]} -eq 0 ]; then
               echo "No image files changed, skipping build"
               SHOULD_BUILD="false"
@@ -99,31 +124,32 @@ jobs:
               IMAGES=$(printf '%s\n' "${CHANGED_IMAGES[@]}" | jq -R -s -c 'split("\n") | map(select(length > 0))')
             fi
           fi
-          
+
           echo "images=$IMAGES" >> $GITHUB_OUTPUT
           echo "should_build=$SHOULD_BUILD" >> $GITHUB_OUTPUT
           echo "Images to build: $IMAGES"
           echo "Should build: $SHOULD_BUILD"
 
+  # ── Step 3: Build & push Docker images ──────────────────────────────────────
   build-and-push:
-    needs: prepare
+    needs: [test, prepare]
     if: needs.prepare.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-    
+
     strategy:
       matrix:
         image: ${{ fromJson(needs.prepare.outputs.images) }}
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
-      
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      
+
       - name: Log in to GitHub Container Registry
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
@@ -131,7 +157,7 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      
+
       - name: Set image name and dockerfile
         id: image-config
         run: |
@@ -142,7 +168,7 @@ jobs:
             echo "image_name=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.AGENT_IMAGE }}" >> $GITHUB_OUTPUT
             echo "dockerfile=apps/agent/Dockerfile" >> $GITHUB_OUTPUT
           fi
-      
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -157,7 +183,7 @@ jobs:
             type=semver,pattern={{major}}
             type=ref,event=branch
             type=sha,prefix={{branch}}-
-      
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -170,165 +196,200 @@ jobs:
             type=gha,scope=${{ matrix.image }}
             type=registry,ref=${{ steps.image-config.outputs.image_name }}:latest
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
-          # Uncomment for multi-arch builds (slower)
-          # platforms: linux/amd64,linux/arm64,linux/s390x,linux/ppc64le
           platforms: linux/amd64
           build-args: |
             BUILDKIT_INLINE_CACHE=1
-      
+
       - name: Image digest
         run: |
           echo "Image: ${{ steps.image-config.outputs.image_name }}"
           echo "Tags: ${{ steps.meta.outputs.tags }}"
-          echo "Digest: ${{ steps.meta.outputs.digest }}"
-  
+
+  # ── Step 4: Smoke-test the deployed manager image ───────────────────────────
   test-deployment:
     needs: [prepare, build-and-push]
-    if: needs.prepare.outputs.should_build == 'true' && contains(needs.prepare.outputs.images, 'manager') && (github.event_name != 'workflow_dispatch' || inputs.push_images == true)
+    if: >
+      needs.prepare.outputs.should_build == 'true' &&
+      contains(needs.prepare.outputs.images, 'manager') &&
+      (github.event_name != 'workflow_dispatch' || inputs.push_images == true)
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
-      
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      
+
       - name: Create test environment
         run: |
           cp .env.production .env
-          
-          # Set test JWT secret
           sed -i 's/CHANGE_ME_TO_SECURE_RANDOM_STRING_MIN_32_CHARS/test-secret-key-for-ci-testing-only-32chars/' .env
-          
-          # Add VPN_TOKEN
           echo "VPN_TOKEN=test-vpn-token-for-ci" >> .env
-      
-      - name: Pull manager image
+          # Explicit admin password so seeder does not generate random (avoids log noise)
+          echo "ADMIN_PASSWORD=ci-deploy-test-admin-pw-32c!!" >> .env
+
+      - name: Pull and start manager
         run: |
-          # Pull the image that was just built
           docker pull ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.MANAGER_IMAGE }}:latest
-          
-          # Tag it for docker-compose
-          docker tag ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.MANAGER_IMAGE }}:latest ghcr.io/${{ github.repository_owner }}/${{ env.MANAGER_IMAGE }}:latest
-      
-      - name: Start manager service
-        run: |
+          docker tag  ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.MANAGER_IMAGE }}:latest \
+                      ghcr.io/${{ github.repository_owner }}/${{ env.MANAGER_IMAGE }}:latest
           docker compose up -d manager
-          echo "Waiting for manager to be ready..."
-          
-          # Show container status
-          docker compose ps
-          
-          # Wait for container to start (max 30 seconds)
-          for i in {1..6}; do
-            if docker compose ps manager | grep -q "Up"; then
-              echo "Manager container is up!"
-              break
-            fi
-            echo "Waiting for container to start... ($i/6)"
-            sleep 5
-          done
-          
-          # Show logs
-          echo "=== Manager Logs (initial) ==="
-          docker compose logs manager
-          
-          # Wait for services to be ready (max 2 minutes)
-          echo "Waiting for services to be ready..."
-          for i in {1..24}; do
-            # Check if API is responding
-            if curl -f http://localhost:3000/api/v1/health 2>/dev/null; then
-              echo "API is ready!"
-              break
-            fi
-            echo "Waiting for API... ($i/24)"
-            sleep 5
-          done
-      
-      - name: Check service health
+
+      - name: Wait for manager to be healthy
         run: |
-          echo "Testing API health endpoint..."
-          curl -v http://localhost:3000/api/v1/health || exit 1
-          
-          echo "Testing Web UI..."
-          curl -v http://localhost:3000 || exit 1
-          
-          echo "All services are healthy!"
-      
-      - name: View logs on failure
+          echo "Waiting for API to be ready (max 2 min)..."
+          for i in $(seq 1 24); do
+            if curl -sf http://localhost:3000/api/v1/health > /dev/null; then
+              echo "API is ready after $((i*5))s"
+              exit 0
+            fi
+            echo "  attempt $i/24 — sleeping 5s"
+            sleep 5
+          done
+          echo "Timeout waiting for API"
+          docker compose logs manager
+          exit 1
+
+      - name: Check health endpoints
+        run: |
+          echo "=== API health ==="
+          curl -sf http://localhost:3000/api/v1/health
+          echo ""
+          echo "=== Web UI ==="
+          curl -sf http://localhost:3000 -o /dev/null -w "HTTP %{http_code}\n"
+
+      - name: Logs on failure
         if: failure()
         run: |
-          echo "=== Manager Logs ==="
           docker compose logs manager
-          
-          echo "=== Container Status ==="
           docker compose ps
-          
-          echo "=== Docker Processes ==="
-          docker ps -a
-      
+
       - name: Cleanup
         if: always()
-        run: |
-          docker compose down -v
+        run: docker compose down -v
 
-  # Create GitHub Release on version tags
-  create-release:
+  # ── Step 5: Bump version in package.json & create GitHub Release ────────────
+  release:
     needs: [prepare, build-and-push, test-deployment]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
-      
-      - name: Extract version
+        with:
+          fetch-depth: 0   # full history for changelog generation
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - name: Extract version from tag
         id: version
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-      
-      - name: Create Release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Bump version in package.json files
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          # Update root package.json
+          jq --arg v "$VERSION" '.version = $v' package.json > tmp.json && mv tmp.json package.json
+          # Update app package.json files
+          for pkg in apps/api/package.json apps/web/package.json apps/agent/package.json; do
+            jq --arg v "$VERSION" '.version = $v' "$pkg" > tmp.json && mv tmp.json "$pkg"
+          done
+          echo "Bumped version to $VERSION in package.json files"
+
+      - name: Generate changelog from git log
+        id: changelog
+        run: |
+          VERSION="${{ steps.version.outputs.tag }}"
+
+          # Get previous tag for range
+          PREV_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]' | sed -n '2p')
+
+          if [ -n "$PREV_TAG" ]; then
+            RANGE="${PREV_TAG}..${VERSION}"
+            echo "Generating changelog from $PREV_TAG to $VERSION"
+          else
+            RANGE="HEAD"
+            echo "No previous tag found, using full history"
+          fi
+
+          # Generate categorized changelog from conventional commits
+          FEATURES=$(git log $RANGE --pretty=format:"- %s (%h)" --no-merges | grep -iE "^- feat" | head -20 || true)
+          FIXES=$(git log $RANGE --pretty=format:"- %s (%h)" --no-merges | grep -iE "^- fix" | head -20 || true)
+          SECURITY=$(git log $RANGE --pretty=format:"- %s (%h)" --no-merges | grep -iE "^- (sec|security)" | head -20 || true)
+          BREAKING=$(git log $RANGE --pretty=format:"- %s (%h)" --no-merges | grep -iE "BREAKING CHANGE|^- (feat|fix)!:" | head -10 || true)
+          OTHER=$(git log $RANGE --pretty=format:"- %s (%h)" --no-merges | grep -ivE "^- (feat|fix|chore|docs|style|refactor|test|ci|sec)" | head -10 || true)
+
+          # Build changelog body
+          BODY=""
+          [ -n "$BREAKING" ] && BODY="${BODY}### ⚠️ Breaking Changes\n${BREAKING}\n\n"
+          [ -n "$SECURITY" ] && BODY="${BODY}### 🔒 Security\n${SECURITY}\n\n"
+          [ -n "$FEATURES" ] && BODY="${BODY}### ✨ Features\n${FEATURES}\n\n"
+          [ -n "$FIXES"    ] && BODY="${BODY}### 🐛 Bug Fixes\n${FIXES}\n\n"
+          [ -n "$OTHER"    ] && BODY="${BODY}### 🔧 Other Changes\n${OTHER}\n\n"
+
+          if [ -z "$BODY" ]; then
+            ALL=$(git log $RANGE --pretty=format:"- %s (%h)" --no-merges | head -20 || true)
+            BODY="### Changes\n${ALL}\n\n"
+          fi
+
+          # Write to file to preserve multiline
+          printf "$BODY" > /tmp/changelog.md
+          echo "Changelog generated"
+          cat /tmp/changelog.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release v${{ steps.version.outputs.version }}
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "v${{ steps.version.outputs.version }}"
+          body_path: /tmp/changelog.md
+          append_body: true
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+          generate_release_notes: true
           body: |
-            ## VPN Manager v${{ steps.version.outputs.version }}
-            
-            ### Docker Images
-            
+            ## Docker Images
+
             **Manager (Web + API):**
             ```bash
+            # Specific version
             docker pull ghcr.io/${{ github.repository_owner }}/vpn-manager:${{ steps.version.outputs.version }}
+
+            # Latest
             docker pull ghcr.io/${{ github.repository_owner }}/vpn-manager:latest
             ```
-            
+
             **Agent:**
             ```bash
             docker pull ghcr.io/${{ github.repository_owner }}/vpn-agent:${{ steps.version.outputs.version }}
             docker pull ghcr.io/${{ github.repository_owner }}/vpn-agent:latest
             ```
-            
-            ### Quick Start
-            
-            **Deploy Manager:**
+
+            ### Install / Update
             ```bash
-            docker compose up -d
+            # Install Manager
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install-manager.sh | sudo bash
+
+            # Update Node Agent
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/update-node.sh | sudo bash
             ```
-            
-            **Deploy Agent:**
-            ```bash
-            docker compose -f docker-compose.agent.yml up -d
-            ```
-          draft: false
-          prerelease: false

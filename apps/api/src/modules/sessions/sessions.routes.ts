@@ -13,7 +13,7 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/v1/sessions  — active sessions with enhanced details
   app.get(
     '/sessions',
-    { onRequest: [app.authenticate], schema: { tags: ['sessions'], summary: 'List active VPN sessions', security: [{ bearerAuth: [] }] } },
+    { onRequest: [app.authenticateAdmin], schema: { tags: ['sessions'], summary: 'List active VPN sessions', security: [{ bearerAuth: [] }] } },
     async () => {
       return app.db('vpn_sessions as s')
         .join('users as u', 's.user_id', 'u.id')
@@ -46,7 +46,7 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/v1/sessions/:id  — session details with activity history
   app.get<{ Params: { id: string } }>(
     '/sessions/:id',
-    { onRequest: [app.authenticate], schema: { tags: ['sessions'], summary: 'Get session details', security: [{ bearerAuth: [] }] } },
+    { onRequest: [app.authenticateAdmin], schema: { tags: ['sessions'], summary: 'Get session details', security: [{ bearerAuth: [] }] } },
     async (request, reply) => {
       const { id } = request.params
 
@@ -83,7 +83,7 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/v1/sessions/history — only completed (disconnected) sessions
   app.get(
     '/sessions/history',
-    { onRequest: [app.authenticate], schema: { tags: ['sessions'], summary: 'Session history', security: [{ bearerAuth: [] }] } },
+    { onRequest: [app.authenticateAdmin], schema: { tags: ['sessions'], summary: 'Session history', security: [{ bearerAuth: [] }] } },
     async (request) => {
       const query = request.query as { page?: string; limit?: string; user_id?: string; node_id?: string }
       const page = parseInt(query.page ?? '1')
@@ -149,7 +149,7 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/v1/sessions/stats  — session statistics
   app.get(
     '/sessions/stats',
-    { onRequest: [app.authenticate], schema: { tags: ['sessions'], summary: 'Session statistics', security: [{ bearerAuth: [] }] } },
+    { onRequest: [app.authenticateAdmin], schema: { tags: ['sessions'], summary: 'Session statistics', security: [{ bearerAuth: [] }] } },
     async () => {
       const last24h = new Date(Date.now() - (24 * 60 * 60 * 1000))
       const last7d = new Date(Date.now() - (7 * 24 * 60 * 60 * 1000))
@@ -213,7 +213,7 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
   app.post<{ Params: { id: string }; Body: { permanent?: boolean } }>(
     '/sessions/:id/kick',
     { 
-      onRequest: [app.authenticate],
+      onRequest: [app.authenticateAdmin],
       schema: {
         tags: ['sessions'],
         summary: 'Kick active session (admin only)',
@@ -333,7 +333,7 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
   app.post<{ Params: { id: string } }>(
     '/sessions/:id/unkick',
     {
-      onRequest: [app.authenticate],
+      onRequest: [app.authenticateAdmin],
       schema: { tags: ['sessions'], summary: 'Unkick session — restore reconnect access (admin only)', security: [{ bearerAuth: [] }] },
     },
     async (request, reply) => {
