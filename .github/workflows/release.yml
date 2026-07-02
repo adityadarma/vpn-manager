@@ -1,6 +1,9 @@
-name: CI / CD
+name: Release
 
 on:
+  push:
+    tags:
+      - 'v*.*.*'
   workflow_dispatch:
     inputs:
       images:
@@ -14,18 +17,6 @@ on:
         default: true
         type: boolean
 
-  push:
-    tags:
-      - 'v*.*.*'
-    branches:
-      - main
-    paths:
-      - 'apps/api/**'
-      - 'apps/web/**'
-      - 'apps/agent/**'
-      - 'packages/**'
-      - 'Dockerfile'
-
 env:
   REGISTRY: ghcr.io
   MANAGER_IMAGE: vpn-manager
@@ -33,7 +24,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  # ── Job 1: Type check + unit tests (always runs on push) ──────────────────
+  # ── Job 1: Test ─────────────────────────────────────────────────────────────
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -61,20 +52,14 @@ jobs:
         env:
           ADMIN_PASSWORD: ci-test-admin-password-32chars!!
 
-  # ── Job 2: Determine which images to build (only on tag or manual) ─────────
+  # ── Job 2: Prepare ──────────────────────────────────────────────────────────
   prepare:
     name: Prepare
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     outputs:
       images: ${{ steps.set-images.outputs.images }}
       should_build: ${{ steps.set-images.outputs.should_build }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 2
-
       - name: Determine images to build
         id: set-images
         run: |
@@ -91,10 +76,9 @@ jobs:
 
           echo "images=$IMAGES" >> $GITHUB_OUTPUT
           echo "should_build=$SHOULD_BUILD" >> $GITHUB_OUTPUT
-          echo "Images to build: $IMAGES"
-          echo "Should build: $SHOULD_BUILD"
+          echo "Images: $IMAGES — Should build: $SHOULD_BUILD"
 
-  # ── Job 3: Build & push Docker images (only on tag or manual) ─────────────
+  # ── Job 3: Build & push Docker images ───────────────────────────────────────
   build-and-push:
     name: Build & Push (${{ matrix.image }})
     needs: [test, prepare]
@@ -168,7 +152,7 @@ jobs:
           echo "Image : ${{ steps.image-config.outputs.image_name }}"
           echo "Tags  : ${{ steps.meta.outputs.tags }}"
 
-  # ── Job 4: Smoke-test the deployed manager image (only on tag or manual) ───
+  # ── Job 4: Smoke-test the deployed manager ──────────────────────────────────
   test-deployment:
     name: Smoke Test Deployment
     needs: [prepare, build-and-push]
@@ -236,7 +220,7 @@ jobs:
         if: always()
         run: docker compose down -v
 
-  # ── Job 5: Bump version + create GitHub Release (only on tag) ─────────────
+  # ── Job 5: Bump version + create GitHub Release (tag only) ──────────────────
   release:
     name: Release
     needs: [test, build-and-push, test-deployment]
@@ -277,7 +261,6 @@ jobs:
           echo "Bumped all package.json to $VERSION"
 
       - name: Generate changelog
-        id: changelog
         run: |
           TAG="${{ steps.version.outputs.tag }}"
           PREV_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]' | sed -n '2p')
