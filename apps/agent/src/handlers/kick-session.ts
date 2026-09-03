@@ -9,9 +9,15 @@ export async function handleKickSession(
     throw new Error('kick_vpn_session: common_name is required in payload')
   }
 
+  // Validate permanent is actually a boolean (not a truthy string like "true")
+  let permanent: boolean | undefined
+  if (payload['permanent'] !== undefined) {
+    permanent = payload['permanent'] === true || payload['permanent'] === 'true'
+  }
+
   return driver.kickSession(commonName, {
-    permanent:  payload['permanent'] as boolean | undefined,
-    publicKey:  payload['public_key'] as string | undefined,
-    vpnIp:      payload['vpn_ip'] as string | undefined,
+    permanent,
+    publicKey:  typeof payload['public_key'] === 'string' ? payload['public_key'] : undefined,
+    vpnIp:     typeof payload['vpn_ip'] === 'string' ? payload['vpn_ip'] : undefined,
   })
 }

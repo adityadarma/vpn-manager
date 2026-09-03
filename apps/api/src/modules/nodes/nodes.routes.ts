@@ -393,7 +393,13 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         const trimmedProvidedKey = registrationKey.trim()
         const trimmedValidKey = validRegistrationKey.trim()
 
-        if (trimmedProvidedKey !== trimmedValidKey) {
+        // Use timing-safe comparison to prevent timing attacks
+        const providedBuf = Buffer.from(trimmedProvidedKey)
+        const validBuf = Buffer.from(trimmedValidKey)
+        const isValid = providedBuf.length === validBuf.length &&
+          crypto.timingSafeEqual(providedBuf, validBuf)
+
+        if (!isValid) {
           return reply.status(403).send({
             error: 'Forbidden',
             message: 'Invalid registration key',
@@ -575,6 +581,21 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
             const existingSession = activeSessionMap.get(userId)
             
             if (!existingSession) {
+              // Double-check no session was created between our initial query and now
+              // (race with vpn/connect endpoint)
+              const concurrentSession = await app.db('vpn_sessions')
+                .where({ user_id: userId, node_id: nodeId })
+                .whereNull('disconnected_at')
+                .first()
+              
+              if (concurrentSession) {
+                // Session was created by connect endpoint in the meantime — just update it
+                await app.db('vpn_sessions').where({ id: concurrentSession.id }).update({
+                  bytes_sent: client.bytesSent,
+                  bytes_received: client.bytesReceived,
+                  last_activity_at: new Date(),
+                })
+              } else {
               app.log.info(`[heartbeat] Creating new session for user ${userId} via WireGuard heartbeat`)
               
               let geoCity = null
@@ -625,6 +646,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
                   session_id: newSessionId
                 }
               })
+              }
             } else {
               // Update existing session bytes
               await app.db('vpn_sessions').where({ id: existingSession.id }).update({
@@ -701,44 +723,60 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
           const existingSession = activeSessionMap.get(user.id)
 
           if (!existingSession) {
-            app.log.info(`[heartbeat] Creating OpenVPN session for ${username} (${client.virtualAddress})`)
-            
-            let geoCity = null
-            let geoCountry = null
-            if (client.realAddress) {
-              const cleanIp = client.realAddress.split(':')[0]
-              const geo = geoip.lookup(cleanIp)
-              if (geo) {
-                geoCity = geo.city || null
-                geoCountry = geo.country || null
-              }
-            }
+            // Double-check no session was created between our initial query and now
+            // (race with vpn/connect endpoint or event-monitor)
+            const concurrentSession = await app.db('vpn_sessions')
+              .where({ user_id: user.id, node_id: nodeId })
+              .whereNull('disconnected_at')
+              .first()
 
-            const newSessionId = uuidv7()
-            await app.db('vpn_sessions').insert({
-              id: newSessionId,
-              user_id: user.id,
-              node_id: nodeId,
-              vpn_ip: client.virtualAddress || user.vpn_ip,
-              real_ip: client.realAddress?.split(':')[0] ?? null,
-              client_version: 'OpenVPN',
-              device_name: null,
-              bytes_sent: client.bytesSent ?? 0,
-              bytes_received: client.bytesReceived ?? 0,
-              connected_at: client.connectedSince ? new Date(client.connectedSince) : new Date(),
-              last_activity_at: new Date(),
-              geo_city: geoCity,
-              geo_country: geoCountry,
-            })
-            await logAudit(app, {
-              userId: user.id,
-              username,
-              action: 'vpn_connect',
-              resourceType: 'vpn_session',
-              resourceId: newSessionId,
-              ipAddress: client.realAddress?.split(':')[0] ?? null,
-              metadata: { vpn_ip: client.virtualAddress, node_id: nodeId, via: 'heartbeat' }
-            })
+            if (concurrentSession) {
+              // Session was created concurrently — just update traffic
+              await app.db('vpn_sessions').where({ id: concurrentSession.id }).update({
+                bytes_sent: client.bytesSent ?? concurrentSession.bytes_sent,
+                bytes_received: client.bytesReceived ?? concurrentSession.bytes_received,
+                last_activity_at: new Date(),
+              })
+            } else {
+              app.log.info(`[heartbeat] Creating OpenVPN session for ${username} (${client.virtualAddress})`)
+              
+              let geoCity = null
+              let geoCountry = null
+              if (client.realAddress) {
+                const cleanIp = client.realAddress.split(':')[0]
+                const geo = geoip.lookup(cleanIp)
+                if (geo) {
+                  geoCity = geo.city || null
+                  geoCountry = geo.country || null
+                }
+              }
+
+              const newSessionId = uuidv7()
+              await app.db('vpn_sessions').insert({
+                id: newSessionId,
+                user_id: user.id,
+                node_id: nodeId,
+                vpn_ip: client.virtualAddress || user.vpn_ip,
+                real_ip: client.realAddress?.split(':')[0] ?? null,
+                client_version: 'OpenVPN',
+                device_name: null,
+                bytes_sent: client.bytesSent ?? 0,
+                bytes_received: client.bytesReceived ?? 0,
+                connected_at: client.connectedSince ? new Date(client.connectedSince) : new Date(),
+                last_activity_at: new Date(),
+                geo_city: geoCity,
+                geo_country: geoCountry,
+              })
+              await logAudit(app, {
+                userId: user.id,
+                username,
+                action: 'vpn_connect',
+                resourceType: 'vpn_session',
+                resourceId: newSessionId,
+                ipAddress: client.realAddress?.split(':')[0] ?? null,
+                metadata: { vpn_ip: client.virtualAddress, node_id: nodeId, via: 'heartbeat' }
+              })
+            }
           } else {
             // Update traffic bytes on existing session
             await app.db('vpn_sessions').where({ id: existingSession.id }).update({
@@ -832,22 +870,40 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         })
       }
 
-      const tasks = await app.db('tasks')
-        .where({ node_id: request.params.id, status: 'pending' })
-        .orderBy('created_at', 'asc')
-        .select('id', 'action', 'payload', 'created_at')
+      // Use atomic update to claim pending tasks — prevents duplicate execution
+      // if the agent polls twice rapidly (e.g., network retry).
+      // The UPDATE with WHERE status='pending' acts as an optimistic lock.
+      const claimedIds = await app.db.transaction(async (trx) => {
+        const pendingTasks = await trx('tasks')
+          .where({ node_id: request.params.id, status: 'pending' })
+          .orderBy('created_at', 'asc')
+          .select('id')
 
-      // Mark as running
-      const ids = tasks.map((t: { id: string }) => t.id)
-      if (ids.length > 0) {
-        await app.db('tasks').whereIn('id', ids).update({ status: 'running' })
+        const ids = pendingTasks.map((t: { id: string }) => t.id)
+        if (ids.length === 0) return []
+
+        // Atomically mark as running — only rows still 'pending' will be updated
+        await trx('tasks')
+          .whereIn('id', ids)
+          .where({ status: 'pending' })
+          .update({ status: 'running' })
+
+        return ids
+      })
+
+      // Fetch the full task data for the claimed tasks
+      let parsedTasks: any[] = []
+      if (claimedIds.length > 0) {
+        const tasks = await app.db('tasks')
+          .whereIn('id', claimedIds)
+          .orderBy('created_at', 'asc')
+          .select('id', 'action', 'payload', 'created_at')
+
+        parsedTasks = tasks.map((task: any) => ({
+          ...task,
+          payload: typeof task.payload === 'string' ? JSON.parse(task.payload) : task.payload
+        }))
       }
-
-      // Parse payload JSON strings
-      const parsedTasks = tasks.map((task: any) => ({
-        ...task,
-        payload: typeof task.payload === 'string' ? JSON.parse(task.payload) : task.payload
-      }))
 
       return { tasks: parsedTasks }
     },

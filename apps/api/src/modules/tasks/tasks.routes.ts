@@ -104,9 +104,6 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
     '/tasks/:id/result',
     { 
       schema: { tags: ['tasks'], summary: 'Report task result (agent)' },
-      onRequest: async (request) => {
-        app.log.info(`[tasks] POST /tasks/${request.params.id}/result - Headers: ${JSON.stringify(request.headers)}`)
-      }
     },
     async (request, reply) => {
       const authenticatedNode = await authenticateNodeToken(request, reply)
@@ -114,7 +111,6 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
 
       const { id } = request.params
       app.log.info(`[tasks] Received result for task ${id}`)
-      app.log.info(`[tasks] Body: ${JSON.stringify(request.body)}`)
       
       const input = TaskResultSchema.parse(request.body)
 

@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { v7 as uuidv7 } from 'uuid'
-import { cidrsToPushRoutes, getNetmask } from '../../services/ip-pool.service'
+import { cidrsToPushRoutes, getNetmask } from '../../services/ip-pool'
 
 interface Network {
   id: string

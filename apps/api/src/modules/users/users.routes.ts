@@ -2,7 +2,8 @@ import type { FastifyPluginAsync } from 'fastify'
 import { v7 as uuidv7 } from 'uuid'
 import bcrypt from 'bcryptjs'
 import { CreateUserSchema, UpdateUserSchema } from '@vpn/shared'
-import { nextAvailableIp, getNetmask, cidrToRoute, cidrsToPushRoutes } from '../../services/ip-pool.service'
+import { nextAvailableIp, getNetmask, cidrToRoute, cidrsToPushRoutes } from '../../services/ip-pool'
+import { assignVpnIpAtomic } from '../../services/ip-assignment'
 import { logAudit, getClientIp } from '../../utils/audit'
 
 const userRoutes: FastifyPluginAsync = async (app) => {
@@ -73,36 +74,61 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       const passwordHash = input.password ? await bcrypt.hash(input.password, 10) : null
       const id = uuidv7()
 
-      // --- Auto-assign VPN IP from group subnet ---
+      // --- Auto-assign VPN IP from group subnet (atomic with retry) ---
       let vpnIp: string | null = null
       let resolvedGroupId: string | null = vpnGroupId ?? null
+      let targetSubnet: string | null = null
 
       if (vpnGroupId) {
         const group = await app.db('groups').where({ id: vpnGroupId }).first()
         if (!group) return reply.status(400).send({ error: 'vpn_group_id not found' })
-
-        if (group.vpn_subnet) {
-          const usedIps = await app.db('users').whereNotNull('vpn_ip').pluck('vpn_ip') as string[]
-          vpnIp = nextAvailableIp(group.vpn_subnet, usedIps)
-          if (!vpnIp) {
-            return reply.status(422).send({
-              error: 'Subnet full',
-              message: `Group "${group.name}" subnet ${group.vpn_subnet} has no available IPs`,
-            })
-          }
-        }
+        if (group.vpn_subnet) targetSubnet = group.vpn_subnet
       }
 
-      await app.db('users').insert({
-        id,
-        username: input.username,
-        email: input.email ?? null,
-        password: passwordHash,
-        role: input.role ?? 'user',
-        is_active: true,
-        vpn_ip: vpnIp,
-        vpn_group_id: resolvedGroupId,
-      })
+      // Use transaction to atomically assign IP + insert user
+      const maxRetries = 3
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          await app.db.transaction(async (trx) => {
+            if (targetSubnet) {
+              const usedIps = await trx('users').whereNotNull('vpn_ip').pluck('vpn_ip') as string[]
+              vpnIp = nextAvailableIp(targetSubnet, usedIps)
+              if (!vpnIp) {
+                throw Object.assign(new Error('SUBNET_FULL'), { isSubnetFull: true })
+              }
+            }
+
+            await trx('users').insert({
+              id,
+              username: input.username,
+              email: input.email ?? null,
+              password: passwordHash,
+              role: input.role ?? 'user',
+              is_active: true,
+              vpn_ip: vpnIp,
+              vpn_group_id: resolvedGroupId,
+            })
+          })
+          break // success
+        } catch (err: any) {
+          if (err.isSubnetFull) {
+            return reply.status(422).send({
+              error: 'Subnet full',
+              message: `Group subnet ${targetSubnet} has no available IPs`,
+            })
+          }
+          const msg = (err.message || '').toLowerCase()
+          const isUniqueViolation =
+            msg.includes('unique') || msg.includes('duplicate') ||
+            msg.includes('constraint') || err.code === '23505' ||
+            err.code === 'ER_DUP_ENTRY' || err.errno === 19
+
+          if (isUniqueViolation && attempt < maxRetries - 1) {
+            continue // retry with fresh IP
+          }
+          throw err
+        }
+      }
 
       // Also add to user_groups table if group was specified
       if (resolvedGroupId) {
@@ -168,6 +194,12 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         updated_at: new Date(),
       }
 
+      // If role or active status changed, revoke all existing tokens for this user
+      if ((input.role && input.role !== user.role) || (input.isActive !== undefined && input.isActive !== user.is_active)) {
+        const { revokeAllUserTokens } = await import('../../services/token-blacklis')
+        revokeAllUserTokens(id)
+      }
+
       if (input.password) {
         updates['password'] = await bcrypt.hash(input.password, 10)
       }
@@ -184,12 +216,8 @@ const userRoutes: FastifyPluginAsync = async (app) => {
           if (!newGroup) return reply.status(400).send({ error: 'vpn_group_id not found' })
 
           if (newGroup.vpn_subnet) {
-            const usedIps = await app.db('users')
-              .whereNotNull('vpn_ip')
-              .whereNot({ id }) // exclude current user so they can keep a slot
-              .pluck('vpn_ip') as string[]
-
-            const newIp = nextAvailableIp(newGroup.vpn_subnet, usedIps)
+            // Atomic IP assignment with retry to prevent race conditions
+            const newIp = await assignVpnIpAtomic(app.db, id, newGroup.vpn_subnet, id)
             if (!newIp) {
               return reply.status(422).send({
                 error: 'Subnet full',
@@ -299,10 +327,11 @@ const userRoutes: FastifyPluginAsync = async (app) => {
           subnetToUse = `${network}/${prefixLen}`
         }
 
-        const usedIps = await app.db('users').whereNotNull('vpn_ip').pluck('vpn_ip') as string[]
-        const newIp = nextAvailableIp(subnetToUse, usedIps) || `${node.vpn_network ? node.vpn_network.substring(0, node.vpn_network.lastIndexOf('.')) : '10.8.0'}.2`
-        
-        await app.db('users').where({ id }).update({ vpn_ip: newIp })
+        // Atomic IP assignment with retry to prevent race conditions
+        const newIp = await assignVpnIpAtomic(app.db, id, subnetToUse)
+        if (!newIp) {
+          return reply.status(422).send({ error: 'Subnet full', message: `No available IPs in ${subnetToUse}` })
+        }
         user.vpn_ip = newIp
       }
 
@@ -347,9 +376,18 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       // Wait for task completion (with timeout)
       const maxWait = 30000 // 30 seconds
       const startTime = Date.now()
+      let pollInterval = 500
       
       while (Date.now() - startTime < maxWait) {
         const task = await app.db('tasks').where({ id: taskId }).first()
+
+        // Guard against task being deleted externally
+        if (!task) {
+          return reply.status(500).send({
+            error: 'Internal Server Error',
+            message: 'Task disappeared unexpectedly'
+          })
+        }
         
         if (task.status === 'done') {
           const result = JSON.parse(task.result || '{}')
@@ -412,8 +450,9 @@ const userRoutes: FastifyPluginAsync = async (app) => {
           })
         }
         
-        // Wait 500ms before checking again
-        await new Promise(resolve => setTimeout(resolve, 500))
+        // Progressive backoff: 500ms → 1000ms → 1500ms (max)
+        await new Promise(resolve => setTimeout(resolve, pollInterval))
+        pollInterval = Math.min(pollInterval + 250, 1500)
       }
 
       return reply.status(408).send({
@@ -496,10 +535,12 @@ const userRoutes: FastifyPluginAsync = async (app) => {
               subnetToUse = `${network}/${prefixLen}`
             }
 
-            const usedIps = await app.db('users').whereNotNull('vpn_ip').pluck('vpn_ip') as string[]
-            const newIp = nextAvailableIp(subnetToUse, usedIps) || `${node.vpn_network ? node.vpn_network.substring(0, node.vpn_network.lastIndexOf('.')) : '10.8.0'}.2`
-            
-            await app.db('users').where({ id: userId }).update({ vpn_ip: newIp })
+            // Atomic IP assignment with retry to prevent race conditions
+            const newIp = await assignVpnIpAtomic(app.db, userId, subnetToUse)
+            if (!newIp) {
+              results.failed.push({ userId, error: `No available IPs in ${subnetToUse}` })
+              continue
+            }
             user.vpn_ip = newIp
           }
 
@@ -549,9 +590,16 @@ const userRoutes: FastifyPluginAsync = async (app) => {
           const maxWait = 15000
           const startTime = Date.now()
           let success = false
+          let pollInterval = 500
 
           while (Date.now() - startTime < maxWait) {
             const task = await app.db('tasks').where({ id: taskId }).first()
+
+            // Guard against task being deleted externally
+            if (!task) {
+              results.failed.push({ userId, error: 'Task disappeared unexpectedly' })
+              break
+            }
             
             if (task.status === 'done') {
               const result = JSON.parse(task.result || '{}')
@@ -607,7 +655,9 @@ const userRoutes: FastifyPluginAsync = async (app) => {
               break
             }
             
-            await new Promise(resolve => setTimeout(resolve, 500))
+            // Progressive backoff: 500ms → 750ms → 1000ms (max)
+            await new Promise(resolve => setTimeout(resolve, pollInterval))
+            pollInterval = Math.min(pollInterval + 250, 1000)
           }
 
           if (success) {

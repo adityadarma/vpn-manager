@@ -139,27 +139,9 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(403).send({ error: 'Account expired' })
       }
 
-      // Close any previously open session for this user (defensive)
-      const previousSessions = await app.db('vpn_sessions')
-        .where({ user_id: user.id })
-        .whereNull('disconnected_at')
-      
-      if (previousSessions.length > 0) {
-        const now = new Date()
-        for (const session of previousSessions) {
-          const connectedAt = new Date(session.connected_at)
-          const durationSeconds = Math.floor((now.getTime() - connectedAt.getTime()) / 1000)
-          
-          await app.db('vpn_sessions')
-            .where({ id: session.id })
-            .update({
-              disconnected_at: now,
-              disconnect_reason: 'reconnect',
-              connection_duration_seconds: durationSeconds,
-            })
-        }
-      }
-
+      // Close previous sessions and create new one atomically.
+      // Without a transaction, a crash between closing old sessions and inserting
+      // the new one would leave the user with no active session while connected.
       const sessionId = uuidv7()
       
       let geoCity = null
@@ -172,24 +154,47 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
         }
       }
 
-      await app.db('vpn_sessions').insert({
-        id: sessionId,
-        user_id: user.id,
-        node_id: node.id,
-        vpn_ip,
-        real_ip: clientIp,
-        client_version: client_version ?? null,
-        device_name: device_name ?? null,
-        bytes_sent: 0,
-        bytes_received: 0,
-        connected_at: connectedAtOverride ?? new Date(),
-        last_activity_at: new Date(),
-        geo_city: geoCity,
-        geo_country: geoCountry,
-      })
+      await app.db.transaction(async (trx) => {
+        // Close any previously open session for this user (defensive)
+        const previousSessions = await trx('vpn_sessions')
+          .where({ user_id: user.id })
+          .whereNull('disconnected_at')
+        
+        if (previousSessions.length > 0) {
+          const now = new Date()
+          for (const session of previousSessions) {
+            const connectedAt = new Date(session.connected_at)
+            const durationSeconds = Math.floor((now.getTime() - connectedAt.getTime()) / 1000)
+            
+            await trx('vpn_sessions')
+              .where({ id: session.id })
+              .update({
+                disconnected_at: now,
+                disconnect_reason: 'reconnect',
+                connection_duration_seconds: durationSeconds,
+              })
+          }
+        }
 
-      // Update user's last_vpn_connect time to reflect VPN usage
-      await app.db('users').where({ id: user.id }).update({ last_vpn_connect: new Date() })
+        await trx('vpn_sessions').insert({
+          id: sessionId,
+          user_id: user.id,
+          node_id: node.id,
+          vpn_ip,
+          real_ip: clientIp,
+          client_version: client_version ?? null,
+          device_name: device_name ?? null,
+          bytes_sent: 0,
+          bytes_received: 0,
+          connected_at: connectedAtOverride ?? new Date(),
+          last_activity_at: new Date(),
+          geo_city: geoCity,
+          geo_country: geoCountry,
+        })
+
+        // Update user's last_vpn_connect time to reflect VPN usage
+        await trx('users').where({ id: user.id }).update({ last_vpn_connect: new Date() })
+      })
 
       app.log.info(`[vpn/connect] ${user.username} connected — session ${sessionId}, IP ${vpn_ip}, device: ${device_name ?? 'unknown'}`)
 
@@ -251,10 +256,14 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
       const user = await app.db('users').where({ username }).first()
       if (!user) return reply.status(404).send({ error: 'User not found' })
 
-      // Get session to calculate duration
+      // Get the oldest open session for this user on this node.
+      // Using orderBy('connected_at', 'asc') ensures that if a reconnect created a
+      // newer session before the old disconnect event arrives, we close the correct
+      // (oldest) session rather than the newly created one.
       const session = await app.db('vpn_sessions')
         .where({ user_id: user.id, node_id })
         .whereNull('disconnected_at')
+        .orderBy('connected_at', 'asc')
         .first()
 
       if (session) {

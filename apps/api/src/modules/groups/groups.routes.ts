@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { v7 as uuidv7 } from 'uuid'
-import { nextAvailableIp, getNetmask, parseCidr, cidrsToPushRoutes } from '../../services/ip-pool.service'
+import { nextAvailableIp, getNetmask, parseCidr, cidrsToPushRoutes } from '../../services/ip-pool'
 import { logAudit, getClientIp } from '../../utils/audit'
 interface Group {
   id: string

@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import bcrypt from 'bcryptjs'
 import { LoginSchema } from '@vpn/shared'
+import { revokeToken } from '../../services/token-blacklis'
 
 const authRoutes: FastifyPluginAsync = async (app) => {
   // POST /api/v1/auth/login
@@ -87,7 +88,23 @@ const authRoutes: FastifyPluginAsync = async (app) => {
         summary: 'Logout and clear session cookie',
       },
     },
-    async (_request, reply) => {
+    async (request, reply) => {
+      // Revoke the token so it can't be reused even if captured
+      const rawToken =
+        request.cookies?.['vpn_token'] ||
+        request.headers.authorization?.replace('Bearer ', '')
+
+      if (rawToken) {
+        try {
+          const decoded = app.jwt.decode(rawToken) as { exp?: number } | null
+          if (decoded?.exp) {
+            revokeToken(rawToken, decoded.exp)
+          }
+        } catch {
+          // Token decode failure is non-fatal for logout
+        }
+      }
+
       reply.clearCookie('vpn_token', { path: '/' })
       return reply.send({ message: 'Logged out successfully' })
     },

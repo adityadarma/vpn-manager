@@ -373,7 +373,7 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
       if (kickedUser?.vpn_group_id) {
         const group = await app.db('groups').where({ id: kickedUser.vpn_group_id }).first()
         if (group && group.vpn_subnet) {
-          const { getNetmask } = await import('../../services/ip-pool.service')
+          const { getNetmask } = await import('../../services/ip-pool')
           netmask = getNetmask(group.vpn_subnet)
         }
       }
