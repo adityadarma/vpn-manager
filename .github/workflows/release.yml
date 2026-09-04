@@ -48,7 +48,9 @@ jobs:
         run: pnpm typecheck
 
       - name: Unit tests
-        run: pnpm --filter @vpn/api test
+        run: |
+          pnpm --filter @vpn/api test
+          pnpm --filter @vpn/agent test
         env:
           ADMIN_PASSWORD: ci-test-admin-password-32chars!!
 
@@ -78,19 +80,12 @@ jobs:
           echo "should_build=$SHOULD_BUILD" >> $GITHUB_OUTPUT
           echo "Images: $IMAGES — Should build: $SHOULD_BUILD"
 
-  # ── Job 3: Promote the image CI already built ───────────────────────────────
-  #
-  # No rebuild here. ci.yml builds and pushes `:sha-<commit>` on every push to
-  # main (see its "Docker Build & Smoke Test" job) and already smoke-tests it.
-  # This job takes that exact digest and adds the version tags — the same
-  # bytes, not a second build that could theoretically differ (different base
-  # image layer pulled, different pnpm resolution, etc.) from what was tested.
-  #
-  # `docker buildx imagetools create` copies at the registry level: it never
-  # touches the runner's local Docker, so this job doesn't even need Buildx
-  # configured for building, only for talking to the registry API.
-  promote:
-    name: Promote (${{ matrix.image }})
+  # ── Job 3: Build and publish versioned images ────────────────────────────────
+  # CI builds only locally for smoke tests. A release builds the tagged source
+  # once and publishes only intended public tags: stable semver aliases or one
+  # standalone prerelease tag. No SHA images are stored in GHCR.
+  publish:
+    name: Publish (${{ matrix.image }})
     needs: [test, prepare]
     if: needs.prepare.outputs.should_build == 'true'
     runs-on: ubuntu-latest
@@ -110,6 +105,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Checkout release source
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Set image name
         id: image-config
         run: |
@@ -125,50 +126,38 @@ jobs:
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             VERSION="${GITHUB_REF#refs/tags/v}"
           else
-            # workflow_dispatch off a branch — no semver tag to derive, just
-            # re-tag :latest so a manual "promote current main" run works too.
+            # A manual release from main may publish only :latest.
             VERSION=""
           fi
 
           IMG="${{ steps.image-config.outputs.image_name }}"
-          TAGS="$IMG:sha-${{ github.sha }}"
+          TAGS=""
           if [ -n "$VERSION" ]; then
             # A prerelease is intentionally standalone. For v1.2.0-beta.1,
             # publish only :1.2.0-beta.1: never move :latest, :1, or :1.2.
             if [[ "$VERSION" == *-* ]]; then
-              TAGS="$TAGS,$IMG:$VERSION"
+              TAGS="$IMG:$VERSION"
             else
               MAJOR_MINOR=$(echo "$VERSION" | cut -d. -f1,2)
               MAJOR=$(echo "$VERSION" | cut -d. -f1)
-              TAGS="$TAGS,$IMG:$VERSION,$IMG:$MAJOR_MINOR,$IMG:$MAJOR,$IMG:latest"
+              TAGS="$IMG:$VERSION,$IMG:$MAJOR_MINOR,$IMG:$MAJOR,$IMG:latest"
             fi
           elif [ "${{ github.ref_name }}" = "main" ]; then
-            TAGS="$TAGS,$IMG:latest"
+            TAGS="$IMG:latest"
           fi
           echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
-          echo "Promoting to: $TAGS"
+          echo "Publishing: $TAGS"
 
-      # Fails fast with a clear message rather than a confusing error later if
-      # the commit being tagged never had ci.yml build+push an image for it —
-      # e.g. a tag pushed on a commit whose CI run only touched docs.
-      - name: Verify source image exists
-        run: |
-          SRC="${{ steps.image-config.outputs.image_name }}:sha-${{ github.sha }}"
-          echo "Checking for $SRC ..."
-          docker buildx imagetools inspect "$SRC" > /dev/null || {
-            echo "::error::$SRC not found. Push a commit to main (or re-run ci.yml) so it builds and pushes this SHA before tagging a release."
-            exit 1
-          }
-
-      - name: Promote to version tags
-        run: |
-          IFS=',' read -ra TAG_ARGS <<< "${{ steps.version-tags.outputs.tags }}"
-          ARGS=()
-          for t in "${TAG_ARGS[@]}"; do
-            ARGS+=(--tag "$t")
-          done
-          docker buildx imagetools create "${ARGS[@]}" \
-            "${{ steps.image-config.outputs.image_name }}:sha-${{ github.sha }}"
+      - name: Build and publish version tags
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ matrix.image == 'manager' && 'Dockerfile' || 'apps/agent/Dockerfile' }}
+          push: true
+          tags: ${{ steps.version-tags.outputs.tags }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+          platforms: linux/amd64
 
       - name: Summary
         run: |
@@ -177,13 +166,11 @@ jobs:
 
   # ── Job 4: Smoke-test the deployed manager ──────────────────────────────────
   #
-  # ci.yml already smoke-tested this exact image (by digest) right after
-  # building it. This second smoke test runs against the tag `promote` just
-  # published — it is verifying the tag/push/pull path through the registry,
-  # not re-verifying the image's behaviour from scratch.
+  # ci.yml smoke-tests a local image on each change. This second smoke test
+  # pulls the newly published stable tag to verify the registry publish path.
   test-deployment:
     name: Smoke Test Deployment
-    needs: [prepare, promote]
+    needs: [prepare, publish]
     if: >
       needs.prepare.outputs.should_build == 'true' &&
       contains(needs.prepare.outputs.images, 'manager') &&
@@ -252,12 +239,12 @@ jobs:
   # ── Job 5: Bump version + create GitHub Release (tag only) ──────────────────
   release:
     name: Release
-    needs: [test, promote, test-deployment]
+    needs: [test, publish, test-deployment]
     if: >
       always() &&
       startsWith(github.ref, 'refs/tags/v') &&
       needs.test.result == 'success' &&
-      needs.promote.result == 'success' &&
+      needs.publish.result == 'success' &&
       (needs.test-deployment.result == 'success' || needs.test-deployment.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:

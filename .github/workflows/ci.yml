@@ -93,17 +93,14 @@ jobs:
   # until someone tried `docker compose up --build` locally — the tag-only
   # release workflow never ran the build in between.
   #
-  # Images are built once here. On push to main they are also pushed to GHCR
-  # tagged by commit SHA; release.yml promotes that exact digest to version
-  # tags via `docker buildx imagetools create` instead of rebuilding, so the
-  # same image is never built twice for the same commit.
+  # Images are built locally for smoke tests only. Publishing is deliberately
+  # release-only so GHCR contains version tags, not one SHA tag per commit.
   docker:
     name: Docker Build & Smoke Test (${{ matrix.image }})
     needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
     strategy:
       matrix:
         image: [manager, agent]
@@ -116,14 +113,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GitHub Container Registry
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Set image name and dockerfile
         id: image-config
         run: |
@@ -135,23 +124,16 @@ jobs:
             echo "dockerfile=apps/agent/Dockerfile" >> "$GITHUB_OUTPUT"
           fi
 
-      # `load: true` puts the image in this runner's local Docker so the smoke
-      # test steps below can `docker run` it directly. Combined with `push`
-      # in the same step so there is exactly one build — verified locally
-      # that buildx supports load+push together for a single-platform image
-      # (this repo only targets linux/amd64, so the multi-platform caveat
-      # documented for build-push-action, where load requires the containerd
-      # snapshotter, does not apply here).
+      # `load: true` puts the image in this runner's local Docker for smoke
+      # testing. CI never publishes unversioned commit/SHA images to GHCR.
       - name: Build image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ${{ steps.image-config.outputs.dockerfile }}
           load: true
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-          tags: |
-            ${{ steps.image-config.outputs.image_name }}:sha-${{ github.sha }}
-            ${{ steps.image-config.outputs.image_name }}:main
+          push: false
+          tags: ${{ steps.image-config.outputs.image_name }}:ci-${{ matrix.image }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
           platforms: linux/amd64
@@ -172,7 +154,7 @@ jobs:
             -e DATABASE_TYPE=sqlite \
             -e DATABASE_SQLITE_PATH=/data/vpn.sqlite \
             -e ADMIN_PASSWORD=ci-smoke-test-admin-pw-32chars!! \
-            ${{ steps.image-config.outputs.image_name }}:sha-${{ github.sha }}
+            ${{ steps.image-config.outputs.image_name }}:ci-manager
 
           echo "Waiting for API to be ready (max 60s)..."
           for i in $(seq 1 12); do
@@ -218,7 +200,7 @@ jobs:
             -e VPN_TYPE=openvpn \
             -e FIREWALL_ENGINE=none \
             -e NODE_ENV=production \
-            ${{ steps.image-config.outputs.image_name }}:sha-${{ github.sha }}
+            ${{ steps.image-config.outputs.image_name }}:ci-agent
 
           sleep 8
 
