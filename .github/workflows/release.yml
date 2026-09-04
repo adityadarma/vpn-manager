@@ -78,9 +78,19 @@ jobs:
           echo "should_build=$SHOULD_BUILD" >> $GITHUB_OUTPUT
           echo "Images: $IMAGES — Should build: $SHOULD_BUILD"
 
-  # ── Job 3: Build & push Docker images ───────────────────────────────────────
-  build-and-push:
-    name: Build & Push (${{ matrix.image }})
+  # ── Job 3: Promote the image CI already built ───────────────────────────────
+  #
+  # No rebuild here. ci.yml builds and pushes `:sha-<commit>` on every push to
+  # main (see its "Docker Build & Smoke Test" job) and already smoke-tests it.
+  # This job takes that exact digest and adds the version tags — the same
+  # bytes, not a second build that could theoretically differ (different base
+  # image layer pulled, different pnpm resolution, etc.) from what was tested.
+  #
+  # `docker buildx imagetools create` copies at the registry level: it never
+  # touches the runner's local Docker, so this job doesn't even need Buildx
+  # configured for building, only for talking to the registry API.
+  promote:
+    name: Promote (${{ matrix.image }})
     needs: [test, prepare]
     if: needs.prepare.outputs.should_build == 'true'
     runs-on: ubuntu-latest
@@ -93,12 +103,6 @@ jobs:
         image: ${{ fromJson(needs.prepare.outputs.images) }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -106,58 +110,84 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set image name and dockerfile
+      - name: Set image name
         id: image-config
         run: |
           if [ "${{ matrix.image }}" = "manager" ]; then
-            echo "image_name=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.MANAGER_IMAGE }}" >> $GITHUB_OUTPUT
-            echo "dockerfile=Dockerfile" >> $GITHUB_OUTPUT
+            echo "image_name=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.MANAGER_IMAGE }}" >> "$GITHUB_OUTPUT"
           else
-            echo "image_name=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.AGENT_IMAGE }}" >> $GITHUB_OUTPUT
-            echo "dockerfile=apps/agent/Dockerfile" >> $GITHUB_OUTPUT
+            echo "image_name=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.AGENT_IMAGE }}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ steps.image-config.outputs.image_name }}
-          flavor: |
-            latest=auto
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest,enable={{is_default_branch}}
+      - name: Determine version tags
+        id: version-tags
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            # workflow_dispatch off a branch — no semver tag to derive, just
+            # re-tag :latest so a manual "promote current main" run works too.
+            VERSION=""
+          fi
 
-      - name: Build and push
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ${{ steps.image-config.outputs.dockerfile }}
-          push: ${{ github.event_name != 'workflow_dispatch' || inputs.push_images == true }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: |
-            type=gha,scope=${{ matrix.image }}
-            type=registry,ref=${{ steps.image-config.outputs.image_name }}:latest
-          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
-          platforms: linux/amd64
-          build-args: |
-            BUILDKIT_INLINE_CACHE=1
+          IMG="${{ steps.image-config.outputs.image_name }}"
+          TAGS="$IMG:sha-${{ github.sha }}"
+          if [ -n "$VERSION" ]; then
+            # A prerelease is intentionally standalone. For v1.2.0-beta.1,
+            # publish only :1.2.0-beta.1: never move :latest, :1, or :1.2.
+            if [[ "$VERSION" == *-* ]]; then
+              TAGS="$TAGS,$IMG:$VERSION"
+            else
+              MAJOR_MINOR=$(echo "$VERSION" | cut -d. -f1,2)
+              MAJOR=$(echo "$VERSION" | cut -d. -f1)
+              TAGS="$TAGS,$IMG:$VERSION,$IMG:$MAJOR_MINOR,$IMG:$MAJOR,$IMG:latest"
+            fi
+          elif [ "${{ github.ref_name }}" = "main" ]; then
+            TAGS="$TAGS,$IMG:latest"
+          fi
+          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+          echo "Promoting to: $TAGS"
 
-      - name: Image digest
+      # Fails fast with a clear message rather than a confusing error later if
+      # the commit being tagged never had ci.yml build+push an image for it —
+      # e.g. a tag pushed on a commit whose CI run only touched docs.
+      - name: Verify source image exists
+        run: |
+          SRC="${{ steps.image-config.outputs.image_name }}:sha-${{ github.sha }}"
+          echo "Checking for $SRC ..."
+          docker buildx imagetools inspect "$SRC" > /dev/null || {
+            echo "::error::$SRC not found. Push a commit to main (or re-run ci.yml) so it builds and pushes this SHA before tagging a release."
+            exit 1
+          }
+
+      - name: Promote to version tags
+        run: |
+          IFS=',' read -ra TAG_ARGS <<< "${{ steps.version-tags.outputs.tags }}"
+          ARGS=()
+          for t in "${TAG_ARGS[@]}"; do
+            ARGS+=(--tag "$t")
+          done
+          docker buildx imagetools create "${ARGS[@]}" \
+            "${{ steps.image-config.outputs.image_name }}:sha-${{ github.sha }}"
+
+      - name: Summary
         run: |
           echo "Image : ${{ steps.image-config.outputs.image_name }}"
-          echo "Tags  : ${{ steps.meta.outputs.tags }}"
+          echo "Tags  : ${{ steps.version-tags.outputs.tags }}"
 
   # ── Job 4: Smoke-test the deployed manager ──────────────────────────────────
+  #
+  # ci.yml already smoke-tested this exact image (by digest) right after
+  # building it. This second smoke test runs against the tag `promote` just
+  # published — it is verifying the tag/push/pull path through the registry,
+  # not re-verifying the image's behaviour from scratch.
   test-deployment:
     name: Smoke Test Deployment
-    needs: [prepare, build-and-push]
+    needs: [prepare, promote]
     if: >
       needs.prepare.outputs.should_build == 'true' &&
       contains(needs.prepare.outputs.images, 'manager') &&
+      !contains(github.ref_name, '-') &&
       (github.event_name != 'workflow_dispatch' || inputs.push_images == true)
     runs-on: ubuntu-latest
 
@@ -222,8 +252,13 @@ jobs:
   # ── Job 5: Bump version + create GitHub Release (tag only) ──────────────────
   release:
     name: Release
-    needs: [test, build-and-push, test-deployment]
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, promote, test-deployment]
+    if: >
+      always() &&
+      startsWith(github.ref, 'refs/tags/v') &&
+      needs.test.result == 'success' &&
+      needs.promote.result == 'success' &&
+      (needs.test-deployment.result == 'success' || needs.test-deployment.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -251,12 +286,19 @@ jobs:
           echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
       - name: Bump version in package.json files
+        if: ${{ !contains(steps.version.outputs.version, '-') }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           jq --arg v "$VERSION" '.version = $v' package.json > tmp.json && mv tmp.json package.json
-          for pkg in apps/api/package.json apps/web/package.json apps/agent/package.json; do
+          # Covers packages/* too — they were previously left out, so their
+          # versions drifted behind the tag on every release.
+          for pkg in apps/api/package.json apps/web/package.json apps/agent/package.json \
+                     packages/db/package.json packages/shared/package.json packages/ui/package.json; do
             jq --arg v "$VERSION" '.version = $v' "$pkg" > tmp.json && mv tmp.json "$pkg"
           done
+          # Swagger reports the API version in its OpenAPI document.
+          sed -i "s/version: '[0-9]\+\.[0-9]\+\.[0-9]\+'/version: '$VERSION'/" \
+            apps/api/src/plugins/swagger.ts
           echo "Bumped all package.json to $VERSION"
 
       - name: Generate changelog

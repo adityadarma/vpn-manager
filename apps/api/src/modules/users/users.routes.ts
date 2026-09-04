@@ -5,6 +5,7 @@ import { CreateUserSchema, UpdateUserSchema } from '@vpn/shared'
 import { nextAvailableIp, getNetmask, cidrToRoute, cidrsToPushRoutes } from '../../services/ip-pool'
 import { assignVpnIpAtomic } from '../../services/ip-assignment'
 import { logAudit, getClientIp } from '../../utils/audit'
+import { stripTaskPayloadSecrets } from '../../utils/task-payload'
 
 const userRoutes: FastifyPluginAsync = async (app) => {
   const dbClient = String(app.db.client.config.client || '')
@@ -196,8 +197,8 @@ const userRoutes: FastifyPluginAsync = async (app) => {
 
       // If role or active status changed, revoke all existing tokens for this user
       if ((input.role && input.role !== user.role) || (input.isActive !== undefined && input.isActive !== user.is_active)) {
-        const { revokeAllUserTokens } = await import('../../services/token-blacklis')
-        revokeAllUserTokens(id)
+        const { revokeAllUserTokens } = await import('../../services/token-revocation')
+        await revokeAllUserTokens(app.db, id)
       }
 
       if (input.password) {
@@ -455,6 +456,15 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         pollInterval = Math.min(pollInterval + 250, 1500)
       }
 
+      // Timed out waiting for the agent. The task may still be picked up later,
+      // but we stop tracking it here — so drop the passphrase now rather than
+      // leaving cleartext behind for a task nobody is waiting on.
+      try {
+        await stripTaskPayloadSecrets(app.db, taskId)
+      } catch (err) {
+        app.log.warn(`[users] Failed to strip secrets from timed-out task ${taskId}: ${(err as Error).message}`)
+      }
+
       return reply.status(408).send({
         error: 'Request Timeout',
         message: 'Certificate generation timed out'
@@ -664,6 +674,14 @@ const userRoutes: FastifyPluginAsync = async (app) => {
             results.success.push(userId)
           } else if (!results.failed.find(f => f.userId === userId)) {
             results.failed.push({ userId, error: 'Timeout' })
+          }
+
+          // Whether it succeeded, failed or timed out, we are done waiting on
+          // this task — make sure no passphrase is left behind in its payload.
+          try {
+            await stripTaskPayloadSecrets(app.db, taskId)
+          } catch (err) {
+            app.log.warn(`[users] Failed to strip secrets from bulk task ${taskId}: ${(err as Error).message}`)
           }
         } catch (error: any) {
           results.failed.push({ userId, error: error.message })

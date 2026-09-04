@@ -1,8 +1,17 @@
 import net from 'node:net'
 import { EventEmitter } from 'node:events'
-import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync } from 'node:fs'
+import {
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  unlinkSync,
+  mkdirSync,
+  copyFileSync,
+  chmodSync,
+  readdirSync,
+} from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import { exec, execSync } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import { promisify } from 'node:util'
 import path from 'node:path'
 import type {
@@ -20,8 +29,51 @@ import type {
   WriteClientConfigOptions,
   ServerConfigParams,
 } from './vpn-driver.interface'
+import { resolveWithin } from '../core/net-validate'
 
-const execAsync = promisify(exec)
+// All process execution goes through execFile/execFileSync with an explicit
+// argv array. No value is ever interpolated into a shell string, so shell
+// metacharacters in task payloads (username, common_name, password, …) are
+// passed through as inert literal argv entries instead of being parsed.
+const execFileAsync = promisify(execFile)
+
+/** Run a binary with an argv array. Never invokes a shell. */
+function runFile(
+  file: string,
+  args: string[],
+  options: {
+    cwd?: string
+    env?: NodeJS.ProcessEnv
+    timeout?: number
+    input?: string
+  } = {},
+): string {
+  return execFileSync(file, args, {
+    ...options,
+    encoding: 'utf-8',
+    stdio: 'pipe',
+    shell: false,
+  })
+}
+
+/**
+ * Guard for values sent over the OpenVPN management interface.
+ *
+ * argv arrays neutralise the *shell*, but the management protocol is
+ * newline-delimited, so a CR/LF inside a common name would still inject an
+ * extra management command regardless of how the process is spawned. Reject
+ * any control character before it reaches the socket.
+ */
+function assertMgmtSafe(value: string, field: string): string {
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new Error(`Invalid ${field}: must be a non-empty string`)
+  }
+  // eslint-disable-next-line no-control-regex
+  if (/[\r\n\u0000]/.test(value)) {
+    throw new Error(`Invalid ${field}: must not contain control characters`)
+  }
+  return value
+}
 
 // ── Subnet helpers (used by updateServerConfig) ───────────────────────────────
 function _netmaskToPrefix(netmask: string): number {
@@ -74,8 +126,18 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
   private socket: net.Socket | null = null
   private connected = false
   private buffer = ''
-  private commandQueue: Array<{ command: string; resolve: (value: string) => void; reject: (error: Error) => void; buffer: string }> = []
+  private commandQueue: Array<{
+    command: string
+    resolve: (value: string) => void
+    reject: (error: Error) => void
+    buffer: string
+    timeout: ReturnType<typeof setTimeout> | null
+  }> = []
   private isProcessing = false
+  private connectPromise: Promise<void> | null = null
+  private abortConnect: ((error: Error) => void) | null = null
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private intentionalDisconnect = false
   private reconnectAttempts = 0
   private maxReconnectAttempts = 10
 
@@ -88,92 +150,130 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
   constructor(
     private socketPath: string = '/run/openvpn/server.sock',
     private reconnectInterval: number = 5000,
+    private commandTimeout: number = 10000,
   ) {
     super()
   }
 
-  async connect(): Promise<void> {
-    if (this.connected) {
-      return
+  connect(): Promise<void> {
+    if (this.connectPromise) {
+      return this.connectPromise
     }
 
-    return new Promise((resolve, reject) => {
-      this.socket = new net.Socket()
+    if (this.connected) {
+      return Promise.resolve()
+    }
 
-      this.socket.on('connect', async () => {
+    this.intentionalDisconnect = false
+    this.clearReconnectTimer()
+
+    let attempt!: Promise<void>
+    attempt = new Promise((resolve, reject) => {
+      const socket = new net.Socket()
+      let settled = false
+
+      const finish = (error?: Error) => {
+        if (settled) return
+        settled = true
+        if (this.connectPromise === attempt) this.connectPromise = null
+        if (this.abortConnect === abort) this.abortConnect = null
+        error ? reject(error) : resolve()
+      }
+      const abort = (error: Error) => finish(error)
+
+      this.socket = socket
+      this.abortConnect = abort
+
+      socket.on('connect', () => {
+        void (async () => {
         console.log(`[openvpn-driver] Connected to management interface`)
-        
+
         // Set connected BEFORE sending commands
         this.connected = true
-        
+
         // Reset reconnect attempts on successful connection
         this.reconnectAttempts = 0
-        
-        // Enable realtime event notifications
+
+        // Enable realtime event notifications.
+        //
+        // `log on all` is deliberately NOT sent here. Verified against a real
+        // OpenVPN management socket: it replays the daemon's entire log
+        // history as a burst of bare lines with NO '>LOG:' prefix and no
+        // terminator, sent as part of the *same* command's response before
+        // 'SUCCESS:' - and that burst can still be arriving on the socket
+        // after this call resolves and the next command is sent. When that
+        // happens, the next command's response gets prefixed with leftover
+        // log lines, and `sendCommand` never sees its expected 'SUCCESS:' /
+        // 'END' cleanly, so callers like `getServerInfo()` / `getClients()`
+        // intermittently got empty results (5/5 failures reproduced with
+        // `log on all` enabled against a live server; 0/5 without it, using
+        // the exact same command sequence).
+        //
+        // No code here consumes '>LOG:' lines (see the no-op filter in
+        // processLine) or the 'log' event, so there is no feature loss.
         try {
           await this.sendCommand('state on')
-          await this.sendCommand('log on all')
         } catch (err) {
           console.warn('[openvpn-driver] Failed to enable events:', err)
         }
 
+        if (this.socket !== socket || !this.connected) return
         this.emit('connected')
-        resolve()
+        finish()
+        })()
       })
 
-      this.socket.on('data', (data) => {
+      socket.on('data', (data) => {
+        if (this.socket !== socket) return
         this.handleData(data.toString())
       })
 
-      this.socket.on('error', (err) => {
+      socket.on('error', (err) => {
+        if (this.socket !== socket) return
         console.error('[openvpn-driver] Socket error:', err.message)
         this.connected = false
-        this.emit('error', err)
-        
-        if (!this.connected) {
-          reject(err)
-        }
+        this.rejectPendingCommands(new Error(`OpenVPN management socket lost: ${err.message}`))
+        finish(err)
+        // EventEmitter treats an unhandled `error` event as a process crash.
+        // The production entrypoint subscribes, but direct driver consumers
+        // must still receive a normal rejected connect() promise.
+        if (this.listenerCount('error') > 0) this.emit('error', err)
       })
 
-      this.socket.on('close', () => {
+      socket.on('close', () => {
+        if (this.socket !== socket) return
+        this.socket = null
         this.connected = false
+        this.buffer = ''
+        this.pendingEnv.clear()
+        this.rejectPendingCommands(new Error('OpenVPN management socket closed'))
+        finish(new Error('OpenVPN management socket closed'))
         this.emit('disconnected')
-        
-        // Auto-reconnect with exponential backoff
-        if (this.reconnectAttempts < this.maxReconnectAttempts) {
-          const backoffDelay = Math.min(
-            this.reconnectInterval * Math.pow(1.5, this.reconnectAttempts),
-            30000 // Max 30 seconds
-          )
-          
-          this.reconnectAttempts++
-          
-          console.log(`[openvpn-driver] Reconnecting in ${Math.round(backoffDelay/1000)}s (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`)
-          
-          setTimeout(() => {
-            if (!this.connected) {
-              this.connect().catch((err) => {
-                console.error('[openvpn-driver] Reconnect failed:', err.message)
-              })
-            }
-          }, backoffDelay)
-        } else {
-          console.error('[openvpn-driver] Max reconnect attempts reached')
-          this.emit('error', new Error('Max reconnect attempts reached'))
-        }
+
+        if (!this.intentionalDisconnect) this.scheduleReconnect()
       })
 
       // Connect to Unix socket
-      this.socket.connect(this.socketPath)
+      socket.connect(this.socketPath)
     })
+
+    this.connectPromise = attempt
+    return attempt
   }
 
   async disconnect(): Promise<void> {
-    if (this.socket) {
-      this.socket.destroy()
-      this.socket = null
-      this.connected = false
-    }
+    this.intentionalDisconnect = true
+    this.clearReconnectTimer()
+    const socket = this.socket
+    const wasActive = socket !== null || this.connected
+    this.socket = null
+    this.connected = false
+    this.buffer = ''
+    this.pendingEnv.clear()
+    this.rejectPendingCommands(new Error('Disconnected from OpenVPN management interface'))
+    this.abortConnect?.(new Error('Disconnected from OpenVPN management interface'))
+    socket?.destroy()
+    if (wasActive) this.emit('disconnected')
   }
 
   isConnected(): boolean {
@@ -233,6 +333,12 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
     
     // Skip LOG lines (too verbose)
     if (line.startsWith('>LOG:')) {
+      return
+    }
+
+    // Other management notifications (STATE, BYTECOUNT, PASSWORD, etc.) are
+    // asynchronous and are not part of the active command response.
+    if (line.startsWith('>')) {
       return
     }
 
@@ -376,10 +482,24 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
     }
 
     this.isProcessing = true
-    const { command } = this.commandQueue[0]
+    const current = this.commandQueue[0]
+    const { command } = current
     
     if (this.socket && this.connected) {
+      current.timeout = setTimeout(() => {
+        const index = this.commandQueue.indexOf(current)
+        if (index === -1) return
+
+        this.commandQueue.splice(index, 1)
+        current.reject(new Error(`Command timeout: ${command}`))
+        if (index === 0) {
+          this.isProcessing = false
+          this.processNextCommand()
+        }
+      }, this.commandTimeout)
       this.socket.write(command + '\n')
+    } else {
+      this.isProcessing = false
     }
   }
 
@@ -389,27 +509,63 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
     }
 
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error(`Command timeout: ${command}`))
-      }, 10000)
-
       this.commandQueue.push({
         command,
         buffer: '',
+        timeout: null,
         resolve: (value) => {
-          clearTimeout(timeout)
+          if (entry.timeout) clearTimeout(entry.timeout)
           resolve(value)
         },
         reject: (error) => {
-          clearTimeout(timeout)
+          if (entry.timeout) clearTimeout(entry.timeout)
           reject(error)
         },
       })
+
+      const entry = this.commandQueue[this.commandQueue.length - 1]
 
       if (!this.isProcessing) {
         this.processNextCommand()
       }
     })
+  }
+
+  private rejectPendingCommands(error: Error): void {
+    const pending = this.commandQueue.splice(0)
+    this.isProcessing = false
+    for (const command of pending) command.reject(error)
+  }
+
+  private clearReconnectTimer(): void {
+    if (!this.reconnectTimer) return
+    clearTimeout(this.reconnectTimer)
+    this.reconnectTimer = null
+  }
+
+  private scheduleReconnect(): void {
+    if (this.reconnectTimer || this.intentionalDisconnect) return
+
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.error('[openvpn-driver] Max reconnect attempts reached')
+      this.emit('error', new Error('Max reconnect attempts reached'))
+      return
+    }
+
+    const backoffDelay = Math.min(
+      this.reconnectInterval * Math.pow(1.5, this.reconnectAttempts),
+      30000,
+    )
+    this.reconnectAttempts++
+    console.log(`[openvpn-driver] Reconnecting in ${Math.round(backoffDelay / 1000)}s (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`)
+
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null
+      if (this.intentionalDisconnect || this.connected) return
+      this.connect().catch((err) => {
+        console.error('[openvpn-driver] Reconnect failed:', err.message)
+      })
+    }, backoffDelay)
   }
 
   async getServerInfo(): Promise<VpnServerInfo> {
@@ -478,9 +634,17 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
 
   async disconnectClient(commonName: string): Promise<void> {
     try {
-      await this.sendCommand(`kill ${commonName}`)
+      await this.sendCommand(`kill ${assertMgmtSafe(commonName, 'common_name')}`)
       console.log(`[openvpn-driver] Disconnected client: ${commonName}`)
-    } catch (err) {
+    } catch (err: any) {
+      // If client is not currently connected, OpenVPN reports:
+      // "ERROR: common name '...' not found"
+      // In session management, kicking an offline or already-disconnected client
+      // is considered successful (no-op).
+      if (typeof err?.message === 'string' && err.message.includes('not found')) {
+        console.log(`[openvpn-driver] Client ${commonName} was not connected (treated as kicked)`)
+        return
+      }
       throw new Error(`Failed to disconnect client ${commonName}: ${(err as Error).message}`)
     }
   }
@@ -519,9 +683,10 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
     const EASYRSA_DIR = '/etc/openvpn/easy-rsa'
     const EASYRSA_BIN = `${EASYRSA_DIR}/easyrsa`
     if (!existsSync(EASYRSA_BIN)) throw new Error(`EasyRSA not found at ${EASYRSA_BIN}`)
-    const { stdout } = await execAsync(
-      `${EASYRSA_BIN} --batch build-client-full ${username} nopass`,
-      { cwd: EASYRSA_DIR },
+    const { stdout } = await execFileAsync(
+      EASYRSA_BIN,
+      ['--batch', 'build-client-full', username, 'nopass'],
+      { cwd: EASYRSA_DIR, shell: false },
     )
     console.log(`[openvpn] Certificate generated for: ${username}`)
     return { username, stdout: stdout.trim() }
@@ -532,12 +697,18 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
     const EASYRSA_BIN = `${EASYRSA_DIR}/easyrsa`
     if (!existsSync(EASYRSA_BIN)) throw new Error(`EasyRSA not found at ${EASYRSA_BIN}`)
 
-    const { stdout } = await execAsync(
-      `${EASYRSA_BIN} --batch revoke ${username} && ${EASYRSA_BIN} gen-crl`,
-      { cwd: EASYRSA_DIR },
+    // Previously a single shell string joined by '&&'. Split into two argv
+    // invocations so `username` cannot terminate the command.
+    const { stdout } = await execFileAsync(
+      EASYRSA_BIN,
+      ['--batch', 'revoke', username],
+      { cwd: EASYRSA_DIR, shell: false },
     )
-    await execAsync(`cp ${EASYRSA_DIR}/pki/crl.pem /etc/openvpn/server/crl.pem`)
-    await execAsync(`chmod 644 /etc/openvpn/server/crl.pem`)
+    await execFileAsync(EASYRSA_BIN, ['gen-crl'], { cwd: EASYRSA_DIR, shell: false })
+
+    // cp/chmod replaced with direct fs calls — no subprocess needed.
+    copyFileSync(`${EASYRSA_DIR}/pki/crl.pem`, '/etc/openvpn/server/crl.pem')
+    chmodSync('/etc/openvpn/server/crl.pem', 0o644)
 
     // Reload CRL first so reconnects are rejected immediately, then kick
     try {
@@ -564,49 +735,54 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
     if (!existsSync(EASYRSA_DIR)) throw new Error('EasyRSA directory not found.')
     if (!existsSync(EASYRSA_BIN)) throw new Error(`EasyRSA not found at ${EASYRSA_BIN}`)
 
-    const certPath = `${EASYRSA_DIR}/pki/issued/${username}.crt`
-    const keyPath  = `${EASYRSA_DIR}/pki/private/${username}.key`
-    const reqPath  = `${EASYRSA_DIR}/pki/reqs/${username}.req`
+    // Guard before building paths: these are used for read, write and unlink,
+    // so a traversing value would reach arbitrary privileged files.
+    // resolveWithin also asserts the result stays inside the PKI directory.
+    const certPath = resolveWithin(`${EASYRSA_DIR}/pki/issued`,  `${username}.crt`, 'username')
+    const keyPath  = resolveWithin(`${EASYRSA_DIR}/pki/private`, `${username}.key`, 'username')
+    const reqPath  = resolveWithin(`${EASYRSA_DIR}/pki/reqs`,    `${username}.req`, 'username')
 
     // Clean up pre-existing cert files
     if (existsSync(certPath) || existsSync(keyPath) || existsSync(reqPath)) {
       console.log(`[openvpn] Cleaning up existing cert files for ${username}`)
       if (existsSync(certPath)) {
         try {
-          execSync(`${EASYRSA_BIN} revoke ${username}`, {
-            cwd: EASYRSA_DIR,
-            env: { ...process.env, EASYRSA_BATCH: '1' },
-            stdio: 'pipe',
-          })
-          execSync(`${EASYRSA_BIN} gen-crl`, {
-            cwd: EASYRSA_DIR,
-            env: { ...process.env, EASYRSA_BATCH: '1' },
-            stdio: 'pipe',
-          })
+          const batchEnv = { ...process.env, EASYRSA_BATCH: '1' }
+          runFile(EASYRSA_BIN, ['revoke', username], { cwd: EASYRSA_DIR, env: batchEnv })
+          runFile(EASYRSA_BIN, ['gen-crl'], { cwd: EASYRSA_DIR, env: batchEnv })
         } catch { /* ignore */ }
       }
       const indexPath = `${EASYRSA_DIR}/pki/index.txt`
       if (existsSync(indexPath)) {
         try {
-          execSync(`cp "${indexPath}" "${indexPath}.bak-$(date +%s)"`, { stdio: 'pipe' })
-          execSync(`sed -i '/CN=${username}$/d' "${indexPath}"`, { stdio: 'pipe' })
+          // Was: `cp ... $(date +%s)` + `sed -i '/CN=${username}$/d'`.
+          // The sed program embedded `username` directly, so a value containing
+          // a quote could inject both sed commands and shell. Done in-process
+          // now: exact-match line filtering, no regex, no shell.
+          copyFileSync(indexPath, `${indexPath}.bak-${Math.floor(Date.now() / 1000)}`)
+          const kept = readFileSync(indexPath, 'utf-8')
+            .split('\n')
+            .filter((line) => !line.endsWith(`/CN=${username}`))
+          writeFileSync(indexPath, kept.join('\n'), 'utf-8')
         } catch { /* ignore */ }
       }
-      for (const pattern of [certPath, keyPath, reqPath]) {
-        try { execSync(`rm -f ${pattern}`, { stdio: 'pipe' }) } catch { /* ignore */ }
+      for (const target of [certPath, keyPath, reqPath]) {
+        try { if (existsSync(target)) unlinkSync(target) } catch { /* ignore */ }
       }
     }
 
     const env = { ...process.env, EASYRSA_BATCH: '1', EASYRSA_CERT_EXPIRE: certValidDays.toString() }
     if (password) {
-      execSync(`${EASYRSA_BIN} build-client-full ${username}`, {
+      // `password` reaches EasyRSA only as an env var value, never as argv or a
+      // shell word, so metacharacters in it cannot break out.
+      runFile(EASYRSA_BIN, ['build-client-full', username], {
         cwd: EASYRSA_DIR,
         env: { ...env, EASYRSA_PASSOUT: `pass:${password}` },
-        stdio: 'pipe',
       })
     } else {
-      execSync(`${EASYRSA_BIN} build-client-full ${username} nopass`, {
-        cwd: EASYRSA_DIR, env, stdio: 'pipe',
+      runFile(EASYRSA_BIN, ['build-client-full', username, 'nopass'], {
+        cwd: EASYRSA_DIR,
+        env,
       })
     }
 
@@ -640,8 +816,8 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
 
     const [ca, cert, key] = await Promise.all([
       readFile(OPENVPN_CA, 'utf-8'),
-      readFile(path.join(EASY_RSA_PKI, 'issued', `${username}.crt`), 'utf-8'),
-      readFile(path.join(EASY_RSA_PKI, 'private', `${username}.key`), 'utf-8'),
+      readFile(resolveWithin(path.join(EASY_RSA_PKI, 'issued'),  `${username}.crt`, 'username'), 'utf-8'),
+      readFile(resolveWithin(path.join(EASY_RSA_PKI, 'private'), `${username}.key`, 'username'), 'utf-8'),
     ])
 
     const protoClient = protocol === 'tcp' ? 'tcp-client' : protocol
@@ -687,7 +863,7 @@ ${tlsKey ? `\n<tls-crypt>\n${tlsKey.trim()}\n</tls-crypt>` : ''}`.trim()
 
   async kickSession(commonName: string, options: KickSessionOptions = {}): Promise<KickSessionResult> {
     const { permanent = false } = options
-    const MGMT_SOCKET = '/run/openvpn/server.sock'
+    const MGMT_SOCKET = this.socketPath
     const CCD_DIR = '/etc/openvpn/ccd'
 
     const result: KickSessionResult = {
@@ -702,7 +878,29 @@ ${tlsKey ? `\n<tls-crypt>\n${tlsKey.trim()}\n</tls-crypt>` : ''}`.trim()
       this._removeCcdDisable(commonName, CCD_DIR)
     }
 
-    // Primary: raw socket kill
+    // Primary: reuse the driver's own management connection, when it has one.
+    //
+    // Verified against a real OpenVPN management socket: it only accepts ONE
+    // client connection at a time. In production the driver is connected for
+    // the whole process lifetime (event-monitor keeps it open), so opening a
+    // second raw socket here — which used to be tried first — always got
+    // silently ignored by the daemon and burned the full 8s timeout before
+    // falling through. Reproduced directly: kickSession() took ~8000ms with
+    // the driver connected, ~10ms once this order was swapped.
+    if (this.isConnected()) {
+      try {
+        await this.disconnectClient(commonName)
+        result.kicked = true
+        result.kill_method = 'driver'
+        return result
+      } catch (driverErr) {
+        console.warn(`[openvpn] Driver kill failed: ${(driverErr as Error).message}`)
+      }
+    }
+
+    // Fallback: a fresh raw socket. This only has a chance of succeeding
+    // when the driver is NOT already holding the management connection
+    // (e.g. called before connect(), or after a disconnect).
     try {
       const response = await this._killViaRawSocket(commonName, MGMT_SOCKET)
       result.kicked = true
@@ -713,21 +911,15 @@ ${tlsKey ? `\n<tls-crypt>\n${tlsKey.trim()}\n</tls-crypt>` : ''}`.trim()
       console.warn(`[openvpn] Raw socket kill failed: ${(rawErr as Error).message}`)
     }
 
-    // Fallback: driver disconnectClient
-    if (this.isConnected()) {
-      try {
-        await this.disconnectClient(commonName)
-        result.kicked = true
-        result.kill_method = 'driver'
-        return result
-      } catch { /* fall through */ }
-    }
-
-    // Last resort: socat
+    // Last resort: socat.
+    // Was a shell pipeline with `commonName` inside single quotes, so a quote
+    // character escaped into the shell. Now the command is written straight to
+    // socat's stdin and the argv is fixed. `printf` is no longer involved.
     try {
-      const output = execSync(
-        `printf 'kill ${commonName}\\r\\n' | socat - UNIX-CONNECT:${MGMT_SOCKET}`,
-        { encoding: 'utf-8', timeout: 5000 },
+      const output = runFile(
+        'socat',
+        ['-', `UNIX-CONNECT:${MGMT_SOCKET}`],
+        { input: `kill ${assertMgmtSafe(commonName, 'common_name')}\r\n`, timeout: 5000 },
       )
       result.kicked = true
       result.kill_method = 'socat'
@@ -741,7 +933,7 @@ ${tlsKey ? `\n<tls-crypt>\n${tlsKey.trim()}\n</tls-crypt>` : ''}`.trim()
 
   async unkickSession(commonName: string, _options: UnkickSessionOptions = {}): Promise<Record<string, unknown>> {
     const CCD_DIR = '/etc/openvpn/ccd'
-    const ccdFile = path.join(CCD_DIR, commonName)
+    const ccdFile = resolveWithin(CCD_DIR, commonName, 'common_name')
 
     if (!existsSync(ccdFile)) {
       return { unkicked: true, common_name: commonName, note: 'no_ccd_file' }
@@ -851,8 +1043,17 @@ ${tlsKey ? `\n<tls-crypt>\n${tlsKey.trim()}\n</tls-crypt>` : ''}`.trim()
     // Detect cipher directive name (data-ciphers vs ncp-ciphers for OpenVPN < 2.5)
     let cipherDirective = 'data-ciphers'
     try {
-      const { stdout } = await execAsync('openvpn --version 2>/dev/null || true')
-      const match = stdout.match(/OpenVPN\s+(\d+)\.(\d+)/)
+      // `openvpn --version` exits non-zero on some builds, which is why the
+      // shell form ended in `|| true`. execFile rejects on non-zero exit but
+      // still attaches stdout to the error, so read it from either place.
+      let versionOut = ''
+      try {
+        const { stdout } = await execFileAsync('openvpn', ['--version'], { shell: false })
+        versionOut = stdout
+      } catch (err) {
+        versionOut = (err as { stdout?: string }).stdout ?? ''
+      }
+      const match = versionOut.match(/OpenVPN\s+(\d+)\.(\d+)/)
       if (match && (parseInt(match[1]) < 2 || (parseInt(match[1]) === 2 && parseInt(match[2]) < 5))) {
         cipherDirective = 'ncp-ciphers'
       }
@@ -869,7 +1070,13 @@ ${tlsKey ? `\n<tls-crypt>\n${tlsKey.trim()}\n</tls-crypt>` : ''}`.trim()
         const prev = existsSync(NETWORK_MARKER) ? readFileSync(NETWORK_MARKER, 'utf-8').trim() : ''
         if (prev && prev !== currentNet) {
           console.log(`[openvpn] Network changed ${prev} → ${currentNet}, cleaning CCD dir`)
-          execSync(`find ${CCD_DIR} -type f ! -name ".current_network" -delete`)
+          // Was `find ... -delete`. Enumerate in-process instead: same effect,
+          // one less subprocess, and no dependency on `find` being installed.
+          for (const entry of readdirSync(CCD_DIR, { withFileTypes: true })) {
+            if (entry.isFile() && entry.name !== '.current_network') {
+              try { unlinkSync(path.join(CCD_DIR, entry.name)) } catch { /* ignore */ }
+            }
+          }
         }
         writeFileSync(NETWORK_MARKER, currentNet)
       } catch { /* non-fatal */ }
@@ -957,8 +1164,9 @@ crl-verify /etc/openvpn/server/crl.pem
 
     if (!existsSync(CRL_PATH) && existsSync(EASYRSA_DIR)) {
       try {
-        execSync(`./easyrsa --batch gen-crl`, { cwd: EASYRSA_DIR })
-        execSync(`cp ${EASYRSA_DIR}/pki/crl.pem ${CRL_PATH} && chmod 644 ${CRL_PATH}`)
+        runFile('./easyrsa', ['--batch', 'gen-crl'], { cwd: EASYRSA_DIR })
+        copyFileSync(`${EASYRSA_DIR}/pki/crl.pem`, CRL_PATH)
+        chmodSync(CRL_PATH, 0o644)
       } catch { /* non-fatal */ }
     }
 
@@ -997,7 +1205,7 @@ crl-verify /etc/openvpn/server/crl.pem
       mkdirSync(CCD_DIR, { recursive: true })
     }
 
-    const ccdPath = path.join(CCD_DIR, username)
+    const ccdPath = resolveWithin(CCD_DIR, username, 'username')
     const existing = existsSync(ccdPath)
       ? readFileSync(ccdPath, 'utf-8').split('\n').map(l => l.trim()).filter(Boolean)
       : []
@@ -1013,7 +1221,7 @@ crl-verify /etc/openvpn/server/crl.pem
   }
 
   async deleteClientConfig(username: string, _options?: { publicKey?: string }): Promise<Record<string, unknown>> {
-    const ccdPath = path.join('/etc/openvpn/ccd', username)
+    const ccdPath = resolveWithin('/etc/openvpn/ccd', username, 'username')
     if (existsSync(ccdPath)) {
       unlinkSync(ccdPath)
       console.log(`[openvpn] ✓ CCD deleted: ${ccdPath}`)
@@ -1030,7 +1238,8 @@ crl-verify /etc/openvpn/server/crl.pem
       let response = ''
       const timeout = setTimeout(() => { socket.destroy(); reject(new Error('Raw socket kill timed out')) }, 8000)
 
-      socket.connect(socketPath, () => { socket.write(`kill ${commonName}\n`) })
+      const safeName = assertMgmtSafe(commonName, 'common_name')
+      socket.connect(socketPath, () => { socket.write(`kill ${safeName}\n`) })
       socket.on('data', (chunk) => {
         response += chunk.toString()
         if (response.includes('SUCCESS:') || response.includes('ERROR:')) {
@@ -1049,7 +1258,7 @@ crl-verify /etc/openvpn/server/crl.pem
   private _writeCcdDisable(commonName: string, ccdDir: string): void {
     try {
       if (!existsSync(ccdDir)) mkdirSync(ccdDir, { recursive: true })
-      const ccdFile = path.join(ccdDir, commonName)
+      const ccdFile = resolveWithin(ccdDir, commonName, 'common_name')
       let existing = ''
       try { existing = readFileSync(ccdFile, 'utf-8') } catch { /* new file */ }
       if (!existing.includes('disable')) {
@@ -1062,7 +1271,7 @@ crl-verify /etc/openvpn/server/crl.pem
 
   private _removeCcdDisable(commonName: string, ccdDir: string): void {
     try {
-      const ccdFile = path.join(ccdDir, commonName)
+      const ccdFile = resolveWithin(ccdDir, commonName, 'common_name')
       if (!existsSync(ccdFile)) return
       const content = readFileSync(ccdFile, 'utf-8')
       if (content.trim() === 'disable') {

@@ -1,10 +1,10 @@
 import type { VpnDriver } from '../drivers'
+import { assertUsername } from '../core/net-validate'
 
 export async function handleCreateUser(
   payload: Record<string, unknown>,
   driver: VpnDriver,
 ): Promise<Record<string, unknown>> {
-  const username = payload['username'] as string
-  if (!username) throw new Error('Missing username in payload')
+  const username = assertUsername(payload['username'])
   return driver.createUser(username)
 }

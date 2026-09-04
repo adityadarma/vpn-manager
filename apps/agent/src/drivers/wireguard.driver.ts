@@ -1,4 +1,4 @@
-import { exec, execSync } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import { promisify } from 'node:util'
 import { EventEmitter } from 'node:events'
 import { readFileSync, existsSync, writeFileSync } from 'node:fs'
@@ -19,7 +19,16 @@ import type {
 } from './vpn-driver.interface'
 import { assertWgKey, assertIpv4, assertPortNumber } from '../core/net-validate'
 
-const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
+const INTERFACE_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,14}$/
+const WG_COMMAND_ARG_RE = /^[A-Za-z0-9_./:+,=@%\[\]-]+$/
+
+interface PeerState {
+  allowedIps: string
+  endpoint?: string
+  persistentKeepalive?: string
+  presharedKey?: string
+}
 
 /**
  * WireGuard Driver
@@ -36,16 +45,29 @@ const execAsync = promisify(exec)
 export class WireGuardDriver extends EventEmitter implements VpnDriver {
   private connected = false
   private interfaceName: string
+  private pendingRestores = new Map<string, ReturnType<typeof setTimeout>>()
 
   constructor(interfaceName: string = 'wg0') {
     super()
+    if (!INTERFACE_NAME_RE.test(interfaceName)) {
+      throw new Error(`Invalid WireGuard interface name: ${interfaceName}`)
+    }
     this.interfaceName = interfaceName
+  }
+
+  private async run(command: string, args: string[]): Promise<string> {
+    const { stdout } = await execFileAsync(command, args, { encoding: 'utf-8' })
+    return stdout
+  }
+
+  private runSync(command: string, args: string[], input?: string): string {
+    return execFileSync(command, args, { encoding: 'utf-8', input })
   }
 
   async connect(): Promise<void> {
     try {
       // Check if WireGuard interface exists
-      await execAsync(`wg show ${this.interfaceName}`)
+      await this.run('wg', ['show', this.interfaceName])
       this.connected = true
       console.log(`[wireguard-driver] Connected to interface ${this.interfaceName}`)
       this.emit('connected')
@@ -64,12 +86,12 @@ export class WireGuardDriver extends EventEmitter implements VpnDriver {
   }
 
   async getServerInfo(): Promise<VpnServerInfo> {
-    const { stdout } = await execAsync('wg --version')
+    const stdout = await this.run('wg', ['--version'])
     const versionMatch = stdout.match(/wireguard-tools v(\S+)/)
     const version = versionMatch ? versionMatch[1] : 'unknown'
 
     // Get interface uptime (approximate from system uptime)
-    const { stdout: uptimeOutput } = await execAsync('cat /proc/uptime')
+    const uptimeOutput = readFileSync('/proc/uptime', 'utf-8')
     const uptime = parseInt(uptimeOutput.split(' ')[0], 10)
 
     return {
@@ -81,7 +103,7 @@ export class WireGuardDriver extends EventEmitter implements VpnDriver {
 
   async getClients(): Promise<VpnClient[]> {
     try {
-      const { stdout } = await execAsync(`wg show ${this.interfaceName} dump`)
+      const stdout = await this.run('wg', ['show', this.interfaceName, 'dump'])
       return this.parseWgDump(stdout)
     } catch (err) {
       console.error('[wireguard-driver] Failed to get clients:', (err as Error).message)
@@ -140,12 +162,16 @@ export class WireGuardDriver extends EventEmitter implements VpnDriver {
       throw new Error('Missing peer identifier')
     }
 
-    // Full public key is typically 44 chars base64 and ends with "=".
-    if (normalized.length >= 40) {
+    if (normalized.length === 44) {
+      assertWgKey(normalized, 'peer identifier')
       return normalized
     }
 
-    const { stdout } = await execAsync(`wg show ${this.interfaceName} dump`)
+    if (normalized.length > 43 || !/^[A-Za-z0-9+/]+$/.test(normalized)) {
+      throw new Error('Invalid peer identifier')
+    }
+
+    const stdout = await this.run('wg', ['show', this.interfaceName, 'dump'])
     const lines = stdout.trim().split('\n').slice(1) // Skip interface row
     const matches: string[] = []
 
@@ -166,13 +192,15 @@ export class WireGuardDriver extends EventEmitter implements VpnDriver {
       throw new Error(`Ambiguous peer identifier: ${normalized} (matched ${matches.length} peers)`)
     }
 
+    assertWgKey(matches[0], 'resolved peer public key')
     return matches[0]
   }
 
   async disconnectClient(commonName: string): Promise<void> {
     try {
       const publicKey = await this.resolvePeerPublicKey(commonName)
-      await execAsync(`wg set ${this.interfaceName} peer ${publicKey} remove`)
+      this.cancelPendingRestore(publicKey)
+      await this.run('wg', ['set', this.interfaceName, 'peer', publicKey, 'remove'])
       console.log(`[wireguard-driver] Removed peer ${publicKey.substring(0, 16)}... from ${this.interfaceName}`)
     } catch (err) {
       throw new Error(`Failed to disconnect client ${commonName}: ${(err as Error).message}`)
@@ -209,8 +237,13 @@ export class WireGuardDriver extends EventEmitter implements VpnDriver {
 
   async sendCommand(command: string): Promise<string> {
     try {
-      const { stdout } = await execAsync(`wg ${command}`)
-      return stdout
+      if (/\0|\r|\n/.test(command)) throw new Error('control characters are not allowed')
+      const args = command.trim().split(/\s+/).filter(Boolean)
+      if (args.length === 0 || args.length > 64) throw new Error('invalid argument count')
+      if (args.some(arg => arg.length > 512 || !WG_COMMAND_ARG_RE.test(arg))) {
+        throw new Error('unsupported command argument')
+      }
+      return await this.run('wg', args)
     } catch (err) {
       throw new Error(`WireGuard command failed: ${(err as Error).message}`)
     }
@@ -229,8 +262,9 @@ export class WireGuardDriver extends EventEmitter implements VpnDriver {
     if (!clientCert) throw new Error('Missing client_cert (public key) for WireGuard revocation')
     assertWgKey(clientCert, 'client_cert')
     try {
-      await execAsync(`wg set ${this.interfaceName} peer ${clientCert} remove`)
-      await execAsync(`wg-quick save ${this.interfaceName}`)
+      this.cancelPendingRestore(clientCert)
+      await this.run('wg', ['set', this.interfaceName, 'peer', clientCert, 'remove'])
+      await this.run('wg-quick', ['save', this.interfaceName])
       console.log(`[wireguard] Peer removed for ${username}`)
       return { username, stdout: 'Peer removed' }
     } catch (err: any) {
@@ -239,8 +273,8 @@ export class WireGuardDriver extends EventEmitter implements VpnDriver {
   }
 
   async generateClientCert(_username: string, _options: ClientCertOptions = {}): Promise<ClientCertResult> {
-    const privateKey = execSync('wg genkey', { encoding: 'utf-8' }).trim()
-    const publicKey  = execSync('wg pubkey', { input: privateKey + '\n', encoding: 'utf-8' }).trim()
+    const privateKey = this.runSync('wg', ['genkey']).trim()
+    const publicKey  = this.runSync('wg', ['pubkey'], privateKey + '\n').trim()
     return { clientCert: publicKey, clientKey: privateKey, passwordProtected: false, expiresAt: null }
   }
 
@@ -283,32 +317,35 @@ PersistentKeepalive = 25`
     }
 
     if (!publicKey) {
-      console.warn(`[wireguard] kickSession: missing publicKey for ${commonName}`)
-      result.error = 'missing_public_key'
-      return result
+      throw new Error(`Missing publicKey for WireGuard kick: ${commonName}`)
     }
     assertWgKey(publicKey, 'publicKey')
 
     if (permanent) {
-      execSync(`wg set ${this.interfaceName} peer ${publicKey} remove`)
-      execSync(`wg-quick save ${this.interfaceName}`)
+      this.cancelPendingRestore(publicKey)
+      this.runSync('wg', ['set', this.interfaceName, 'peer', publicKey, 'remove'])
+      this.runSync('wg-quick', ['save', this.interfaceName])
       result.kicked = true
       result.kill_method = 'wg_remove'
       result.ccd_disabled = true
       console.log(`[wireguard] ✓ Peer ${commonName} permanently removed`)
     } else {
       if (!vpnIp) {
-        console.warn(`[wireguard] kickSession: missing vpnIp for temporary kick of ${commonName}`)
-        return result
+        throw new Error(`Missing vpnIp for temporary WireGuard kick: ${commonName}`)
       }
       assertIpv4(vpnIp, 'vpnIp')
-      execSync(`wg set ${this.interfaceName} peer ${publicKey} remove`)
-      setTimeout(() => {
+      this.cancelPendingRestore(publicKey)
+      const peerState = this.readPeerState(publicKey, vpnIp)
+      this.runSync('wg', ['set', this.interfaceName, 'peer', publicKey, 'remove'])
+      const timer = setTimeout(() => {
+        if (this.pendingRestores.get(publicKey) !== timer) return
+        this.pendingRestores.delete(publicKey)
         try {
-          execSync(`wg set ${this.interfaceName} peer ${publicKey} allowed-ips ${vpnIp}/32`)
+          this.restorePeer(publicKey, peerState)
           console.log(`[wireguard] ✓ Peer ${commonName} restored after temp kick`)
         } catch (e: any) { console.error(`[wireguard] Failed to restore peer:`, e.message) }
       }, 2000)
+      this.pendingRestores.set(publicKey, timer)
       result.kicked = true
       result.kill_method = 'wg_temp_remove'
       console.log(`[wireguard] ✓ Peer ${commonName} temporarily kicked`)
@@ -320,13 +357,13 @@ PersistentKeepalive = 25`
   async unkickSession(commonName: string, options: UnkickSessionOptions = {}): Promise<Record<string, unknown>> {
     const { publicKey, vpnIp } = options
     if (!publicKey || !vpnIp) {
-      console.warn(`[wireguard] unkickSession: missing publicKey or vpnIp for ${commonName}`)
-      return { unkicked: false, common_name: commonName, error: 'missing_payload_data' }
+      throw new Error(`Missing publicKey or vpnIp for WireGuard unkick: ${commonName}`)
     }
     assertWgKey(publicKey, 'publicKey')
     assertIpv4(vpnIp, 'vpnIp')
-    execSync(`wg set ${this.interfaceName} peer ${publicKey} allowed-ips ${vpnIp}/32`)
-    execSync(`wg-quick save ${this.interfaceName}`)
+    this.cancelPendingRestore(publicKey)
+    this.runSync('wg', ['set', this.interfaceName, 'peer', publicKey, 'allowed-ips', `${vpnIp}/32`])
+    this.runSync('wg-quick', ['save', this.interfaceName])
     console.log(`[wireguard] ✓ Peer ${commonName} restored`)
     return { unkicked: true, common_name: commonName, method: 'wg_restore' }
   }
@@ -334,8 +371,12 @@ PersistentKeepalive = 25`
   // ── Config management ───────────────────────────────────────────────────────
 
   async reload(): Promise<void> {
-    await execAsync(`wg-quick down ${this.interfaceName} || true`)
-    await execAsync(`wg-quick up ${this.interfaceName}`)
+    try {
+      await this.run('wg-quick', ['down', this.interfaceName])
+    } catch {
+      // The interface may already be down; bringing it up remains authoritative.
+    }
+    await this.run('wg-quick', ['up', this.interfaceName])
     console.log(`[wireguard] Interface ${this.interfaceName} reloaded`)
   }
 
@@ -395,11 +436,13 @@ PersistentKeepalive = 25`
     const netInt   = this._ipToInt(params.vpn_network) & this._ipToInt(params.vpn_netmask)
     const serverIp = this._intToIp(netInt + 1)
 
-    await execAsync(`sed -i 's|^Address = .*|Address = ${serverIp}/${prefix}|' ${WG_CONF}`)
+    let content = readFileSync(WG_CONF, 'utf-8')
+    content = content.replace(/^Address\s*=\s*[^\r\n]*$/m, `Address = ${serverIp}/${prefix}`)
     if (params.port) {
       assertPortNumber(params.port, 'port')
-      await execAsync(`sed -i 's|^ListenPort = .*|ListenPort = ${params.port}|' ${WG_CONF}`)
+      content = content.replace(/^ListenPort\s*=\s*[^\r\n]*$/m, `ListenPort = ${params.port}`)
     }
+    writeFileSync(WG_CONF, content, 'utf-8')
 
     await this.reload()
     return {
@@ -418,13 +461,13 @@ PersistentKeepalive = 25`
   ): Promise<Record<string, unknown>> {
     const { publicKey } = options
     if (!publicKey) {
-      console.warn(`[wireguard] writeClientConfig: no publicKey for ${username}, skipping peer injection`)
-      return { success: false, reason: 'missing_public_key' }
+      throw new Error(`Missing publicKey for WireGuard client config: ${username}`)
     }
     assertWgKey(publicKey, 'publicKey')
     assertIpv4(vpnIp, 'vpnIp')
-    execSync(`wg set ${this.interfaceName} peer ${publicKey} allowed-ips ${vpnIp}/32`)
-    execSync(`wg-quick save ${this.interfaceName}`)
+    this.cancelPendingRestore(publicKey)
+    this.runSync('wg', ['set', this.interfaceName, 'peer', publicKey, 'allowed-ips', `${vpnIp}/32`])
+    this.runSync('wg-quick', ['save', this.interfaceName])
     console.log(`[wireguard] ✓ Peer injected for ${username} with IP ${vpnIp}/32`)
     return { success: true, username, vpn_ip: vpnIp, public_key: publicKey, interface: this.interfaceName }
   }
@@ -432,17 +475,46 @@ PersistentKeepalive = 25`
   async deleteClientConfig(username: string, options?: { publicKey?: string }): Promise<Record<string, unknown>> {
     const publicKey = options?.publicKey
     if (!publicKey) {
-      console.warn(`[wireguard] deleteClientConfig: no publicKey for ${username}, skipping`)
-      return { success: false, reason: 'missing_public_key' }
+      throw new Error(`Missing publicKey for WireGuard client config deletion: ${username}`)
     }
     assertWgKey(publicKey, 'publicKey')
-    execSync(`wg set ${this.interfaceName} peer ${publicKey} remove`)
-    execSync(`wg-quick save ${this.interfaceName}`)
+    this.cancelPendingRestore(publicKey)
+    this.runSync('wg', ['set', this.interfaceName, 'peer', publicKey, 'remove'])
+    this.runSync('wg-quick', ['save', this.interfaceName])
     console.log(`[wireguard] ✓ Peer removed for ${username}`)
     return { success: true, username }
   }
 
   // ── Private helpers ─────────────────────────────────────────────────────────
+
+  private cancelPendingRestore(publicKey: string): void {
+    const timer = this.pendingRestores.get(publicKey)
+    if (!timer) return
+    clearTimeout(timer)
+    this.pendingRestores.delete(publicKey)
+  }
+
+  private readPeerState(publicKey: string, fallbackVpnIp: string): PeerState {
+    const dump = this.runSync('wg', ['show', this.interfaceName, 'dump'])
+    const row = dump.trim().split('\n').slice(1)
+      .map(line => line.split('\t'))
+      .find(parts => parts[0] === publicKey)
+
+    return {
+      allowedIps: row?.[3] && row[3] !== '(none)' ? row[3] : `${fallbackVpnIp}/32`,
+      endpoint: row?.[2] && row[2] !== '(none)' ? row[2] : undefined,
+      persistentKeepalive: row?.[7] && row[7] !== 'off' && row[7] !== '0' ? row[7] : undefined,
+      presharedKey: row?.[1] && row[1] !== '(none)' ? row[1] : undefined,
+    }
+  }
+
+  private restorePeer(publicKey: string, state: PeerState): void {
+    const args = ['set', this.interfaceName, 'peer', publicKey, 'allowed-ips', state.allowedIps]
+    if (state.endpoint) args.push('endpoint', state.endpoint)
+    if (state.persistentKeepalive) args.push('persistent-keepalive', state.persistentKeepalive)
+    if (state.presharedKey) args.push('preshared-key', '/dev/stdin')
+    this.runSync('wg', args, state.presharedKey ? `${state.presharedKey}\n` : undefined)
+  }
 
   private _netmaskToPrefix(netmask: string): number {
     return netmask

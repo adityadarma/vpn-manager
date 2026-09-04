@@ -1,4 +1,8 @@
-export const APP_VERSION = '1.0.0'
+/**
+ * Application version, reported by GET /api/v1/health and shown in the UI.
+ * Keep in sync with package.json on release (see .github/workflows/release.yml).
+ */
+export const APP_VERSION = '1.1.0'
 
 export const AGENT = {
   POLL_INTERVAL_MS: 5_000,

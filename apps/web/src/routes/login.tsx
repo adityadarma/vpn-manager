@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useAuthStore } from '@/store/auth.store'
 import { API_URL } from '@/lib/api'
+import { APP_VERSION } from '@vpn/shared'
 import { Shield } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -123,7 +124,7 @@ function LoginPage() {
         </Card>
 
         <p className="text-center text-slate-500 text-xs mt-6">
-          VPN Manager v1.0.0
+          VPN Manager v{APP_VERSION}
         </p>
       </div>
     </div>

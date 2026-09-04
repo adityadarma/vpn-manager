@@ -1,7 +1,8 @@
 import type { FastifyPluginAsync } from 'fastify'
 import bcrypt from 'bcryptjs'
+import { v7 as uuidv7 } from 'uuid'
 import { LoginSchema } from '@vpn/shared'
-import { revokeToken } from '../../services/token-blacklis'
+import { revokeToken } from '../../services/token-revocation'
 
 const authRoutes: FastifyPluginAsync = async (app) => {
   // POST /api/v1/auth/login
@@ -42,7 +43,15 @@ const authRoutes: FastifyPluginAsync = async (app) => {
       const now = new Date()
       await app.db('users').where({ id: user.id }).update({ last_login: now })
 
+      // `jti` makes every issued token unique.
+      //
+      // Without it the signed payload is just {id, username, role} plus iat/exp
+      // at one-second resolution, so two logins by the same user within the same
+      // second produced byte-identical tokens. Since revocation is keyed on the
+      // token hash, revoking one would then revoke the other — logging out of
+      // one session would silently kill a concurrent one.
       const token = app.jwt.sign({
+        jti: uuidv7(),
         id: user.id,
         username: user.username,
         role: user.role,
@@ -96,9 +105,9 @@ const authRoutes: FastifyPluginAsync = async (app) => {
 
       if (rawToken) {
         try {
-          const decoded = app.jwt.decode(rawToken) as { exp?: number } | null
+          const decoded = app.jwt.decode(rawToken) as { exp?: number; id?: string } | null
           if (decoded?.exp) {
-            revokeToken(rawToken, decoded.exp)
+            await revokeToken(app.db, rawToken, decoded.exp, decoded.id ?? null)
           }
         } catch {
           // Token decode failure is non-fatal for logout

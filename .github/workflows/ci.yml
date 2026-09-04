@@ -4,12 +4,14 @@ on:
   push:
     branches:
       - main
+      - beta
     paths:
       - 'apps/api/**'
       - 'apps/web/**'
       - 'apps/agent/**'
       - 'packages/**'
       - 'Dockerfile'
+      - 'apps/agent/Dockerfile'
       - '.github/workflows/**'
   pull_request:
     branches:
@@ -17,8 +19,12 @@ on:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  REGISTRY: ghcr.io
+  MANAGER_IMAGE: vpn-manager
+  AGENT_IMAGE: vpn-agent
 
 jobs:
+  # ── Job 1: Type check + unit tests ──────────────────────────────────────────
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -42,6 +48,203 @@ jobs:
         run: pnpm typecheck
 
       - name: Unit tests
-        run: pnpm --filter @vpn/api test run
+        run: |
+          pnpm --filter @vpn/api test
+          pnpm --filter @vpn/agent test
         env:
           ADMIN_PASSWORD: ci-test-admin-password-32chars!!
+
+  agent-live:
+    name: Agent Live VPN Tests
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Build disposable live-test image
+        run: |
+          docker build --target test -f apps/agent/Dockerfile -t vpn-agent-live-base .
+          docker build -t vpn-agent-live-test -f - . <<'EOF'
+          FROM vpn-agent-live-base
+          RUN apk add --no-cache openvpn easy-rsa wireguard-tools iproute2
+          EOF
+
+      - name: Run kernel-backed OpenVPN and WireGuard tests
+        run: |
+          sudo modprobe tun
+          sudo modprobe wireguard
+          docker run --rm \
+            --privileged \
+            --device /dev/net/tun:/dev/net/tun \
+            vpn-agent-live-test \
+            pnpm --filter @vpn/agent test:live
+
+      - name: Run compiled manager and agent WireGuard E2E
+        run: bash scripts/e2e-wireguard-agent-binary.sh
+
+  # ── Job 2: Docker build + smoke test ────────────────────────────────────────
+  #
+  # Catches Dockerfile / dependency-resolution breakage on every push and PR,
+  # not just when a release tag is pushed. This is the gap that let an
+  # unpinned `npm install -g pnpm` (pulling whatever is newest) sit broken
+  # until someone tried `docker compose up --build` locally — the tag-only
+  # release workflow never ran the build in between.
+  #
+  # Images are built once here. On push to main they are also pushed to GHCR
+  # tagged by commit SHA; release.yml promotes that exact digest to version
+  # tags via `docker buildx imagetools create` instead of rebuilding, so the
+  # same image is never built twice for the same commit.
+  docker:
+    name: Docker Build & Smoke Test (${{ matrix.image }})
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        image: [manager, agent]
+      fail-fast: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set image name and dockerfile
+        id: image-config
+        run: |
+          if [ "${{ matrix.image }}" = "manager" ]; then
+            echo "image_name=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.MANAGER_IMAGE }}" >> "$GITHUB_OUTPUT"
+            echo "dockerfile=Dockerfile" >> "$GITHUB_OUTPUT"
+          else
+            echo "image_name=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.AGENT_IMAGE }}" >> "$GITHUB_OUTPUT"
+            echo "dockerfile=apps/agent/Dockerfile" >> "$GITHUB_OUTPUT"
+          fi
+
+      # `load: true` puts the image in this runner's local Docker so the smoke
+      # test steps below can `docker run` it directly. Combined with `push`
+      # in the same step so there is exactly one build — verified locally
+      # that buildx supports load+push together for a single-platform image
+      # (this repo only targets linux/amd64, so the multi-platform caveat
+      # documented for build-push-action, where load requires the containerd
+      # snapshotter, does not apply here).
+      - name: Build image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ steps.image-config.outputs.dockerfile }}
+          load: true
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: |
+            ${{ steps.image-config.outputs.image_name }}:sha-${{ github.sha }}
+            ${{ steps.image-config.outputs.image_name }}:main
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+          platforms: linux/amd64
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+
+      # No physical VPN server or manager exists on this runner — that is the
+      # point. It proves the container starts and, for the agent, that it
+      # degrades gracefully instead of crashing when the things it normally
+      # depends on (OpenVPN socket, manager API) are unreachable.
+      - name: Smoke test — manager
+        if: matrix.image == 'manager'
+        run: |
+          docker run -d --name manager-smoke -p 3000:3000 \
+            -e JWT_SECRET=ci-smoke-test-secret-key-32-characters-min \
+            -e NODE_ENV=production \
+            -e PORT=3000 \
+            -e DATABASE_TYPE=sqlite \
+            -e DATABASE_SQLITE_PATH=/data/vpn.sqlite \
+            -e ADMIN_PASSWORD=ci-smoke-test-admin-pw-32chars!! \
+            ${{ steps.image-config.outputs.image_name }}:sha-${{ github.sha }}
+
+          echo "Waiting for API to be ready (max 60s)..."
+          for i in $(seq 1 12); do
+            if curl -sf http://localhost:3000/api/v1/health; then
+              echo ""
+              echo "API ready after $((i*5))s"
+              break
+            fi
+            if [ "$i" = "12" ]; then
+              echo "Timeout waiting for API"
+              docker logs manager-smoke
+              exit 1
+            fi
+            sleep 5
+          done
+
+          echo ""
+          echo "=== Web UI ==="
+          curl -sf http://localhost:3000/ -o /dev/null -w "HTTP %{http_code}\n"
+
+          echo "=== Migrations ran ==="
+          docker logs manager-smoke 2>&1 | grep -q "Batch .* ran" \
+            && echo "OK — migrations applied" \
+            || { echo "Migrations did not run"; docker logs manager-smoke; exit 1; }
+
+      # This step exists because of a real bug found while investigating this
+      # exact scenario: OpenVpnDriver extends EventEmitter and emits 'error' on
+      # socket failures (apps/agent/src/drivers/openvpn.driver.ts). Node kills
+      # the process on an 'error' event with no listener attached, and nothing
+      # was listening — so the agent used to crash instantly whenever it
+      # started without a reachable OpenVPN management socket, which is
+      # unavoidably true on a CI runner (and also happens in production on any
+      # socket blip, since the same emit fires on every reconnect attempt, not
+      # just at startup). Fixed by attaching a listener in apps/agent/src/index.ts.
+      - name: Smoke test — agent
+        if: matrix.image == 'agent'
+        run: |
+          docker run -d --name agent-smoke \
+            -e AGENT_MANAGER_URL=http://127.0.0.1:9 \
+            -e AGENT_NODE_ID=00000000-0000-0000-0000-000000000000 \
+            -e AGENT_SECRET_TOKEN=ci-smoke-token \
+            -e VPN_TOKEN=ci-smoke-vpn-token \
+            -e VPN_TYPE=openvpn \
+            -e FIREWALL_ENGINE=none \
+            -e NODE_ENV=production \
+            ${{ steps.image-config.outputs.image_name }}:sha-${{ github.sha }}
+
+          sleep 8
+
+          if [ "$(docker inspect -f '{{.State.Running}}' agent-smoke)" != "true" ]; then
+            echo "Agent exited unexpectedly — this used to be the EventEmitter crash:"
+            docker logs agent-smoke
+            exit 1
+          fi
+
+          echo "Agent survived 8s with no manager and no VPN server reachable."
+          echo "=== logs ==="
+          docker logs agent-smoke
+
+          echo "=== graceful shutdown ==="
+          START=$(date +%s)
+          docker stop agent-smoke > /dev/null
+          END=$(date +%s)
+          echo "docker stop took $((END-START))s"
+
+      - name: Logs on failure
+        if: failure()
+        run: |
+          docker ps -a
+          docker logs manager-smoke 2>/dev/null || true
+          docker logs agent-smoke 2>/dev/null || true
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f manager-smoke agent-smoke 2>/dev/null || true

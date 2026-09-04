@@ -7,7 +7,16 @@
 # ============================================================
 
 FROM node:24-alpine AS base
-RUN npm install -g pnpm && apk add --no-cache python3 make g++ curl wget
+# Use corepack rather than `npm install -g pnpm` so the pnpm version comes from
+# the `packageManager` field in package.json.
+#
+# Installing pnpm unpinned pulled whatever was newest on npm (pnpm 11), which
+# refuses to run against this repo's lockfile:
+#   "Cannot verify the identity of the @pnpm/exe.linux-arm64 native binary:
+#    it is missing from pnpm-lock.yaml"
+# CI did not catch it because pnpm/action-setup already honours packageManager.
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN corepack enable && apk add --no-cache python3 make g++ curl wget
 
 # ============================================================
 # Builder Stage
@@ -55,6 +64,10 @@ RUN cp -r /app/packages/db/node_modules /prod/api/node_modules/@vpn/db/node_modu
 
 # Copy Vite static output -> will be served by Fastify
 RUN cp -r /app/apps/web/dist /prod/web
+
+# CI-only target. Keeps source and dev dependencies available for the compiled
+# manager/agent process E2E harness without adding them to the runner image.
+FROM builder AS test
 
 # ============================================================
 # Runner Stage
