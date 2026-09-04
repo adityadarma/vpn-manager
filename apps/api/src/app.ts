@@ -96,7 +96,6 @@ export async function buildApp(env: Env) {
   app.addHook('onClose', async () => {
     nodeStatusChecker?.stop()
     tokenRevocationSweeper?.stop()
-    await db.destroy()
   })
 
   return app
