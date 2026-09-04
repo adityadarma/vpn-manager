@@ -3,6 +3,7 @@ import { execSync, spawn, ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { OpenVpnDriver } from '../src/drivers/openvpn.driver'
+import type { VpnClient } from '../src/drivers/vpn-driver.interface'
 import { handleWriteClientCcd } from '../src/handlers/write-client-ccd'
 import { handleDeleteClientCcd } from '../src/handlers/delete-client-ccd'
 import { handleKickSession } from '../src/handlers/kick-session'
@@ -175,7 +176,7 @@ ${fs.readFileSync(`${serverDir}/tls-crypt.key`, 'utf-8').trim()}
 `)
 
     clientProc = spawn('openvpn', ['--config', clientConf], { stdio: 'pipe' })
-    let clients = []
+    let clients: VpnClient[] = []
     for (let attempt = 0; attempt < 50; attempt++) {
       clients = await driver.getClients()
       if (clients.some((client) => client.commonName === 'testuser_ovpn')) break
@@ -198,7 +199,7 @@ ${fs.readFileSync(`${serverDir}/tls-crypt.key`, 'utf-8').trim()}
     expect(kickRes.kill_method).toBe('driver')
     expect(duration).toBeLessThan(1000)
 
-    let remainingClients = []
+    let remainingClients: VpnClient[] = []
     for (let attempt = 0; attempt < 25; attempt++) {
       remainingClients = await driver.getClients()
       if (!remainingClients.some((client) => client.commonName === 'testuser_ovpn')) break

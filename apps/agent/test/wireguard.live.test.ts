@@ -152,7 +152,12 @@ describe.runIf(isLinuxWithNetAdmin && hasNetworkNamespace)('WireGuard Live Serve
     expect(() => execSync(`ip netns exec ${clientNamespace} ping -I ${clientIface} -c 2 -W 1 10.9.0.1`, { stdio: 'ignore' })).not.toThrow()
     const beforeKick = execSync(`wg show ${iface} dump`, { encoding: 'utf-8' })
     expect(beforeKick).toContain(clientPublicKey)
-    expect(beforeKick).toMatch(new RegExp(`${clientPublicKey}.*\t[1-9]`))
+    const clientRow = beforeKick.trim().split('\n')
+      .map((line) => line.split('\t'))
+      .find((columns) => columns[0] === clientPublicKey)
+    // wg dump column 4 is the latest handshake Unix timestamp. A positive
+    // value proves the client exchanged real encrypted tunnel packets.
+    expect(Number(clientRow?.[4])).toBeGreaterThan(0)
 
     const kickResult = await driver.kickSession('traffic_wg', {
       permanent: true,
