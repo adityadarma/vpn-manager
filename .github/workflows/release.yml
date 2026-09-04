@@ -48,7 +48,7 @@ jobs:
         run: pnpm typecheck
 
       - name: Unit tests
-        run: pnpm --filter @vpn/api test run
+        run: pnpm --filter @vpn/api test
         env:
           ADMIN_PASSWORD: ci-test-admin-password-32chars!!
 
