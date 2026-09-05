@@ -34,7 +34,14 @@ You can install both on a **single server** (simplest) or on **separate servers*
 
 - Linux server (Ubuntu 20.04+, Debian 11+, or CentOS 8+)
 - root/sudo access
-- Docker & Docker Compose v2 (installed automatically if missing)
+- Docker Engine & Docker Compose v2, installed before running the scripts
+
+> The installation scripts do not install Docker. Install and verify Docker first:
+
+```bash
+docker --version
+docker compose version
+```
 
 ### Step 1 — Install the Manager
 
@@ -48,7 +55,7 @@ During installation you'll be asked for:
 
 1. **Database type** — pick `1) SQLite` if unsure (simplest, no extra setup)
 2. **Server domain/IP** — the address used to reach the Manager
-3. **Use HTTPS?** — choose `Y` for production
+3. **Use HTTPS?** — choose `Y` only when a reverse proxy terminates TLS and forwards traffic to the Manager's HTTP port
 4. **Port** — keep the default `3000` unless it conflicts
 
 When it finishes, the screen shows important info. **Save all of it:**
@@ -61,7 +68,7 @@ Node Registration Key : xxxxxxxx   ← for installing the VPN Node
 VPN Token             : xxxxxxxx   ← for installing the VPN Node
 ```
 
-> The admin password is randomly generated and shown **once** by the installer (or set it yourself beforehand via the `ADMIN_PASSWORD` environment variable). Save it now.
+> The admin password is randomly generated and shown **once** by the installer. Save it now. Running the installer again preserves the existing `.env` and its secrets.
 
 > Open `Web UI + API` in your browser and log in. **Change the admin password immediately** after the first login.
 
@@ -76,7 +83,7 @@ curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/script
   REG_KEY=registration-key-from-step-1
 ```
 
-The script automatically installs Docker (if needed), installs and configures OpenVPN, then starts the Agent and registers the node with the Manager. It also auto-detects the active firewall (iptables, nftables, ufw, or firewalld) and sets up the routing/NAT rules for you.
+The script installs and configures OpenVPN, then starts the Agent and registers the node with the Manager. It also auto-detects the active firewall (iptables, nftables, ufw, or firewalld) and sets up the routing/NAT rules for you. Docker Engine and Docker Compose v2 must already be installed.
 
 > **No arguments?** Just run `sudo bash` without arguments and the script will prompt you for each value one by one — including which firewall engine to use (the detected one is recommended).
 
@@ -171,7 +178,7 @@ systemctl status openvpn-server@server         # OpenVPN status
 tail -f /var/log/openvpn/openvpn.log           # OpenVPN logs
 
 # Update the node
-curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/update-node.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-node.sh | sudo bash
 
 # Remove the node
 curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/uninstall-node.sh | sudo bash

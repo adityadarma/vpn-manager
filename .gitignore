@@ -50,3 +50,6 @@ coverage/
 .pnpm-state
 .pnpm-store
 pnpm-lock.yaml.bak
+
+# Docker
+docker-compose.yml

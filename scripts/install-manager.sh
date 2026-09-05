@@ -57,7 +57,7 @@ echo ""
 if [ ! -f "docker-compose.yml" ]; then
     info "Downloading docker-compose.yml..."
     REPO_URL="https://raw.githubusercontent.com/adityadarma/vpn-manager/main"
-    if curl -fsSL "$REPO_URL/docker-compose.yml" -o docker-compose.yml; then
+    if curl -fsSL "$REPO_URL/docker-compose.prod.yml" -o docker-compose.yml; then
         ok "Downloaded docker-compose.yml"
     else
         error "Failed to download docker-compose.yml"
@@ -66,101 +66,78 @@ if [ ! -f "docker-compose.yml" ]; then
 fi
 echo ""
 
-# Generate secrets
-info "Generating secrets..."
-JWT_SECRET=$(openssl rand -base64 32)
-VPN_TOKEN=$(openssl rand -hex 32)
-NODE_REGISTRATION_KEY=$(openssl rand -hex 16)
-# Strong random admin password (alphanumeric to avoid shell/.env escaping issues)
-ADMIN_PASSWORD=$(openssl rand -base64 18 | tr -dc 'A-Za-z0-9' | head -c 20)
-ok "Secrets generated"
-echo ""
-
-# Database selection
-echo "Select database:"
-echo "1) SQLite (default, simple)"
-echo "2) PostgreSQL (production)"
-echo "3) MariaDB"
-read -p "Choice [1-3] (default: 1): " db_choice < /dev/tty
-db_choice=${db_choice:-1}
-
-case $db_choice in
-    1)
-        DATABASE_TYPE="sqlite"
-        DATABASE_PROFILE=""
-        ok "Using SQLite"
-        ;;
-    2)
-        DATABASE_TYPE="postgres"
-        DATABASE_PROFILE="--profile postgres"
-        read -p "PostgreSQL password (auto-generate if empty): " POSTGRES_PASSWORD < /dev/tty
-        POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-$(openssl rand -base64 32 | tr -d '/')}
-        ok "Using PostgreSQL"
-        ;;
-    3)
-        DATABASE_TYPE="mysql"
-        DATABASE_PROFILE="--profile mysql"
-        read -p "MariaDB password (auto-generate if empty): " MARIADB_PASSWORD < /dev/tty
-        MARIADB_PASSWORD=${MARIADB_PASSWORD:-$(openssl rand -base64 32 | tr -d '/')}
-        read -p "MariaDB root password (auto-generate if empty): " MARIADB_ROOT_PASSWORD < /dev/tty
-        MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD:-$(openssl rand -base64 32 | tr -d '/')}
-        ok "Using MariaDB"
-        ;;
-    *)
-        DATABASE_TYPE="sqlite"
-        DATABASE_PROFILE=""
-        warn "Invalid choice, defaulting to SQLite"
-        ;;
-esac
-
-# Build DATABASE_URL
-if [ "$DATABASE_TYPE" = "postgres" ]; then
-    DATABASE_URL="postgresql://vpn:${POSTGRES_PASSWORD}@postgres:5432/vpn"
-elif [ "$DATABASE_TYPE" = "mysql" ]; then
-    DATABASE_URL="mysql://vpn:${MARIADB_PASSWORD}@mariadb:3306/vpn"
+if [ -f .env ]; then
+    # Preserve existing credentials and database settings so reinstalling the
+    # Manager cannot disconnect registered nodes or invalidate admin sessions.
+    APP_PORT=$(grep '^PORT=' .env | tail -n1 | cut -d '=' -f2-)
+    APP_PORT=${APP_PORT:-3000}
+    DATABASE_TYPE=$(grep '^DATABASE_TYPE=' .env | tail -n1 | cut -d '=' -f2-)
+    case "$DATABASE_TYPE" in
+        postgres) DATABASE_PROFILE="--profile postgres" ;;
+        mysql) DATABASE_PROFILE="--profile mariadb" ;;
+        *) DATABASE_PROFILE="" ;;
+    esac
+    APP_URL="http://localhost:${APP_PORT}"
+    EXISTING_INSTALL=true
+    warn "Existing .env found; preserving its configuration and secrets"
 else
-    DATABASE_URL=""
-fi
-echo ""
+    EXISTING_INSTALL=false
+    info "Generating secrets..."
+    JWT_SECRET=$(openssl rand -base64 32)
+    VPN_TOKEN=$(openssl rand -hex 32)
+    NODE_REGISTRATION_KEY=$(openssl rand -hex 16)
+    ADMIN_PASSWORD=$(openssl rand -base64 18 | tr -dc 'A-Za-z0-9' | head -c 20)
+    ok "Secrets generated"
+    echo ""
 
-# Server address
-SERVER_IP=$(curl -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
-echo "Enter your server domain or IP address."
-echo "This is used for VPN node connections to the API."
-read -p "Server domain/IP (default: $SERVER_IP): " SERVER_DOMAIN < /dev/tty
-SERVER_DOMAIN=${SERVER_DOMAIN:-$SERVER_IP}
+    echo "Select database:"
+    echo "1) SQLite (default, simple)"
+    echo "2) PostgreSQL (production)"
+    echo "3) MariaDB"
+    read -p "Choice [1-3] (default: 1): " db_choice < /dev/tty
+    db_choice=${db_choice:-1}
 
-# Protocol
-echo ""
-read -p "Use HTTPS? [Y/n] (default: Y): " USE_HTTPS < /dev/tty
-USE_HTTPS=${USE_HTTPS:-Y}
-if [[ "$USE_HTTPS" == "y" || "$USE_HTTPS" == "Y" ]]; then
-    PROTOCOL="https"
-else
-    PROTOCOL="http"
-fi
+    case $db_choice in
+        1) DATABASE_TYPE="sqlite"; DATABASE_PROFILE="" ;;
+        2)
+            DATABASE_TYPE="postgres"; DATABASE_PROFILE="--profile postgres"
+            read -p "PostgreSQL password (auto-generate if empty): " POSTGRES_PASSWORD < /dev/tty
+            POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-$(openssl rand -base64 32 | tr -d '/')}
+            ;;
+        3)
+            DATABASE_TYPE="mysql"; DATABASE_PROFILE="--profile mariadb"
+            read -p "MariaDB password (auto-generate if empty): " MARIADB_PASSWORD < /dev/tty
+            MARIADB_PASSWORD=${MARIADB_PASSWORD:-$(openssl rand -base64 32 | tr -d '/')}
+            read -p "MariaDB root password (auto-generate if empty): " MARIADB_ROOT_PASSWORD < /dev/tty
+            MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD:-$(openssl rand -base64 32 | tr -d '/')}
+            ;;
+        *) DATABASE_TYPE="sqlite"; DATABASE_PROFILE=""; warn "Invalid choice, defaulting to SQLite" ;;
+    esac
 
-# Port — single port for both web and API
-echo ""
-read -p "Port (default: 3000): " APP_PORT < /dev/tty
-APP_PORT=${APP_PORT:-3000}
+    if [ "$DATABASE_TYPE" = "postgres" ]; then
+        DATABASE_URL="postgresql://vpn:${POSTGRES_PASSWORD}@postgres:5432/vpn"
+    elif [ "$DATABASE_TYPE" = "mysql" ]; then
+        DATABASE_URL="mysql://vpn:${MARIADB_PASSWORD}@mariadb:3306/vpn"
+    else
+        DATABASE_URL=""
+    fi
 
-# Build full URL (used by VPN agents to connect to manager API)
-# Always include port unless it matches the default for the protocol
-if [[ "$PROTOCOL" = "https" && "$APP_PORT" = "443" ]]; then
-    APP_URL="https://$SERVER_DOMAIN"
-elif [[ "$PROTOCOL" = "http" && "$APP_PORT" = "80" ]]; then
-    APP_URL="http://$SERVER_DOMAIN"
-else
-    APP_URL="$PROTOCOL://$SERVER_DOMAIN:$APP_PORT"
-fi
+    SERVER_IP=$(curl -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
+    echo "Enter your reverse-proxy domain or Manager IP address."
+    echo "The Manager container itself serves HTTP; configure TLS at the reverse proxy."
+    read -p "Server domain/IP (default: $SERVER_IP): " SERVER_DOMAIN < /dev/tty
+    SERVER_DOMAIN=${SERVER_DOMAIN:-$SERVER_IP}
+    read -p "Public URL uses HTTPS through a reverse proxy? [Y/n] (default: Y): " USE_HTTPS < /dev/tty
+    USE_HTTPS=${USE_HTTPS:-Y}
+    if [[ "$USE_HTTPS" == "y" || "$USE_HTTPS" == "Y" ]]; then PROTOCOL="https"; else PROTOCOL="http"; fi
+    read -p "Port (default: 3000): " APP_PORT < /dev/tty
+    APP_PORT=${APP_PORT:-3000}
+    if [[ "$PROTOCOL" = "https" && "$APP_PORT" = "443" ]]; then APP_URL="https://$SERVER_DOMAIN"
+    elif [[ "$PROTOCOL" = "http" && "$APP_PORT" = "80" ]]; then APP_URL="http://$SERVER_DOMAIN"
+    else APP_URL="$PROTOCOL://$SERVER_DOMAIN:$APP_PORT"; fi
 
-ok "Configuration complete"
-echo ""
-
-# Create .env file
-info "Creating .env file..."
-cat > .env <<EOF
+    info "Creating .env file..."
+    cat > .env <<EOF
 # ============================================================
 # VPN Manager — Production Environment
 # ============================================================
@@ -186,8 +163,8 @@ VPN_TOKEN=${VPN_TOKEN}
 NODE_REGISTRATION_KEY=${NODE_REGISTRATION_KEY}
 ADMIN_PASSWORD=${ADMIN_PASSWORD}
 EOF
-
-ok ".env file created"
+    ok ".env file created"
+fi
 echo ""
 
 # Start services
@@ -224,19 +201,25 @@ echo "  Installation Complete!"
 echo "============================================================${NC}"
 echo ""
 echo -e "${G}Access:${NC}"
-echo "  Web UI + API: $APP_URL"
+if [ "$EXISTING_INSTALL" = true ]; then
+    echo "  Existing endpoint unchanged (check your reverse proxy configuration)"
+else
+    echo "  Web UI + API: $APP_URL"
+fi
 echo ""
-echo -e "${G}Default Credentials:${NC}"
-echo "  Username: admin"
-echo "  Password: $ADMIN_PASSWORD"
-echo "  ⚠ Change password after first login!"
-echo ""
-echo -e "${G}Node Registration Key (for VPN node install):${NC}"
-echo "  $NODE_REGISTRATION_KEY"
-echo ""
-echo -e "${G}VPN Token (for VPN hooks authentication):${NC}"
-echo "  $VPN_TOKEN"
-echo ""
+if [ "$EXISTING_INSTALL" = false ]; then
+    echo -e "${G}Default Credentials:${NC}"
+    echo "  Username: admin"
+    echo "  Password: $ADMIN_PASSWORD"
+    echo "  ⚠ Change password after first login!"
+    echo ""
+    echo -e "${G}Node Registration Key (for VPN node install):${NC}"
+    echo "  $NODE_REGISTRATION_KEY"
+    echo ""
+    echo -e "${G}VPN Token (for VPN hooks authentication):${NC}"
+    echo "  $VPN_TOKEN"
+    echo ""
+fi
 echo -e "${G}Useful Commands:${NC}"
 echo "  Logs:    docker compose logs -f"
 echo "  Restart: docker compose restart"
