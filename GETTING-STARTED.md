@@ -136,7 +136,7 @@ pnpm dev
 **Access:**
 
 - Web UI: http://localhost:5173
-- API: http://localhost:3001
+- API: http://localhost:3000
 - Login: `admin` / the password from the `pnpm db:seed` output (or your `ADMIN_PASSWORD`)
 
 > To run the Agent locally (optional, needs a VPN server): `pnpm agent:dev`

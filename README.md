@@ -76,7 +76,7 @@ Architecture details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ```text
 vpn-manager/
 ├── apps/
-│   ├── api/        ← Fastify REST API (dev port 3001)
+│   ├── api/        ← Fastify REST API (dev port 3000)
 │   ├── web/        ← Vite SPA + ShadCN dashboard (dev port 5173)
 │   └── agent/      ← VPN node agent (standalone worker)
 ├── packages/
