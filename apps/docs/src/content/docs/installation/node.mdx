@@ -1,0 +1,59 @@
+---
+title: Install a VPN Node
+description: Install OpenVPN or WireGuard and the Agent on a node host.
+---
+
+## Prerequisites and security
+
+The node must be a Linux host with `root` or `sudo`, Docker Engine, Docker Compose v2, and connectivity to the Manager. The Agent uses host networking plus `NET_ADMIN` and `NET_RAW` capabilities; use a dedicated host or restrict its administrative access.
+
+The script can install OpenVPN or WireGuard. Ensure UDP `1194` is reachable for OpenVPN or UDP `51820` for WireGuard unless the node port is configured differently. Host firewalls and cloud security groups must allow the selected port.
+
+## Auto-registration
+
+Get `NODE_REGISTRATION_KEY` and `VPN_TOKEN` from the Manager installation. Run this command on the node, replacing the URL with a Manager URL that the node can reach.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-node.sh | sudo bash -s -- \
+  MANAGER_URL=https://vpn.example.com \
+  VPN_TOKEN=replace-with-vpn-token \
+  REG_KEY=replace-with-registration-key \
+  VPN_TYPE=openvpn
+```
+
+For WireGuard, use `VPN_TYPE=wireguard`. The optional `VPN_SUBNET=10.8.1.0/24` requests a specific subnet; without it, the Manager can allocate a network. Avoid subnets that overlap the LAN, Docker networks, or other nodes.
+
+The script creates `/opt/vpn-agent/.env`, registers the node at `/api/v1/nodes/register`, receives the Node ID and secret token, then starts the `vpn-agent` container. Once credentials exist, rerunning the script updates the image without overwriting the registered Agent configuration.
+
+## Firewall and forwarding
+
+The script detects the active firewall and offers `iptables`, `nftables`, `ufw`, `firewalld`, or `none`. Keep the firewall already active on the host unless you understand the consequences of conflicting rules.
+
+The script enables `net.ipv4.ip_forward=1`, creates forwarding rules, and configures NAT for non-LAN traffic. For the detected LAN, it attempts to preserve the VPN client source address. With `none`, the administrator must configure forwarding, NAT, and port rules manually.
+
+## Manual registration
+
+Use this when a node already exists and has a Node ID and secret token. Create `/opt/vpn-agent/.env`:
+
+```dotenv
+AGENT_MANAGER_URL=https://vpn.example.com
+VPN_TOKEN=replace-with-vpn-token
+AGENT_NODE_ID=replace-with-node-id
+AGENT_SECRET_TOKEN=replace-with-agent-secret
+VPN_TYPE=openvpn
+FIREWALL_ENGINE=auto
+AGENT_POLL_INTERVAL_MS=5000
+AGENT_HEARTBEAT_INTERVAL_MS=30000
+```
+
+Copy `docker-compose.agent.yml` to `/opt/vpn-agent/docker-compose.yml`. OpenVPN requires bind mounts for `/etc/openvpn`, `/run/openvpn`, and `/var/log/openvpn`; WireGuard requires `/etc/wireguard`. Run `docker compose up -d` from that directory.
+
+## Verify the node
+
+```bash
+docker logs -f vpn-agent
+systemctl status openvpn-server@server
+systemctl status wg-quick@wg0
+```
+
+OpenVPN uses the `/run/openvpn/server.sock` Unix socket, not a TCP management port. Check Nodes in the dashboard: the Agent sends a heartbeat every 30 seconds by default and the node goes offline after two minutes without one.

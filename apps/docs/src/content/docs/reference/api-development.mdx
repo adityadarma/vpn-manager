@@ -1,0 +1,39 @@
+---
+title: API and Development
+description: Monorepo structure, development commands, and public API boundaries.
+---
+
+## Monorepo
+
+| Location | Responsibility |
+| --- | --- |
+| `apps/api` | Fastify API and background schedulers |
+| `apps/web` | Vite dashboard, React 19, and TanStack Router |
+| `apps/agent` | OpenVPN/WireGuard node Agent |
+| `apps/docs` | Astro/Starlight documentation |
+| `packages/db` | Knex, migrations, seed data, and database access |
+| `packages/shared` | Shared types and utilities |
+| `packages/ui` | Shared UI components |
+
+```bash
+pnpm install
+pnpm dev
+pnpm agent:dev
+pnpm build
+pnpm typecheck
+pnpm db:migrate
+pnpm db:seed
+pnpm db:rollback
+```
+
+`pnpm dev` excludes the Agent. Run `pnpm agent:dev` separately when required. Run the documentation with `pnpm --filter @vpn/docs dev`.
+
+## API
+
+Application endpoints are under `/api/v1`. Modules include health, auth, users, nodes, sessions, policies, tasks, VPN hooks, groups, networks, and audit. Interactive OpenAPI documentation is available at `/docs` only when `NODE_ENV` is not `production`.
+
+Do not treat Swagger as a production contract when an endpoint does not yet have a complete schema. Inspect related routes and tests before building an integration. Agent endpoints use node credentials; VPN endpoints use a dedicated token. Never send tokens in query strings or write them to application logs.
+
+## Schedulers
+
+Outside the test environment, the API runs a node status checker, certificate renewal scheduler, and revoked-token cleaner. Renewal checks certificates expiring within 30 days every hour and depends on an online node to execute the task.

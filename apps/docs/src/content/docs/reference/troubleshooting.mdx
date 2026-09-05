@@ -1,0 +1,55 @@
+---
+title: Troubleshooting
+description: Diagnose Manager, Agent, VPN service, firewall, and client connectivity issues.
+---
+
+## Manager is unreachable
+
+```bash
+cd /opt/vpn-manager
+docker compose ps
+docker compose logs -f manager
+curl -f http://localhost:3000/api/v1/health
+```
+
+Check `PORT`, Compose port mappings, the host firewall, DNS, and reverse proxy. When using HTTPS, ensure the proxy forwards to the correct Manager HTTP endpoint and the TLS certificate is valid. Do not change `JWT_SECRET` without understanding that existing sessions may be affected.
+
+## Agent is offline or registration fails
+
+```bash
+docker logs vpn-agent
+docker exec vpn-agent env
+```
+
+Check `AGENT_MANAGER_URL`, `VPN_TOKEN`, `AGENT_NODE_ID`, and `AGENT_SECRET_TOKEN`. For auto-registration, check `REG_KEY` or `NODE_REGISTRATION_KEY`. The URL must be reachable from the node and use a valid `http://` or `https://` scheme. Also check host time, DNS, the TLS proxy, and the node egress firewall.
+
+## OpenVPN or WireGuard is not running
+
+```bash
+systemctl status openvpn-server@server
+tail -f /var/log/openvpn/openvpn.log
+systemctl restart openvpn-server@server
+
+systemctl status wg-quick@wg0
+wg show
+```
+
+The OpenVPN Agent requires `/run/openvpn/server.sock` plus mounts for `/etc/openvpn`, `/run/openvpn`, and `/var/log/openvpn`. The WireGuard Agent requires the `/etc/wireguard` mount. Verify container mounts before treating an Agent failure as an API issue.
+
+## VPN connects but the LAN is unreachable
+
+Check the Network CIDR, routes received by the client, `ip_forward`, forwarding rules, NAT or a LAN return route, and user/group policy. Check the firewall that is actually active, not only installed binaries. Subnet conflicts are common; ensure the VPN pool, LAN, Docker networks, and client local network do not overlap.
+
+## A port is already in use
+
+```bash
+sudo lsof -i :3000
+sudo lsof -i :1194
+sudo lsof -i :51820
+```
+
+Change the Manager `PORT` or VPN service node configuration, then update Compose mappings, the reverse proxy, firewall, and client configuration. Do not change only one side.
+
+## Resetting data
+
+`docker compose down -v` removes volumes and can delete the database. Create a verified backup before running destructive commands. For incident recovery, collect Manager, Agent, and VPN service logs and record the incident time, node, user, and affected CIDRs.

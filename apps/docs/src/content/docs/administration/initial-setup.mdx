@@ -1,0 +1,23 @@
+---
+title: Initial Setup
+description: Dashboard configuration order after the Manager and node are available.
+---
+
+1. Sign in with the `admin` account, open Profile, and change the bootstrap password.
+2. Open Nodes and confirm the target node is `online`. Check its VPN type, public address, port, and VPN subnet before issuing credentials.
+3. Create Networks for every internal subnet that should be accessible, for example `10.0.1.0/24` for an office LAN.
+4. Create Groups when access will be managed by team or function.
+5. Create Users with the `user` role, or use `admin` only for operators who need full administrative access.
+6. Add users to groups and associate networks with groups when using group-based access.
+7. Create allow or deny Policies to make explicit who can reach each network.
+8. Create client credentials on the target node, download the configuration, and test a client connection.
+
+## Access design principles
+
+A Network identifies a destination CIDR, a Group identifies a set of users, and a Policy makes the access decision. Creating a client route does not automatically grant access. Ensure routes, node forwarding, firewall rules, and policies all align.
+
+Networks can be limited to specific nodes. A network without a node restriction is global and can be used by relevant nodes. Use node restrictions to prevent a site A network from being advertised or managed by a site B node.
+
+## Validate changes
+
+After a significant change, record the affected node, user, network, and policy. Test with a non-admin account and a specific destination. Use Sessions to view active connections, Tasks to inspect Agent work, and Audit Logs to trace administrator changes.

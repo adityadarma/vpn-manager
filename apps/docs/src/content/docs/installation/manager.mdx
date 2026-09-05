@@ -1,0 +1,77 @@
+---
+title: Install the Manager
+description: Deploy the production Manager with Docker Compose or run it for development.
+---
+
+## Prerequisites
+
+Use Linux with `root` or `sudo` access, Docker Engine, and Docker Compose v2. The installation script does not install Docker.
+
+```bash
+docker --version
+docker compose version
+```
+
+The Manager and VPN Node can run on the same host, but separate nodes are safer and scale more easily. Complete the Manager installation before installing a node because the node needs the Manager URL, VPN token, and registration key.
+
+## Production installation
+
+Run this on the Manager host:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-manager.sh | sudo bash
+```
+
+The script creates `/opt/vpn-manager`, downloads `docker-compose.prod.yml`, creates `.env` when it does not exist, selects a database, and starts the containers. Reinstallation preserves `.env` so existing secrets, database settings, nodes, and sessions remain unchanged.
+
+Choose one of these databases when prompted:
+
+| Option | `DATABASE_TYPE` value | Use case |
+| --- | --- | --- |
+| SQLite | `sqlite` | Small, simple installations; data is stored in the `manager_data` volume |
+| PostgreSQL | `postgres` | Production with the bundled database container or an external service |
+| MariaDB | `mysql` | Environments using MySQL/MariaDB compatibility |
+
+Store the credentials printed by the script: application URL, `admin` password, `NODE_REGISTRATION_KEY`, and `VPN_TOKEN`. The bootstrap password is displayed only for a new installation. Change the admin password immediately after logging in.
+
+## Access and TLS
+
+The container serves HTTP on `PORT`, `3000` by default. For public access, terminate TLS at Nginx, Caddy, Traefik, Cloudflare Tunnel, or another reverse proxy, then forward traffic to `http://manager:3000` or host port `3000`. Ensure the proxy forwards `X-Forwarded-*` headers; the application trusts proxy headers for client identity.
+
+Do not expose the administrative dashboard to the internet without HTTPS, strong authentication, and network restrictions where possible.
+
+## Manual Compose deployment
+
+Copy `.env.example` to `.env`, set strong secrets, then start the production Compose file.
+
+```bash
+cp .env.example .env
+openssl rand -base64 32
+openssl rand -hex 32
+docker compose -f docker-compose.prod.yml up -d
+```
+
+For bundled databases, the Compose profile must match `DATABASE_TYPE`:
+
+```bash
+docker compose -f docker-compose.prod.yml --profile postgres up -d
+docker compose -f docker-compose.prod.yml --profile mariadb up -d
+```
+
+The profile is named `mariadb`, while the application value remains `DATABASE_TYPE=mysql`. For an external database, set `DATABASE_URL` to the external server URL and do not enable a local database profile.
+
+## Local development
+
+Prerequisites: Node.js `>=24`, pnpm `>=9`, and Git.
+
+```bash
+git clone https://github.com/adityadarma/vpn-manager.git
+cd vpn-manager
+pnpm install
+cp .env.example .env
+pnpm db:migrate
+pnpm db:seed
+pnpm dev
+```
+
+The API is available at `http://localhost:3000`, the Vite dashboard at `http://localhost:5173`, and development Swagger at `http://localhost:3000/docs`. Set `ADMIN_PASSWORD` before `pnpm db:seed`, or save the random password printed by the seed process.

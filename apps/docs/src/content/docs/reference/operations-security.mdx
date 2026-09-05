@@ -1,0 +1,38 @@
+---
+title: Operations and Security
+description: Run, back up, update, and secure a production deployment.
+---
+
+## Secrets and authentication
+
+`JWT_SECRET` signs dashboard sessions. `NODE_REGISTRATION_KEY` is only for bootstrapping new nodes. `VPN_TOKEN` authenticates VPN hooks and registration through `X-VPN-Token`. `AGENT_SECRET_TOKEN` authenticates the Agent with `Authorization: Bearer <token>`. Treat all of them as high-value passwords.
+
+Use a cryptographic generator such as `openssl rand -hex 32`, store values in a secret manager or access-restricted `.env` file, and rotate them when compromise is suspected. JWT rotation can invalidate sessions; rotating a VPN token or registration key requires updating the nodes or processes that use it. Plan rotation so nodes do not lose connectivity simultaneously.
+
+Authentication cookies are HTTP-only and tokens have an expiry. Rate limiting, CORS, and audit logging strengthen security, but they do not replace HTTPS, firewalls, OS updates, and restricted dashboard access.
+
+## Daily operations
+
+```bash
+cd /opt/vpn-manager
+docker compose ps
+docker compose logs -f manager
+docker compose pull
+docker compose up -d
+
+docker logs -f vpn-agent
+systemctl status openvpn-server@server
+systemctl status wg-quick@wg0
+```
+
+The Manager health endpoint is `/api/v1/health`. The production container has an internal health check. Nodes normally send a heartbeat every 30 seconds; the Manager checks nodes every 60 seconds and marks them offline after 120 seconds without a heartbeat.
+
+## Backup and recovery
+
+For SQLite, back up the `manager_data` volume or database file while the service is stopped, or use a consistent SQLite backup procedure. For PostgreSQL and MariaDB, use native database backups in addition to safely retaining Compose configuration and `.env`. Backups must include application data, secrets, and the PKI or node configuration material needed to restore service.
+
+Test restores in an isolated environment. Do not run `docker compose down -v` in production unless data is intentionally being deleted: it removes database volumes.
+
+## Updates and uninstalling
+
+Before updating, create a backup, record the image version, and check node status. Update the Manager with `docker compose pull && docker compose up -d`; update a node through `install-node.sh` so registered Agent credentials are retained. Use `scripts/uninstall-manager.sh` or `scripts/uninstall-node.sh` only after verifying their impact and creating a backup.
