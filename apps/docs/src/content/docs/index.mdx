@@ -8,7 +8,7 @@ hero:
     html: "<div class='text-7xl'>🛡️</div>"
   actions:
     - text: Explore Documentation
-      link: /introduction/
+      link: ./introduction/
       icon: right-arrow
     - text: View on GitHub
       link: https://github.com/adityadarma/vpn-manager
@@ -16,21 +16,24 @@ hero:
       variant: minimal
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+import { Card, CardGrid } from '@astrojs/starlight/components'
 
 ## Operational Documentation
 
 <CardGrid>
-	<Card title="Separate Deployments" icon="setting">
-		Run the Manager as a Docker container and VPN Nodes on hosts running OpenVPN or WireGuard.
-	</Card>
-	<Card title="Access Control" icon="check">
-		Manage users, groups, CIDR networks, allow or deny policies, credentials, and active sessions from the dashboard.
-	</Card>
-	<Card title="Node Automation" icon="rocket">
-		The Agent fetches tasks, sends heartbeats, creates client configurations, and applies node firewall rules.
-	</Card>
-	<Card title="Safe Operations" icon="approve-check">
-		Use the guidance for secrets, backups, reverse proxies, updates, and troubleshooting before operating in production.
-	</Card>
+  <Card title="Separate Deployments" icon="setting">
+    Run the Manager as a Docker container and VPN Nodes on hosts running OpenVPN or WireGuard.
+  </Card>
+  <Card title="Access Control" icon="check">
+    Manage users, groups, CIDR networks, allow or deny policies, credentials, and active sessions
+    from the dashboard.
+  </Card>
+  <Card title="Node Automation" icon="rocket">
+    The Agent fetches tasks, sends heartbeats, creates client configurations, and applies node
+    firewall rules.
+  </Card>
+  <Card title="Safe Operations" icon="approve-check">
+    Use the guidance for secrets, backups, reverse proxies, updates, and troubleshooting before
+    operating in production.
+  </Card>
 </CardGrid>
