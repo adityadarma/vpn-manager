@@ -69,7 +69,7 @@ jobs:
           docker build --target test -f apps/agent/Dockerfile -t vpn-agent-live-base .
           docker build -t vpn-agent-live-test -f - . <<'EOF'
           FROM vpn-agent-live-base
-          RUN apk add --no-cache openvpn easy-rsa wireguard-tools iproute2
+          RUN apk add --no-cache openvpn easy-rsa wireguard-tools iproute2 iptables nftables
           EOF
 
       - name: Run kernel-backed OpenVPN and WireGuard tests
