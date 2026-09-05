@@ -146,6 +146,7 @@ jobs:
             TAGS="$IMG:latest"
           fi
           echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION:-$(jq -r .version package.json)}" >> "$GITHUB_OUTPUT"
           echo "Publishing: $TAGS"
 
       - name: Build and publish version tags
@@ -158,11 +159,15 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
           platforms: linux/amd64
+          build-args: |
+            VERSION=${{ steps.version-tags.outputs.version }}
+            REVISION=${{ github.sha }}
 
       - name: Summary
         run: |
           echo "Image : ${{ steps.image-config.outputs.image_name }}"
           echo "Tags  : ${{ steps.version-tags.outputs.tags }}"
+          echo "Version: ${{ steps.version-tags.outputs.version }}"
 
   # ── Job 4: Smoke-test the deployed manager ──────────────────────────────────
   #
