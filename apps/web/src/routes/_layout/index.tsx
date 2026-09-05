@@ -2,7 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { Users, Server, Activity, Clock, TrendingUp } from 'lucide-react'
-import type { User, VpnNode, VpnSession, Task } from '@vpn/shared'
+import { formatBrowserDateTime, type User, type VpnNode, type VpnSession, type Task } from '@vpn/shared'
 
 export const Route = createFileRoute('/_layout/')({
   component: DashboardPage,
@@ -108,7 +108,7 @@ function DashboardPage() {
                     <div>
                       <p className="text-sm font-medium text-foreground">{s.username}</p>
                       <p className="text-xs text-muted-foreground/70">
-                        {s.vpn_ip} &bull; {new Date(s.connected_at).toLocaleTimeString()}
+                         {s.vpn_ip} &bull; {formatBrowserDateTime(s.connected_at)}
                       </p>
                     </div>
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">

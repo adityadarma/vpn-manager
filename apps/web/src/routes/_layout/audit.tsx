@@ -11,6 +11,7 @@ import { Shield, Search, User, FileText, ChevronLeft, ChevronRight } from 'lucid
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { formatBrowserDateTime } from '@vpn/shared'
 import {
   Select,
   SelectContent,
@@ -38,17 +39,6 @@ interface AuditLog {
   ip_address: string | null
   user_agent: string | null
   created_at: string
-}
-
-function formatDate(date: string) {
-  return new Date(date).toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  })
 }
 
 function getActionColor(action: string) {
@@ -175,7 +165,7 @@ function AuditPage() {
                 {filteredLogs.map((log) => (
                   <TableRow key={log.id}>
                     <TableCell className="text-xs text-muted-foreground" >
-                      {formatDate(log.created_at)}
+                       {formatBrowserDateTime(log.created_at)}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">

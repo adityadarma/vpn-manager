@@ -1,6 +1,6 @@
 import React from 'react'
 import { StatusBadge } from './status-badge'
-import type { VpnNode } from '@vpn/shared'
+import { formatBrowserDateTime, type VpnNode } from '@vpn/shared'
 
 interface NodeCardProps {
   node: VpnNode
@@ -25,7 +25,7 @@ export function NodeCard({ node, onClick }: NodeCardProps) {
       )}
       {node.last_seen && (
         <p className="text-xs text-gray-400 mt-1">
-          Last seen: {new Date(node.last_seen).toLocaleString()}
+          Last seen: {formatBrowserDateTime(node.last_seen)}
         </p>
       )}
     </div>
