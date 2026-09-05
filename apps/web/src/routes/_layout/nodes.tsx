@@ -9,7 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
 import { Plus, Trash2, MapPin, Clock, Activity, Server, X, Copy, CheckCircle2, Settings, RefreshCw, Edit, Shield, CalendarDays } from 'lucide-react'
-import type { VpnNode } from '@vpn/shared'
+import { formatBrowserDateTime, type VpnNode } from '@vpn/shared'
 import { Button } from '@/components/ui/button'
 
 interface NodeForm {
@@ -335,13 +335,13 @@ function NodesPage() {
                   {node.created_at && (
                     <div className="flex items-center gap-2">
                       <CalendarDays className="h-3.5 w-3.5 text-gray-300" />
-                      Created {new Date(node.created_at).toLocaleString()}
+                      Created {formatBrowserDateTime(node.created_at)}
                     </div>
                   )}
                   {node.last_seen && (
                     <div className="flex items-center gap-2" >
                       <Clock className="h-3.5 w-3.5 text-gray-300" />
-                      Last seen {new Date(node.last_seen).toLocaleString()}
+                      Last seen {formatBrowserDateTime(node.last_seen)}
                     </div>
                   )}
                   <div className="flex items-center gap-2">

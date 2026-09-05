@@ -11,6 +11,7 @@ import { Clock, CheckCircle, XCircle, AlertCircle, Server, Search } from 'lucide
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
+import { formatBrowserDateTime } from '@vpn/shared'
 import {
   Card,
   CardContent,
@@ -30,15 +31,6 @@ interface Task {
   error_message: string | null
   created_at: string
   completed_at: string | null
-}
-
-function formatDate(date: string) {
-  return new Date(date).toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
 }
 
 function formatDuration(start: string, end: string | null) {
@@ -114,7 +106,7 @@ function TasksPage() {
           <div className="flex justify-between items-center text-xs text-muted-foreground bg-muted/30 p-2 rounded-md border border-border/50">
             <div className="flex flex-col gap-0.5">
               <span className="uppercase text-[10px] font-bold tracking-wider opacity-70">Created</span>
-              <span className="font-medium text-foreground">{formatDate(task.created_at)}</span>
+               <span className="font-medium text-foreground">{formatBrowserDateTime(task.created_at)}</span>
             </div>
             {task.completed_at && (
               <div className="flex flex-col gap-0.5 text-right">

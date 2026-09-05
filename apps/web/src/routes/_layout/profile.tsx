@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { formatBrowserDateTime } from '@vpn/shared'
 
 function ProfilePage() {
   const user = useAuthStore((s) => s.user)
@@ -109,15 +110,7 @@ function ProfilePage() {
                   </div>
                 </div>
                 <div className="text-base font-bold text-foreground truncate">
-                  {user?.lastLogin 
-                    ? new Date(user.lastLogin).toLocaleString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })
-                    : 'Never'}
+                   {user?.lastLogin ? formatBrowserDateTime(user.lastLogin) : 'Never'}
                 </div>
               </div>
             </div>

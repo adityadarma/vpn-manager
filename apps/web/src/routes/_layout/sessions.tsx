@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { formatBrowserDateTime } from '@vpn/shared'
 
 interface Session {
   id: string
@@ -65,12 +66,6 @@ function formatDuration(since: string, until?: string | null, durationSeconds?: 
   if (h > 0) return `${h}h ${m % 60}m`
   if (m === 0) return '< 1m'
   return `${m}m`
-}
-
-function formatDateTime(date: string) {
-  return new Date(date).toLocaleString('en-US', {
-    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-  })
 }
 
 // ── KickDropdown ─────────────────────────────────────────────────────────────
@@ -415,7 +410,7 @@ function SessionsPage() {
                         </td>
                         <td className="px-5 py-4 text-muted-foreground">{s.node_hostname}</td>
                         <td className="px-5 py-4 font-mono text-muted-foreground text-xs">{s.vpn_ip}</td>
-                        <td className="px-5 py-4 text-muted-foreground text-xs">{formatDateTime(s.connected_at)}</td>
+                         <td className="px-5 py-4 text-muted-foreground text-xs">{formatBrowserDateTime(s.connected_at)}</td>
                         <td className="px-5 py-4 text-muted-foreground">
                           {formatDuration(s.connected_at, s.disconnected_at, s.connection_duration_seconds)}
                         </td>

@@ -8,7 +8,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, API_URL } from '@/lib/api'
 import { Trash2, Download, Shield, Search, X, Plus, Key, Lock, AlertTriangle, RefreshCw, Edit } from 'lucide-react'
-import type { User } from '@vpn/shared'
+import { formatBrowserDateTime, type User } from '@vpn/shared'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 
@@ -489,18 +489,10 @@ function UsersPage() {
                   </span>
                 </td>
                 <td className="px-5 py-4 text-muted-foreground" >
-                  {user.role === 'user' ? '-' : (user.last_login ? (() => {
-                    const d = new Date(user.last_login);
-                    const pad = (n: number) => n.toString().padStart(2, '0');
-                    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-                  })() : 'Never')}
+                  {user.role === 'user' ? '-' : (user.last_login ? formatBrowserDateTime(user.last_login) : 'Never')}
                 </td>
                 <td className="px-5 py-4 text-muted-foreground" >
-                  {user.last_vpn_connect ? (() => {
-                    const d = new Date(user.last_vpn_connect);
-                    const pad = (n: number) => n.toString().padStart(2, '0');
-                    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-                  })() : 'Never'}
+                  {user.last_vpn_connect ? formatBrowserDateTime(user.last_vpn_connect) : 'Never'}
                 </td>
                 <td className="px-5 py-4">
                   <div className="flex items-center justify-end gap-1">
@@ -1044,19 +1036,14 @@ function UsersPage() {
                             <div className="flex flex-col">
                               <span className="text-xs font-semibold text-muted-foreground/70 uppercase tracking-widest mb-0.5">Generated</span>
                               <span className="text-foreground">
-                                {cert.generated_at ? new Date(cert.generated_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}
-                                {cert.generated_at && (
-                                  <span className="text-muted-foreground ml-1.5 text-xs">
-                                    {new Date(cert.generated_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
-                                  </span>
-                                )}
+                                {cert.generated_at ? formatBrowserDateTime(cert.generated_at) : 'N/A'}
                               </span>
                             </div>
                             <div className="flex flex-col">
                               <span className="text-xs font-semibold text-muted-foreground/70 uppercase tracking-widest mb-0.5">Expires</span>
                               {cert.expires_at ? (
                                 <span className="text-foreground">
-                                  {new Date(cert.expires_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                                  {formatBrowserDateTime(cert.expires_at)}
                                   {(() => {
                                     const days = Math.floor((new Date(cert.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
                                     if (days < 0) return <span className="text-red-500 ml-1.5 font-medium">(Expired)</span>
