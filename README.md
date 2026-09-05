@@ -6,7 +6,7 @@
 
 VPN Manager is an open-source app for managing VPNs centrally through a web dashboard, inspired by enterprise solutions like Pritunl and Tailscale Admin. Built on top of OpenVPN with a modern TypeScript monorepo architecture, it makes it easy to provision users, manage network access (CIDRs), run multiple VPN nodes, and push connection policies in real time.
 
-> **Want to install right away?** See the **[Installation Guide (GETTING-STARTED.md)](GETTING-STARTED.md)**.
+> **Want to install right away?** Read the [Quick Start](GETTING-STARTED.md) or the [full documentation](https://adityadarma.github.io/vpn-manager/).
 
 ## Key Features
 
@@ -69,14 +69,14 @@ Design principles:
 - **Hybrid Deployment:** Supports both host-based and containerized VPN.
 - **Extensible:** A driver pattern makes adding new VPN providers (IPSec, SoftEther, etc.) easy.
 
-Architecture details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Architecture details: [Documentation: Architecture](https://adityadarma.github.io/vpn-manager/architecture/).
 
 ## Monorepo Structure
 
 ```text
 vpn-manager/
 ├── apps/
-│   ├── api/        ← Fastify REST API (dev port 3001)
+│   ├── api/        ← Fastify REST API (dev port 3000)
 │   ├── web/        ← Vite SPA + ShadCN dashboard (dev port 5173)
 │   └── agent/      ← VPN node agent (standalone worker)
 ├── packages/
@@ -109,11 +109,10 @@ Run from the root directory:
 
 ## Documentation
 
-- **[Installation Guide](GETTING-STARTED.md)** — How to install the Manager & VPN Node
-- **[Architecture](docs/ARCHITECTURE.md)** — System design
-- **[Multi-VPN Support](docs/MULTI-VPN-SUPPORT.md)** — OpenVPN, WireGuard, and more
-- **[Security Hardening](docs/SECURITY-HARDENING.md)** — Security best practices
-- **[API Reference](docs/API-ENDPOINTS.md)** — API documentation
+- **[Quick Start](GETTING-STARTED.md)** — Short Manager and VPN Node setup
+- **[Full Documentation](https://adityadarma.github.io/vpn-manager/)** — Installation, administration, configuration, operations, security, and troubleshooting
+- **[Architecture](https://adityadarma.github.io/vpn-manager/architecture/)** — Component topology and data flow
+- **[API and Development](https://adityadarma.github.io/vpn-manager/reference/api-development/)** — Local development and API boundaries
 
 ## License
 

@@ -1,0 +1,28 @@
+---
+title: Introduction
+description: Product overview, components, and VPN Manager deployment order.
+---
+
+VPN Manager is a VPN administration platform with two components that can run on the same host or on separate hosts.
+
+| Component | Purpose | Typical location |
+| --- | --- | --- |
+| Manager | React dashboard, Fastify API, database, authentication, policies, and task queue | One application server or internal cluster |
+| VPN Node | OpenVPN or WireGuard server and the Agent that connects it to the Manager | Every site or network that provides VPN access |
+
+The Manager is not a VPN endpoint. Clients connect directly to a VPN Node. The Manager provides node configuration, credentials, policies, and tasks through the Agent.
+
+## Deployment flow
+
+1. Install the Manager and store the `NODE_REGISTRATION_KEY` and `VPN_TOKEN` created during bootstrap.
+2. Install OpenVPN or WireGuard and the Agent on every VPN Node.
+3. Register each node with the Manager and confirm its status is `online`.
+4. Create internal networks, users or groups, and access policies.
+5. Create client credentials for each user on the selected node.
+6. Download the client configuration and import it into a compatible VPN application.
+
+## What it manages
+
+The dashboard includes Dashboard, Users, Groups, Networks, Nodes, Sessions, Policies, Tasks, and Audit Logs. Audit Logs are available only to administrators. Profile also lets users change their own password.
+
+Start with [Install the Manager](/installation/manager/) for a server deployment, or [Initial Setup](/administration/initial-setup/) when the Manager and a node are already available.

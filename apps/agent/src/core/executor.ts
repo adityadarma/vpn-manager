@@ -51,23 +51,28 @@ export async function executeTask(env: AgentEnv, task: Task, driver: VpnDriver):
   let errorMessage: string | undefined
 
   if (!handler) {
-    console.warn(`[executor] Unknown task action: ${task.action}`)
-    errorMessage = `Unknown action: ${task.action}`
+    const supported = Object.keys(HANDLERS).sort().join(', ')
+    errorMessage = `Unknown action "${task.action}". Supported actions: ${supported}`
+    console.error(`[executor] Task ${task.id} rejected: ${errorMessage}`)
   } else {
     try {
-      // Enrich payload with local agent env values.
-      // env.FIREWALL_ENGINE / env.VPN_TYPE are authoritative for this node —
-      // they override any stale/mismatched values the server may have sent.
       const enrichedPayload: Record<string, unknown> = {
         ...task.payload,
         firewall_engine: env.FIREWALL_ENGINE,
         vpn_type: env.VPN_TYPE,
       }
       result = await handler(enrichedPayload, driver)
-      status = 'success'
+      const failureField = ['success', 'kicked', 'unkicked'].find((field) => result[field] === false)
+      if (failureField) {
+        const detail = [result['error'], result['reason'], result['message']]
+          .find((value): value is string => typeof value === 'string' && value.trim().length > 0)
+        errorMessage = detail ?? `Handler reported ${failureField}=false`
+      } else {
+        status = 'success'
+      }
     } catch (err) {
-      console.error(`[executor] Task ${task.id} failed:`, (err as Error).message)
-      errorMessage = (err as Error).message
+      errorMessage = err instanceof Error ? err.message : String(err)
+      console.error(`[executor] Task ${task.id} failed:`, errorMessage)
     }
   }
 

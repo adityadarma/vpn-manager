@@ -63,16 +63,14 @@ cleanup_ufw_rules() {
 
     # UFW stores rules in /etc/ufw/user.rules and /etc/ufw/user6.rules
     # We only delete lines tagged with our marker comment.
-    local MARKER="# vpn-manager"
+    local MARKER="vpn-manager"
     local changed=false
 
     for rules_file in /etc/ufw/user.rules /etc/ufw/user6.rules; do
         if [ -f "$rules_file" ] && grep -q "$MARKER" "$rules_file" 2>/dev/null; then
-            # Remove lines containing our marker (and the -A rule line immediately preceding it)
-            # UFW rule format: -A ufw-user-input -p udp --dport 1194 -j ACCEPT\n### vpn-manager
-            sed -i.bak "/^### ${MARKER#'# '}/{ N; d; }" "$rules_file" 2>/dev/null || true
-            # Also remove standalone marker-tagged lines
-            sed -i "/.*${MARKER}/d" "$rules_file" 2>/dev/null || true
+            # UFW stores a tagged tuple comment immediately before its -A rule.
+            # Delete only that pair, never a matching untagged user rule.
+            sed -i.bak "/${MARKER}/{ N; /${MARKER}/d; }" "$rules_file" 2>/dev/null || true
             changed=true
         fi
     done
@@ -171,16 +169,24 @@ if [ -f "/opt/vpn-agent/.env" ]; then
 else
     VPN_TYPE="both"
     DETECTED_VPN="OpenVPN & WireGuard (Force Purge All)"
-    # No .env: attempt cleanup for all firewall types
+    # Without installation metadata, a full purge may remove another VPN setup.
+    # It is available only after an explicit, non-default confirmation below.
     FIREWALL_ENGINE="all"
+    FORCE_PURGE=true
 fi
 
 warn "Detected Engine: $DETECTED_VPN"
 warn "Detected Firewall: ${FIREWALL_ENGINE}"
 warn "This will remove $DETECTED_VPN, the Agent, and all matching certificates/keys!"
 echo ""
-read -p "Continue? [y/N]: " confirm
-[[ "$confirm" != "y" && "$confirm" != "Y" ]] && { echo "Aborted."; exit 0; }
+if [ "$FORCE_PURGE" = true ]; then
+    warn "Agent metadata is missing. This can remove VPN software not installed by VPN Manager."
+    read -p "Type PURGE to remove both OpenVPN and WireGuard: " confirm
+    [ "$confirm" != "PURGE" ] && { echo "Aborted."; exit 0; }
+else
+    read -p "Continue? [y/N]: " confirm
+    [[ "$confirm" != "y" && "$confirm" != "Y" ]] && { echo "Aborted."; exit 0; }
+fi
 
 echo ""
 echo "Notifying manager to delete this node..."

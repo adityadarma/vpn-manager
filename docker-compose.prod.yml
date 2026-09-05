@@ -54,9 +54,6 @@ services:
   # ── VPN Manager (Web + API) ──
   manager:
     image: ghcr.io/adityadarma/vpn-manager:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
     container_name: vpn-manager
     restart: unless-stopped
     environment:
@@ -69,7 +66,7 @@ services:
       VPN_TOKEN: ${VPN_TOKEN}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       DATABASE_TYPE: ${DATABASE_TYPE:-sqlite}
-      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL: ${DATABASE_URL:-}
       DATABASE_SQLITE_PATH: /data/vpn.sqlite
       WEB_STATIC_PATH: /app/web
     ports:

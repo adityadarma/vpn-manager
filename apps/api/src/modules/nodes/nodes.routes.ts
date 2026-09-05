@@ -1,8 +1,9 @@
 import { v7 as uuidv7 } from 'uuid'
 import type { FastifyPluginAsync } from 'fastify'
 import crypto from 'node:crypto'
-import { HeartbeatSchema } from '@vpn/shared'
+import { HeartbeatSchema, validateTaskPayload } from '@vpn/shared'
 import { logAudit, getClientIp } from '../../utils/audit'
+import { secretsMatchTrimmed } from '../../utils/secret-compare'
 import geoip from 'geoip-lite'
 
 interface NodeConfig {
@@ -23,27 +24,9 @@ interface NodeConfig {
   firewall_engine: string
 }
 
-async function authenticateNodeToken(app: any, request: any, reply: any) {
-  const authHeader = request.headers.authorization
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    reply.status(401).send({ error: 'Unauthorized', message: 'Node token required' })
-    return null
-  }
-
-  const token = authHeader.substring(7).trim()
-  if (!token) {
-    reply.status(401).send({ error: 'Unauthorized', message: 'Node token required' })
-    return null
-  }
-
-  const node = await app.db('vpn_nodes').where({ token }).first()
-  if (!node) {
-    reply.status(401).send({ error: 'Unauthorized', message: 'Invalid node token' })
-    return null
-  }
-
-  return node
-}
+// Node-token authentication lives in plugins/node-auth.ts as
+// app.authenticateNodeToken — a single implementation shared by every agent
+// endpoint here and in tasks.routes.ts.
 
 const nodeRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/v1/nodes
@@ -81,7 +64,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
     '/nodes/me',
     { schema: { tags: ['nodes'], summary: 'Get current node info (agent auth)', security: [{ bearerAuth: [] }] } },
     async (request, reply) => {
-      const node = await authenticateNodeToken(app, request, reply)
+      const node = await app.authenticateNodeToken(request, reply)
       if (!node) return
 
       // Return node info without sensitive token or key material
@@ -95,7 +78,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
     '/nodes/me',
     { schema: { tags: ['nodes'], summary: 'Delete current node (agent auth)', security: [{ bearerAuth: [] }] } },
     async (request, reply) => {
-      const node = await authenticateNodeToken(app, request, reply)
+      const node = await app.authenticateNodeToken(request, reply)
       if (!node) return
 
       const deleted = await app.db('vpn_nodes').where({ id: node.id }).delete()
@@ -247,8 +230,30 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       const node = await app.db('vpn_nodes').where({ id: request.params.id }).first()
       if (!node) return reply.status(404).send({ error: 'Not Found', message: 'Node not found' })
 
-      const config = request.body as NodeConfig
-      
+      // Collect all group subnets so the agent can generate route directives
+      const allGroups = await app.db('groups').whereNotNull('vpn_subnet').select('name', 'vpn_subnet')
+      const groupSubnets = allGroups
+        .map((g: { name: string; vpn_subnet: string }) => g.vpn_subnet)
+        .filter(Boolean)
+
+      // This body is written straight into the node's server.conf by the agent,
+      // on a server running with `script-security 2`, so directives like `up`
+      // or `plugin` would execute commands. Validate with the same schema
+      // POST /tasks uses — before touching the database, so an invalid config
+      // is never persisted even though the task would have been rejected.
+      const validation = validateTaskPayload('update_server_config', {
+        ...request.body,
+        group_subnets: groupSubnets,
+      })
+      if (!validation.ok) {
+        app.log.warn(
+          `[api/nodes] Rejected config update for node ${request.params.id} by user ${(request.user as { id?: string })?.id}: ${validation.error}`,
+        )
+        return reply.status(400).send({ error: 'Bad Request', message: validation.error })
+      }
+
+      const config = validation.payload as unknown as NodeConfig
+
       // Check if vpn_network actually changed
       const networkChanged = node.vpn_network !== config.vpn_network || node.vpn_netmask !== config.vpn_netmask
 
@@ -271,12 +276,6 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         firewall_engine: config.firewall_engine,
       })
 
-      // Collect all group subnets so the agent can generate route directives
-      const allGroups = await app.db('groups').whereNotNull('vpn_subnet').select('name', 'vpn_subnet')
-      const groupSubnets = allGroups
-        .map((g: { name: string; vpn_subnet: string }) => g.vpn_subnet)
-        .filter(Boolean)
-
       // IMPORTANT: Schedule update_server_config FIRST so that OpenVPN reloads
       // with the new network + crl-verify BEFORE revoke tasks kick clients.
       // When kicked clients auto-reconnect, the CRL will already be loaded.
@@ -285,7 +284,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         id: taskId,
         node_id: request.params.id,
         action: 'update_server_config',
-        payload: JSON.stringify({ ...config, group_subnets: groupSubnets }),
+        payload: JSON.stringify(validation.payload),
         status: 'pending',
         created_at: new Date(),
       })
@@ -312,7 +311,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
             await app.db('tasks').insert({
               id: uuidv7(),
               node_id: request.params.id,
-              action: 'revoke_user',
+              action: 'revoke_vpn_user',
               payload: JSON.stringify({ 
                 username: userObj.username,
                 client_cert: cert.client_cert 
@@ -351,7 +350,15 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
   // Requires either Admin JWT token OR Registration Key
   app.post<{ Body: { hostname: string; ip: string; port?: number; region?: string; version?: string; registrationKey?: string; vpnType?: 'openvpn' | 'wireguard'; publicKey?: string; privateKey?: string; endpointPort?: number; config?: any } }>(
     '/nodes/register',
-    { schema: { tags: ['nodes'], summary: 'Register a new VPN node (requires admin auth or registration key)' } },
+    {
+      // NODE_REGISTRATION_KEY is a single static shared secret with no TTL or
+      // rotation, so this endpoint is the one place an unauthenticated caller
+      // can guess a credential. The global limiter (100/min) is far too loose
+      // for that. Node registration is a rare, human-driven action, so the
+      // tight "sensitive" budget is ample.
+      config: { rateLimit: app.rateLimits.sensitive },
+      schema: { tags: ['nodes'], summary: 'Register a new VPN node (requires admin auth or registration key)' },
+    },
     async (request, reply) => {
       const { hostname, ip, port, region, version, registrationKey, vpnType, publicKey, privateKey, endpointPort, config } = request.body
 
@@ -359,10 +366,14 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       let isAuthenticated = false
 
       // Method 1: Check JWT token (admin only) via fastify-jwt (supports both cookie and header)
+      // This route can't use the `authenticate` decorator because it also
+      // accepts a registration key, so it verifies the JWT itself — which means
+      // it must apply the revocation check explicitly. Without it, a logged-out
+      // admin token still authorised node registration until its natural expiry.
       try {
         await request.jwtVerify()
         const user = request.user as { role: string }
-        if (user?.role === 'admin') {
+        if (user?.role === 'admin' && !(await app.isTokenRevokedForRequest(request))) {
           isAuthenticated = true
         }
       } catch (err) {
@@ -389,17 +400,11 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
           })
         }
 
-        // Trim whitespace from both keys before comparison
-        const trimmedProvidedKey = registrationKey.trim()
-        const trimmedValidKey = validRegistrationKey.trim()
-
-        // Use timing-safe comparison to prevent timing attacks
-        const providedBuf = Buffer.from(trimmedProvidedKey)
-        const validBuf = Buffer.from(trimmedValidKey)
-        const isValid = providedBuf.length === validBuf.length &&
-          crypto.timingSafeEqual(providedBuf, validBuf)
-
-        if (!isValid) {
+        // Constant-time comparison. Uses the shared helper, which hashes both
+        // sides to a fixed length first — the previous inline version guarded
+        // timingSafeEqual with a raw length check, and that guard leaked the
+        // expected key length through timing.
+        if (!secretsMatchTrimmed(registrationKey, validRegistrationKey)) {
           return reply.status(403).send({
             error: 'Forbidden',
             message: 'Invalid registration key',
@@ -521,7 +526,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
     '/nodes/heartbeat',
     { schema: { tags: ['nodes'], summary: 'Agent heartbeat' } },
     async (request, reply) => {
-      const authenticatedNode = await authenticateNodeToken(app, request, reply)
+      const authenticatedNode = await app.authenticateNodeToken(request, reply)
       if (!authenticatedNode) return
 
       const { nodeId, caCert, taKey, firewallRules, firewallEngine, clients } = HeartbeatSchema.parse(request.body)
@@ -861,7 +866,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
     '/nodes/:id/tasks',
     { schema: { tags: ['nodes'], summary: 'Poll pending tasks for a node (agent)' } },
     async (request, reply) => {
-      const authenticatedNode = await authenticateNodeToken(app, request, reply)
+      const authenticatedNode = await app.authenticateNodeToken(request, reply)
       if (!authenticatedNode) return
       if (authenticatedNode.id !== request.params.id) {
         return reply.status(403).send({
@@ -951,19 +956,8 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       } 
     },
     async (request, reply) => {
-      // Extract node token from Authorization header
-      const authHeader = request.headers.authorization
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return reply.status(401).send({ error: 'Unauthorized', message: 'Node token required' })
-      }
-
-      const token = authHeader.substring(7)
-      
-      // Find node by token
-      const node = await app.db('vpn_nodes').where({ token }).first()
-      if (!node) {
-        return reply.status(401).send({ error: 'Unauthorized', message: 'Invalid node token' })
-      }
+      const node = await app.authenticateNodeToken(request, reply)
+      if (!node) return
 
       const { ca_cert, ta_key, public_key, private_key } = request.body
 
@@ -1072,19 +1066,8 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       }
     },
     async (request, reply) => {
-      // Extract node token from Authorization header
-      const authHeader = request.headers.authorization
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return reply.status(401).send({ error: 'Unauthorized', message: 'Node token required' })
-      }
-
-      const token = authHeader.substring(7)
-      
-      // Find node by token
-      const node = await app.db('vpn_nodes').where({ token }).first()
-      if (!node) {
-        return reply.status(401).send({ error: 'Unauthorized', message: 'Invalid node token' })
-      }
+      const node = await app.authenticateNodeToken(request, reply)
+      if (!node) return
 
       const config = request.body
 

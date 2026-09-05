@@ -14,11 +14,9 @@ async function execFirewall(cmd: string, engine: 'iptables' | 'nftables' | 'fire
   try {
     await execAsync(cmd)
   } catch (err: any) {
-    if (err.message.includes('not found')) {
-      console.warn(`[firewall] ${engine} not found, mocked: ${cmd}`)
-    } else {
-      throw err
-    }
+    // A missing firewall binary means the policy was not installed. Never
+    // convert that operational failure into a successful task result.
+    throw new Error(`${engine} command failed: ${err.message}`)
   }
 }
 
@@ -79,6 +77,8 @@ function isValidPort(value: string): boolean {
 // Returns a sanitized copy of the policy if every user-controlled field is safe,
 // or null if the policy must be skipped (logged by caller).
 function sanitizePolicy(p: PolicyPayload): PolicyPayload | null {
+  if (!['allow', 'deny'].includes(p.action)) return null
+  if (!['tcp', 'udp', 'icmp', 'all'].includes(p.protocol)) return null
   if (p.target_network != null && !isValidIpOrCidr(p.target_network)) return null
   if (p.user_ip != null && !isValidIpv4(p.user_ip)) return null
   if (p.group_subnet != null && !isValidIpOrCidr(p.group_subnet)) return null

@@ -1,0 +1,38 @@
+---
+title: Architecture
+description: How the Manager, database, Agent, VPN Node, and clients connect.
+---
+
+```text
+Administrator browser
+        |
+        | HTTPS through a reverse proxy, or HTTP on a trusted network
+        v
+Manager: Fastify API + static dashboard
+        |                         |
+        | database                | task, heartbeat, event
+        v                         v
+ SQLite / PostgreSQL / MariaDB  Agent on a VPN Node
+                                      |
+                                      v
+                              OpenVPN or WireGuard
+                                      |
+                                      v
+                                  VPN client
+```
+
+## Manager
+
+In production, one Manager container serves the static dashboard and API on the same port, `3000` by default. The API uses the `/api/v1` prefix. The Manager supports SQLite, PostgreSQL, and MySQL/MariaDB through Knex. The container does not terminate TLS; use a reverse proxy for public HTTPS.
+
+The Manager creates tasks such as client configuration generation. The Agent polls for tasks and reports their results. It also sends heartbeats; the Manager checks status every minute and marks a node offline after two minutes without a heartbeat.
+
+## VPN Node
+
+A node is a Linux host that runs the VPN service and an Agent container with `network_mode: host`, `NET_ADMIN`, and `NET_RAW` capabilities. This mode lets the Agent access host VPN state and apply network rules. Restrict administrative access to the host because the Agent has elevated networking privileges.
+
+OpenVPN uses Easy-RSA PKI, server configuration, a CCD directory, and the `/run/openvpn/server.sock` management Unix socket. WireGuard uses the `wg0` interface, host private/public keys, and static peers. These differences affect client configuration and session observation.
+
+## Routing and policies
+
+Client route distribution, host forwarding, NAT, and access policies are separate layers. Routes make a destination reachable to a client; IP forwarding and the firewall let packets traverse the node; NAT changes the source for specific destinations; policies determine application-authorized access. Verify every layer when adding a new network.

@@ -1,49 +1,13 @@
-# Starlight Starter Kit: Basics
+# VPN Manager Documentation
 
-[![Built with Starlight](https://astro.badg.es/v2/built-with-starlight/tiny.svg)](https://starlight.astro.build)
+This documentation site uses Astro and Starlight. Source content is in `src/content/docs`, and the main navigation is configured in `astro.config.mjs`. The `dist` directory is build output and must not be edited manually.
 
-```
-pnpm create astro@latest -- --template starlight
-```
+Run commands from the monorepo root:
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+| Command | Purpose |
+| --- | --- |
+| `pnpm --filter @vpn/docs dev` | Runs the local site, usually at `http://localhost:4321` |
+| `pnpm --filter @vpn/docs build` | Validates and builds the static site into `apps/docs/dist` |
+| `pnpm --filter @vpn/docs preview` | Previews the local build output |
 
-## 🚀 Project Structure
-
-Inside of your Astro + Starlight project, you'll see the following folders and files:
-
-```
-.
-├── public/
-├── src/
-│   ├── assets/
-│   ├── content/
-│   │   └── docs/
-│   └── content.config.ts
-├── astro.config.mjs
-├── package.json
-└── tsconfig.json
-```
-
-Starlight looks for `.md` or `.mdx` files in the `src/content/docs/` directory. Each file is exposed as a route based on its file name.
-
-Images can be added to `src/assets/` and embedded in Markdown with a relative link.
-
-Static assets, like favicons, can be placed in the `public/` directory.
-
-## 🧞 Commands
-
-All commands are run from the root of the project, from a terminal:
-
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `pnpm install`             | Installs dependencies                            |
-| `pnpm dev`             | Starts local dev server at `localhost:4321`      |
-| `pnpm build`           | Build your production site to `./dist/`          |
-| `pnpm preview`         | Preview your build locally, before deploying     |
-| `pnpm astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `pnpm astro -- --help` | Get help using the Astro CLI                     |
-
-## 👀 Want to learn more?
-
-Check out [Starlight’s docs](https://starlight.astro.build/), read [the Astro documentation](https://docs.astro.build), or jump into the [Astro Discord server](https://astro.build/chat).
+Documentation must match the implementation in `apps/api`, `apps/agent`, `apps/web`, Docker Compose files, and installation scripts. Do not document endpoints, variables, or behavior that has not been verified from those sources.

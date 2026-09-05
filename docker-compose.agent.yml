@@ -27,9 +27,6 @@
 services:
   agent:
     image: ghcr.io/adityadarma/vpn-agent:latest
-    build:
-      context: .
-      dockerfile: apps/agent/Dockerfile
     container_name: vpn-agent
     restart: unless-stopped
     environment:
@@ -51,8 +48,19 @@ services:
       - NET_ADMIN
       - NET_RAW
 
-    # Volumes for VPN config and certificates
-    volumes:
+    # Volumes for VPN config and certificates.
+    #
+    # Left unset deliberately: the agent reads the host's OpenVPN state
+    # (/etc/openvpn, /run/openvpn/server.sock, /var/log/openvpn) and with
+    # network_mode: host it is expected to run on the VPN node itself. Which of
+    # those paths to expose — and read-only vs read-write — depends on the
+    # deployment, so no default is assumed here.
+    #
+    # A typical OpenVPN node would add:
+    #   volumes:
+    #     - /etc/openvpn:/etc/openvpn
+    #     - /run/openvpn:/run/openvpn
+    #     - /var/log/openvpn:/var/log/openvpn
 
     logging:
       driver: "json-file"

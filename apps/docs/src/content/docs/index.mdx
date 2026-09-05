@@ -3,34 +3,34 @@ title: VPN Manager
 description: A modern, automated VPN management platform.
 template: splash
 hero:
-  tagline: Seamless VPN provisioning, node management, and secure access for modern teams.
+  tagline: Manage users, OpenVPN or WireGuard nodes, networks, and VPN access from one dashboard.
   image:
     html: "<div class='text-7xl'>🛡️</div>"
   actions:
     - text: Explore Documentation
-      link: /overview/introduction/
+      link: /introduction/
       icon: right-arrow
     - text: View on GitHub
-      link: https://github.com/adityadarma/ovpn-manager
+      link: https://github.com/adityadarma/vpn-manager
       icon: external
       variant: minimal
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-## Features
+## Operational Documentation
 
 <CardGrid>
-	<Card title="Centralized Management" icon="laptop">
-		Manage VPN configurations, users, and networks across multiple servers worldwide from a single, sleek dashboard without touching the CLI.
+	<Card title="Separate Deployments" icon="setting">
+		Run the Manager as a Docker container and VPN Nodes on hosts running OpenVPN or WireGuard.
 	</Card>
-	<Card title="Split Tunneling" icon="rocket">
-		Route specific IP blocks or domains seamlessly, optimizing traffic flow and preserving server bandwidth for internal net targeting.
+	<Card title="Access Control" icon="check">
+		Manage users, groups, CIDR networks, allow or deny policies, credentials, and active sessions from the dashboard.
 	</Card>
-	<Card title="Automated Provisioning" icon="setting">
-		An event-driven Node.js agent automatically manages `iptables` policies, generates certificates, and pulls config tasks in real-time.
+	<Card title="Node Automation" icon="rocket">
+		The Agent fetches tasks, sends heartbeats, creates client configurations, and applies node firewall rules.
 	</Card>
-	<Card title="Modern Aesthetics" icon="star">
-		Built top-to-bottom prioritizing visual excellence. Uses standard modern frameworks and a premium Zinc/Slate color palette.
+	<Card title="Safe Operations" icon="approve-check">
+		Use the guidance for secrets, backups, reverse proxies, updates, and troubleshooting before operating in production.
 	</Card>
 </CardGrid>

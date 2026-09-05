@@ -1,0 +1,31 @@
+---
+title: Networking and Routing
+description: Safely design CIDRs, split tunnels, forwarding, NAT, and firewall rules.
+---
+
+## Four connectivity layers
+
+| Layer | Responsibility |
+| --- | --- |
+| Client routes | Determines which destinations a client sends through the tunnel |
+| VPN server | Assigns tunnel addresses and forwards packets from the VPN interface |
+| Node firewall/NAT | Allows forwarding and, where needed, translates source addresses |
+| Manager policy | Determines which networks a user or group may access |
+
+An error in any layer can allow a VPN connection to succeed while internal applications remain unreachable.
+
+## Full tunnel and split tunnel
+
+OpenVPN created by the installer pushes `redirect-gateway def1 bypass-dhcp` by default, sending client internet traffic through the VPN. For a split tunnel, push only the required internal CIDR routes and do not use redirect gateway. Node push-route configuration creates routes received by clients, but the node host still needs correct forwarding and firewall rules.
+
+WireGuard uses `AllowedIPs` on each peer. This value both selects client routes and limits peer addresses. Use specific internal CIDRs instead of `0.0.0.0/0` unless you intentionally run a full tunnel.
+
+## NAT and source addresses
+
+The installer enables IPv4 forwarding. For traffic to the detected LAN, bootstrap rules attempt to preserve the VPN client source IP so LAN servers can see the client address. Non-LAN traffic can be MASQUERADEd through the node's outbound interface. If the LAN has no return route to the VPN subnet, either add a return route to the LAN router or use NAT while understanding that the destination will no longer see the original client source.
+
+## Firewall
+
+Choose the firewall engine that is actually active: `iptables`, `nftables`, `ufw`, or `firewalld`. Mixing engines can create ineffective or conflicting rules. The `none` option means neither the installer nor Agent manages firewall rules.
+
+Before changing a production firewall, back up active rules and ensure console access is available. Test VPN UDP access, DNS, target CIDR access, return traffic, and SSH administration through a separate path.

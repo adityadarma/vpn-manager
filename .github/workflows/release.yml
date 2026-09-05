@@ -48,7 +48,9 @@ jobs:
         run: pnpm typecheck
 
       - name: Unit tests
-        run: pnpm --filter @vpn/api test run
+        run: |
+          pnpm --filter @vpn/api test
+          pnpm --filter @vpn/agent test
         env:
           ADMIN_PASSWORD: ci-test-admin-password-32chars!!
 
@@ -78,9 +80,12 @@ jobs:
           echo "should_build=$SHOULD_BUILD" >> $GITHUB_OUTPUT
           echo "Images: $IMAGES — Should build: $SHOULD_BUILD"
 
-  # ── Job 3: Build & push Docker images ───────────────────────────────────────
-  build-and-push:
-    name: Build & Push (${{ matrix.image }})
+  # ── Job 3: Build and publish versioned images ────────────────────────────────
+  # CI builds only locally for smoke tests. A release builds the tagged source
+  # once and publishes only intended public tags: stable semver aliases or one
+  # standalone prerelease tag. No SHA images are stored in GHCR.
+  publish:
+    name: Publish (${{ matrix.image }})
     needs: [test, prepare]
     if: needs.prepare.outputs.should_build == 'true'
     runs-on: ubuntu-latest
@@ -93,12 +98,6 @@ jobs:
         image: ${{ fromJson(needs.prepare.outputs.images) }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -106,61 +105,78 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set image name and dockerfile
+      - name: Checkout release source
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set image name
         id: image-config
         run: |
           if [ "${{ matrix.image }}" = "manager" ]; then
-            echo "image_name=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.MANAGER_IMAGE }}" >> $GITHUB_OUTPUT
-            echo "dockerfile=Dockerfile" >> $GITHUB_OUTPUT
+            echo "image_name=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.MANAGER_IMAGE }}" >> "$GITHUB_OUTPUT"
           else
-            echo "image_name=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.AGENT_IMAGE }}" >> $GITHUB_OUTPUT
-            echo "dockerfile=apps/agent/Dockerfile" >> $GITHUB_OUTPUT
+            echo "image_name=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.AGENT_IMAGE }}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ steps.image-config.outputs.image_name }}
-          flavor: |
-            latest=auto
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest,enable={{is_default_branch}}
+      - name: Determine version tags
+        id: version-tags
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            # A manual release from main may publish only :latest.
+            VERSION=""
+          fi
 
-      - name: Build and push
+          IMG="${{ steps.image-config.outputs.image_name }}"
+          TAGS=""
+          if [ -n "$VERSION" ]; then
+            # A prerelease is intentionally standalone. For v1.2.0-beta.1,
+            # publish only :1.2.0-beta.1: never move :latest, :1, or :1.2.
+            if [[ "$VERSION" == *-* ]]; then
+              TAGS="$IMG:$VERSION"
+            else
+              MAJOR_MINOR=$(echo "$VERSION" | cut -d. -f1,2)
+              MAJOR=$(echo "$VERSION" | cut -d. -f1)
+              TAGS="$IMG:$VERSION,$IMG:$MAJOR_MINOR,$IMG:$MAJOR,$IMG:latest"
+            fi
+          elif [ "${{ github.ref_name }}" = "main" ]; then
+            TAGS="$IMG:latest"
+          fi
+          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+          echo "Publishing: $TAGS"
+
+      - name: Build and publish version tags
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ${{ steps.image-config.outputs.dockerfile }}
-          push: ${{ github.event_name != 'workflow_dispatch' || inputs.push_images == true }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: |
-            type=gha,scope=${{ matrix.image }}
-            type=registry,ref=${{ steps.image-config.outputs.image_name }}:latest
+          file: ${{ matrix.image == 'manager' && 'Dockerfile' || 'apps/agent/Dockerfile' }}
+          push: true
+          tags: ${{ steps.version-tags.outputs.tags }}
+          cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
           platforms: linux/amd64
-          build-args: |
-            BUILDKIT_INLINE_CACHE=1
 
-      - name: Image digest
+      - name: Summary
         run: |
           echo "Image : ${{ steps.image-config.outputs.image_name }}"
-          echo "Tags  : ${{ steps.meta.outputs.tags }}"
+          echo "Tags  : ${{ steps.version-tags.outputs.tags }}"
 
   # ── Job 4: Smoke-test the deployed manager ──────────────────────────────────
+  #
+  # ci.yml smoke-tests a local image on each change. This second smoke test
+  # pulls the newly published stable tag to verify the registry publish path.
   test-deployment:
     name: Smoke Test Deployment
-    needs: [prepare, build-and-push]
+    needs: [prepare, publish]
     if: >
       needs.prepare.outputs.should_build == 'true' &&
       contains(needs.prepare.outputs.images, 'manager') &&
+      !contains(github.ref_name, '-') &&
       (github.event_name != 'workflow_dispatch' || inputs.push_images == true)
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -219,11 +235,68 @@ jobs:
         if: always()
         run: docker compose down -v
 
-  # ── Job 5: Bump version + create GitHub Release (tag only) ──────────────────
+  # ── Job 5: Publish release documentation to GitHub Pages ────────────────────
+  # Stable release tags are also the only tags that move Docker's :latest alias.
+  # Deploy the documentation generated from that exact tag so Pages describes the
+  # released product, not a later commit on main.
+  deploy-docs:
+    name: Deploy Documentation
+    needs: [test, publish, test-deployment]
+    if: >
+      startsWith(github.ref, 'refs/tags/v') &&
+      !contains(github.ref_name, '-') &&
+      needs.test.result == 'success' &&
+      needs.publish.result == 'success' &&
+      (needs.test-deployment.result == 'success' || needs.test-deployment.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build documentation
+        run: pnpm --filter @vpn/docs build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/docs/dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  # ── Job 6: Bump version + create GitHub Release (tag only) ──────────────────
   release:
     name: Release
-    needs: [test, build-and-push, test-deployment]
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, publish, test-deployment]
+    if: >
+      always() &&
+      startsWith(github.ref, 'refs/tags/v') &&
+      needs.test.result == 'success' &&
+      needs.publish.result == 'success' &&
+      (needs.test-deployment.result == 'success' || needs.test-deployment.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -251,12 +324,19 @@ jobs:
           echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
       - name: Bump version in package.json files
+        if: ${{ !contains(steps.version.outputs.version, '-') }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           jq --arg v "$VERSION" '.version = $v' package.json > tmp.json && mv tmp.json package.json
-          for pkg in apps/api/package.json apps/web/package.json apps/agent/package.json; do
+          # Covers packages/* too — they were previously left out, so their
+          # versions drifted behind the tag on every release.
+          for pkg in apps/api/package.json apps/web/package.json apps/agent/package.json \
+                     packages/db/package.json packages/shared/package.json packages/ui/package.json; do
             jq --arg v "$VERSION" '.version = $v' "$pkg" > tmp.json && mv tmp.json "$pkg"
           done
+          # Swagger reports the API version in its OpenAPI document.
+          sed -i "s/version: '[0-9]\+\.[0-9]\+\.[0-9]\+'/version: '$VERSION'/" \
+            apps/api/src/plugins/swagger.ts
           echo "Bumped all package.json to $VERSION"
 
       - name: Generate changelog
@@ -295,7 +375,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
-          name: "v${{ steps.version.outputs.version }}"
+          name: 'v${{ steps.version.outputs.version }}'
           body_path: /tmp/changelog.md
           draft: false
           prerelease: ${{ contains(steps.version.outputs.version, '-') }}

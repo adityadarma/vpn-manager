@@ -1,0 +1,24 @@
+---
+title: Users, Groups, and Access
+description: Manage identities, roles, groups, networks, and policies.
+---
+
+## Users and roles
+
+Create users from the Users page with a username, email address, and password. The `admin` role has administrative access, including Audit Logs; the `user` role is for ordinary VPN users. Apply least privilege: do not use an administrator account for daily VPN connections.
+
+Disabling a user or changing a role should be followed by a session and token review. The system stores token revocations so a revoked token cannot be used for the rest of its lifetime. If active access is high risk, revoke the user's VPN credentials and terminate relevant sessions.
+
+## Groups and networks
+
+Create groups for teams such as `engineering` or `support`, then add users. Create a Network with a valid CIDR, not a single host address when the target is a subnet. Associate networks with groups to build an auditable access model.
+
+Avoid overlapping CIDRs. Overlap between the LAN, VPN pool, and Docker routes can send traffic through the wrong path or prevent return traffic from reaching clients.
+
+## Policies
+
+A Policy creates an allow or deny decision for a subject and network combination. Write policies explicitly, document their business purpose, and test deny rules in a safe environment first. When rules conflict, inspect the policy order or evaluation shown by the dashboard and API for your application version.
+
+## Audit
+
+Audit Logs provide a record of administrator actions. Use them to investigate changes to users, groups, networks, policies, nodes, and credentials. Audit logs do not replace backups or host logging; retain container logs and VPN node logs separately.

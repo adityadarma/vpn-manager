@@ -94,57 +94,6 @@ stop_services() {
     fi
 }
 
-check_openvpn() {
-    # Check if OpenVPN is installed (all-in-one mode)
-    if systemctl is-active --quiet openvpn-server@server.service 2>/dev/null || \
-       systemctl is-active --quiet openvpn@server.service 2>/dev/null; then
-        return 0
-    fi
-    return 1
-}
-
-remove_openvpn() {
-    if check_openvpn; then
-        echo ""
-        print_warning "Detected OpenVPN installation (All-in-One mode)"
-        read -p "Do you want to remove OpenVPN and VPN Node? (yes/no): " remove_vpn < /dev/tty
-        
-        if [ "$remove_vpn" = "yes" ]; then
-            print_info "Removing OpenVPN..."
-            
-            # Stop OpenVPN
-            systemctl stop openvpn-server@server.service 2>/dev/null || true
-            systemctl stop openvpn@server.service 2>/dev/null || true
-            systemctl disable openvpn-server@server.service 2>/dev/null || true
-            systemctl disable openvpn@server.service 2>/dev/null || true
-            
-            # Stop iptables service
-            systemctl stop openvpn-iptables.service 2>/dev/null || true
-            systemctl disable openvpn-iptables.service 2>/dev/null || true
-            rm -f /etc/systemd/system/openvpn-iptables.service
-            
-            systemctl daemon-reload
-            
-            print_success "OpenVPN removed"
-            
-            echo ""
-            read -p "Do you want to remove OpenVPN configuration and certificates? (yes/no): " remove_config < /dev/tty
-            
-            if [ "$remove_config" = "yes" ]; then
-                print_info "Removing OpenVPN configuration..."
-                rm -rf /etc/openvpn/server
-                rm -rf /etc/openvpn/easy-rsa
-                rm -rf /var/log/openvpn
-                print_success "OpenVPN configuration removed"
-            else
-                print_info "Keeping OpenVPN configuration"
-            fi
-        else
-            print_info "Keeping OpenVPN installation"
-        fi
-    fi
-}
-
 remove_volumes() {
     if [ "$KEEP_DATA" = true ]; then
         delete_data="no"
@@ -173,9 +122,7 @@ remove_images() {
     if [ "$remove_imgs" = "yes" ]; then
         print_info "Removing Docker images..."
         
-        docker rmi ghcr.io/adityadarma/vpn-manager:api 2>/dev/null || true
-        docker rmi ghcr.io/adityadarma/vpn-manager:web 2>/dev/null || true
-        docker rmi ghcr.io/adityadarma/vpn-manager:agent 2>/dev/null || true
+        docker rmi ghcr.io/adityadarma/vpn-manager:latest 2>/dev/null || true
         
         print_success "Images removed"
     else
@@ -279,7 +226,6 @@ main() {
     confirm_uninstall
     backup_before_remove
     stop_services
-    remove_openvpn
     remove_volumes
     remove_images
     remove_cron_jobs

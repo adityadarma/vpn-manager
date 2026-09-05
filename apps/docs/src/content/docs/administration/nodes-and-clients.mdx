@@ -1,0 +1,26 @@
+---
+title: Nodes and VPN Credentials
+description: Manage nodes, OpenVPN certificates, WireGuard configurations, sessions, and tasks.
+---
+
+## Nodes
+
+A node represents a VPN server and its Agent. Confirm its hostname, IP address, port, VPN type, subnet, and status before use. An `online` status depends on an Agent heartbeat; it does not guarantee that the UDP port is reachable from the internet. Test client connectivity after firewall, DNS, or routing changes.
+
+## OpenVPN
+
+The installer creates Easy-RSA PKI and an OpenVPN server using UDP `1194`, `tls-crypt`, ECDH (`dh none`), AES-GCM, SHA-256, and TLS 1.2 or later. The default configuration uses a full tunnel through `redirect-gateway`; test route changes because they can alter client internet traffic.
+
+Creating OpenVPN credentials creates an Agent task to generate a client certificate and key. Select the user, node, and validity period; use a password-protected key when file distribution needs an additional protection layer. Password protection does not replace secure storage of configuration files.
+
+## WireGuard
+
+The installer creates `wg0`, host keys, and UDP port `51820`. WireGuard clients use static peers and keys plus `AllowedIPs` to define destinations routed through the tunnel. Ensure `AllowedIPs` is not overly broad and does not conflict with a client's local routes.
+
+## Expiry, revocation, and renewal
+
+Revoke credentials when a device is lost, an account is disabled, or access is no longer needed. The Manager checks credentials expiring within 30 days every hour. For online nodes, it can queue automatic renewal; the old credential is recorded as revoked and renewal waits up to 30 seconds for the Agent task result. Monitor Tasks when renewal fails or times out.
+
+## Sessions and downloads
+
+Sessions show connection activity reported by nodes. Use them for investigation, not as the sole audit source. Record who downloads configurations, distribute them through secure channels, and never send private keys over chat or email without appropriate encryption.

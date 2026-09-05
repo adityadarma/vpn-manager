@@ -106,6 +106,9 @@ async function main() {
 
   // Initialize VPN driver (factory pattern)
   const driver = createVpnDriver(env)
+  driver.on('error', (err: Error) => {
+    console.error(`[agent] VPN driver error: ${err.message}`)
+  })
 
   // Connect to VPN management interface
   try {

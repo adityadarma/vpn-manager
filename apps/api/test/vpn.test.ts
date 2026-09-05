@@ -77,4 +77,42 @@ describe('VPN Agent API', () => {
     expect(res.statusCode).toBe(200)
     expect(res.json().ok).toBe(true)
   })
+
+  describe('X-VPN-Token validation', () => {
+    const connect = (headers: Record<string, string>) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/v1/vpn/connect',
+        headers,
+        payload: { username: 'admin', vpn_ip: '10.8.0.9', node_id: nodeId },
+      })
+
+    it('rejects a wrong token of the same length', async () => {
+      // Same length as the real token, so only the content differs.
+      const res = await connect({ 'X-VPN-Token': 'agent-secret-tokeX' })
+      expect(res.statusCode).toBe(401)
+    })
+
+    it('rejects a token that is a prefix of the real one', async () => {
+      const res = await connect({ 'X-VPN-Token': 'agent-secret' })
+      expect(res.statusCode).toBe(401)
+    })
+
+    it('rejects a token with the real one as a prefix', async () => {
+      const res = await connect({ 'X-VPN-Token': 'agent-secret-token-extra' })
+      expect(res.statusCode).toBe(401)
+    })
+
+    it('rejects an empty token', async () => {
+      const res = await connect({ 'X-VPN-Token': '' })
+      expect(res.statusCode).toBe(401)
+    })
+
+    it('accepts a token with surrounding whitespace', async () => {
+      // Operators paste this into env files and shell variables, where a
+      // trailing newline is easy to introduce.
+      const res = await connect({ 'X-VPN-Token': '  agent-secret-token\n' })
+      expect(res.statusCode).toBe(201)
+    })
+  })
 })

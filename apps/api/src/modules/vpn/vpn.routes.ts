@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { v7 as uuidv7 } from 'uuid'
 import { logAudit, getClientIp } from '../../utils/audit'
+import { secretsMatchTrimmed } from '../../utils/secret-compare'
 import geoip from 'geoip-lite'
 
 /**
@@ -21,7 +22,10 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
       app.log.warn('[vpn] VPN_TOKEN env not set — rejecting all VPN auth requests')
       return reply.status(503).send({ error: 'VPN_TOKEN not configured on server' })
     }
-    if (!token || token !== expected) {
+    // Constant-time: this was the last plain `!==` on a credential, and
+    // VPN_TOKEN is a single secret shared by every node, so a timing oracle
+    // here would leak it for the whole fleet.
+    if (!secretsMatchTrimmed(token, expected)) {
       return reply.status(401).send({ error: 'Unauthorized', message: 'Invalid X-VPN-Token' })
     }
   })

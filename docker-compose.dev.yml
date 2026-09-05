@@ -75,7 +75,7 @@ services:
       NODE_REGISTRATION_KEY: ${NODE_REGISTRATION_KEY:-dev-registration-key}
       VPN_TOKEN: ${VPN_TOKEN:-dev-vpn-token}
       DATABASE_TYPE: ${DATABASE_TYPE:-sqlite}
-      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL: ${DATABASE_URL:-}
       DATABASE_SQLITE_PATH: /data/vpn.sqlite
       WEB_URL: ${WEB_URL:-http://localhost:3000}
     ports:

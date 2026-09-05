@@ -3,6 +3,7 @@ import { createDb } from '@vpn/db'
 import type { Env } from './config/env'
 import { NodeStatusChecker } from './services/node-status-checker'
 import { startCertRenewalScheduler } from './services/cert-renewal'
+import { TokenRevocationSweeper } from './services/token-revocation'
 
 import corsPlugin from './plugins/cors'
 import cookiePlugin from './plugins/cookie'
@@ -10,6 +11,7 @@ import jwtPlugin from './plugins/jwt'
 import rateLimitPlugin from './plugins/rate-limit'
 import swaggerPlugin from './plugins/swagger'
 import dbPlugin from './plugins/db'
+import nodeAuthPlugin from './plugins/node-auth'
 import staticPlugin from './plugins/static'
 
 import healthRoutes from './modules/health/health.routes'
@@ -43,9 +45,10 @@ export async function buildApp(env: Env) {
   // Plugins
   await app.register(corsPlugin)
   await app.register(cookiePlugin)  // must be before jwtPlugin
-  await app.register(rateLimitPlugin)
+  await app.register(rateLimitPlugin, { nodeEnv: env.NODE_ENV })
   await app.register(dbPlugin, { db })
   await app.register(jwtPlugin, { secret: env.JWT_SECRET, expiresIn: env.JWT_EXPIRES_IN })
+  await app.register(nodeAuthPlugin)  // must be after dbPlugin
   await app.register(swaggerPlugin, { nodeEnv: env.NODE_ENV })
 
   // Routes — all under /api/v1
@@ -73,6 +76,7 @@ export async function buildApp(env: Env) {
   // Background schedulers are disabled in tests to keep test DB setup deterministic.
   const shouldStartSchedulers = env.NODE_ENV !== 'test'
   let nodeStatusChecker: NodeStatusChecker | null = null
+  let tokenRevocationSweeper: TokenRevocationSweeper | null = null
 
   if (shouldStartSchedulers) {
     nodeStatusChecker = new NodeStatusChecker(
@@ -82,12 +86,16 @@ export async function buildApp(env: Env) {
     )
     nodeStatusChecker.start()
     startCertRenewalScheduler(db)
+
+    // Prune revoked-token rows once they can no longer affect verification.
+    tokenRevocationSweeper = new TokenRevocationSweeper(db, 60 * 60 * 1000) // hourly
+    tokenRevocationSweeper.start()
   }
 
   // Cleanup on shutdown
   app.addHook('onClose', async () => {
     nodeStatusChecker?.stop()
-    await db.destroy()
+    tokenRevocationSweeper?.stop()
   })
 
   return app

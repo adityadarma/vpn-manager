@@ -1,13 +1,14 @@
 import type { VpnDriver } from '../drivers'
+import { assertUsername } from '../core/net-validate'
 
 export async function handleKickSession(
   payload: Record<string, unknown>,
   driver: VpnDriver,
 ): Promise<Record<string, unknown>> {
-  const commonName = payload['common_name'] as string
-  if (!commonName || typeof commonName !== 'string') {
-    throw new Error('kick_vpn_session: common_name is required in payload')
-  }
+  // For OpenVPN the common name is the certificate CN, which is the VPN
+  // username — same character set, so the same guard applies. It reaches both
+  // the management socket and a CCD filename.
+  const commonName = assertUsername(payload['common_name'], 'common_name')
 
   // Validate permanent is actually a boolean (not a truthy string like "true")
   let permanent: boolean | undefined

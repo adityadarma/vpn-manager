@@ -1,12 +1,22 @@
 import fp from 'fastify-plugin'
 import fastifyJwt from '@fastify/jwt'
 import type { FastifyRequest, FastifyReply } from 'fastify'
-import { isTokenRevoked, isUserTokenRevoked } from '../services/token-blacklis'
+import { isTokenRevoked, isUserTokenRevoked } from '../services/token-revocation'
 
 declare module 'fastify' {
   interface FastifyInstance {
     authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>
     authenticateAdmin: (request: FastifyRequest, reply: FastifyReply) => Promise<void>
+    /**
+     * True if the request's token has been revoked.
+     *
+     * Exposed for routes that cannot use the `authenticate` decorator because
+     * they accept more than one credential type (e.g. POST /nodes/register,
+     * which allows an admin JWT *or* a registration key) and therefore call
+     * `request.jwtVerify()` themselves. Those routes must still honour the
+     * revocation list.
+     */
+    isTokenRevokedForRequest: (request: FastifyRequest) => Promise<boolean>
   }
 }
 
@@ -28,27 +38,33 @@ export default fp(async (app, options: JwtPluginOptions) => {
 
   /**
    * Check if the raw token or user-level revocation applies.
+   *
+   * Async because revocations are now persisted in the database rather than an
+   * in-memory Map, so a logout survives restarts and applies across replicas.
    */
-  function checkBlacklist(request: FastifyRequest): boolean {
+  async function checkBlacklist(request: FastifyRequest): Promise<boolean> {
     // Get raw token from cookie or Authorization header
     const rawToken =
       request.cookies?.['vpn_token'] ||
       request.headers.authorization?.replace('Bearer ', '')
 
-    if (rawToken && isTokenRevoked(rawToken)) {
+    if (rawToken && (await isTokenRevoked(app.db, rawToken))) {
       return true
     }
 
     // Check user-level revocation (role change, forced logout)
     const payload = request.user as { id?: string; iat?: number }
     if (payload?.id && payload?.iat) {
-      if (isUserTokenRevoked(payload.id, payload.iat * 1000)) {
+      if (await isUserTokenRevoked(app.db, payload.id, payload.iat * 1000)) {
         return true
       }
     }
 
     return false
   }
+
+  // Same check, exposed for routes that verify the JWT themselves.
+  app.decorate('isTokenRevokedForRequest', checkBlacklist)
 
   app.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
@@ -57,7 +73,7 @@ export default fp(async (app, options: JwtPluginOptions) => {
       return reply.status(401).send({ error: 'Unauthorized', message: 'Invalid or expired token' })
     }
 
-    if (checkBlacklist(request)) {
+    if (await checkBlacklist(request)) {
       return reply.status(401).send({ error: 'Unauthorized', message: 'Token has been revoked' })
     }
   })
@@ -69,7 +85,7 @@ export default fp(async (app, options: JwtPluginOptions) => {
       return reply.status(401).send({ error: 'Unauthorized', message: 'Invalid or expired token' })
     }
 
-    if (checkBlacklist(request)) {
+    if (await checkBlacklist(request)) {
       return reply.status(401).send({ error: 'Unauthorized', message: 'Token has been revoked' })
     }
 

@@ -59,8 +59,10 @@ error() { echo -e "${R}✗ $1${NC}"; }
 VPN_MANAGER_IP_FORWARD_MARKER="# vpn-manager-ip-forward"
 
 detect_active_firewall() {
-    # Returns the name of the firewall engine that is currently active/installed on this OS.
-    # Priority: ufw > firewalld > nftables > iptables
+    # Select only a firewall that is actively managed on the host. The nft
+    # binary is commonly installed as an iptables backend, not proof that the
+    # host uses the nftables service directly.
+    # Priority: ufw > firewalld > nftables > iptables fallback
     local detected="iptables"
 
     # Check ufw
@@ -71,9 +73,6 @@ detect_active_firewall() {
         detected="firewalld"
     # Check nftables
     elif command -v nft &>/dev/null && systemctl is-active --quiet nftables 2>/dev/null; then
-        detected="nftables"
-    # Check if nftables is installed but service not running (still preferred over iptables on modern systems)
-    elif command -v nft &>/dev/null; then
         detected="nftables"
     fi
 
@@ -210,12 +209,13 @@ WIREGUARD_INSTALLED=false
 AGENT_INSTALLED=false
 
 if systemctl is-active --quiet openvpn-server@server 2>/dev/null || \
-   systemctl is-active --quiet openvpn@server 2>/dev/null; then
+   systemctl is-active --quiet openvpn@server 2>/dev/null || \
+   [ -f /etc/openvpn/server/server.conf ]; then
     OPENVPN_INSTALLED=true
     ok "OpenVPN is already installed"
 fi
 
-if systemctl is-active --quiet wg-quick@wg0 2>/dev/null; then
+if systemctl is-active --quiet wg-quick@wg0 2>/dev/null || [ -f /etc/wireguard/wg0.conf ]; then
     WIREGUARD_INSTALLED=true
     ok "WireGuard is already installed"
 fi
@@ -766,14 +766,27 @@ install_agent() {
             info "Please ensure docker-compose.yml is in $INSTALL_DIR"
         fi
     fi
+
+    # An existing registered agent has credentials that must never be replaced
+    # by an update run. Pull and restart its current configuration instead.
+    if [ -f .env ] && grep -q '^AGENT_NODE_ID=.' .env && grep -q '^AGENT_SECRET_TOKEN=.' .env; then
+        info "Existing registered agent found; preserving its configuration"
+        docker compose pull
+        docker compose up -d
+        ok "Agent updated successfully"
+        return
+    fi
     
-    # Adjust Docker Compose based on VPN Type
+    # Adjust Docker Compose based on VPN Type only once. Re-running an agent
+    # update must not append duplicate bind mounts to the existing compose file.
     if [ "$ENV_VPN_TYPE" = "wireguard" ] && [ -f "docker-compose.yml" ]; then
-        # Add WireGuard volume
-        sed -i '/volumes:/a \      - /etc/wireguard:/etc/wireguard' docker-compose.yml
+        if ! grep -q '/etc/wireguard:/etc/wireguard' docker-compose.yml; then
+            sed -i '/volumes:/a \      - /etc/wireguard:/etc/wireguard' docker-compose.yml
+        fi
     elif [ "$ENV_VPN_TYPE" = "openvpn" ] && [ -f "docker-compose.yml" ]; then
-        # Inject OpenVPN volumes
-        sed -i '/volumes:/a \      - /run/openvpn:/run/openvpn\n      - /etc/openvpn:/etc/openvpn\n      - /var/log/openvpn:/var/log/openvpn:ro' docker-compose.yml
+        if ! grep -q '/etc/openvpn:/etc/openvpn' docker-compose.yml; then
+            sed -i '/volumes:/a \      - /run/openvpn:/run/openvpn\n      - /etc/openvpn:/etc/openvpn\n      - /var/log/openvpn:/var/log/openvpn:ro' docker-compose.yml
+        fi
     fi
     
     # Check for environment variables (support both naming conventions)
@@ -994,55 +1007,50 @@ EOF
     ok "Agent installation complete"
 }
 
-# Execute based on mode
-case $mode in
-    1)
-        if [ "$OPENVPN_INSTALLED" = true ] && [ "$ENV_VPN_TYPE" != "wireguard" ]; then
-            update_openvpn_config
-            # Update FIREWALL_ENGINE in agent .env if agent is already installed
-            if [ "$AGENT_INSTALLED" = true ] && [ -f "$INSTALL_DIR/.env" ]; then
-                if grep -q "^FIREWALL_ENGINE=" "$INSTALL_DIR/.env"; then
-                    sed -i "s|^FIREWALL_ENGINE=.*|FIREWALL_ENGINE=${ENV_FIREWALL_ENGINE}|" "$INSTALL_DIR/.env"
-                else
-                    echo "FIREWALL_ENGINE=${ENV_FIREWALL_ENGINE}" >> "$INSTALL_DIR/.env"
-                fi
-                ok "Updated FIREWALL_ENGINE=${ENV_FIREWALL_ENGINE} in agent .env"
-                info "Restarting agent to apply new firewall engine..."
-                cd "$INSTALL_DIR" && docker compose restart
-                ok "Agent restarted"
-            fi
-        else
-            if [ "$ENV_VPN_TYPE" = "wireguard" ]; then
-                install_wireguard
-            else
-                install_openvpn
-            fi
-            install_agent
-        fi
-        ;;
-    2)
-        if [ "$ENV_VPN_TYPE" = "wireguard" ]; then
-            install_wireguard
-        else
+# Execute based on mode. WireGuard and OpenVPN have different menus when the
+# VPN service is already installed, so dispatch them separately.
+if [ "$ENV_VPN_TYPE" = "wireguard" ]; then
+    if [ "$WIREGUARD_INSTALLED" = true ]; then
+        case $mode in
+            1) install_wireguard ;;
+            2) install_agent ;;
+            3) install_wireguard; install_agent ;;
+            4|*) exit 0 ;;
+        esac
+    else
+        case $mode in
+            1) install_wireguard; install_agent ;;
+            2) install_wireguard ;;
+            3|*) exit 0 ;;
+        esac
+    fi
+else
+    case $mode in
+        1)
             if [ "$OPENVPN_INSTALLED" = true ]; then
-                install_agent
+                update_openvpn_config
+                if [ "$AGENT_INSTALLED" = true ] && [ -f "$INSTALL_DIR/.env" ]; then
+                    if grep -q "^FIREWALL_ENGINE=" "$INSTALL_DIR/.env"; then
+                        sed -i "s|^FIREWALL_ENGINE=.*|FIREWALL_ENGINE=${ENV_FIREWALL_ENGINE}|" "$INSTALL_DIR/.env"
+                    else
+                        echo "FIREWALL_ENGINE=${ENV_FIREWALL_ENGINE}" >> "$INSTALL_DIR/.env"
+                    fi
+                    cd "$INSTALL_DIR" && docker compose restart
+                fi
             else
                 install_openvpn
+                install_agent
             fi
-        fi
-        ;;
-    3)
-        if [ "$OPENVPN_INSTALLED" = true ]; then
-            update_openvpn_config
-            install_agent
-        else
-            exit 0
-        fi
-        ;;
-    4|*)
-        exit 0
-        ;;
-esac
+            ;;
+        2)
+            if [ "$OPENVPN_INSTALLED" = true ]; then install_agent; else install_openvpn; fi
+            ;;
+        3)
+            if [ "$OPENVPN_INSTALLED" = true ]; then update_openvpn_config; install_agent; else exit 0; fi
+            ;;
+        4|*) exit 0 ;;
+    esac
+fi
 
 # Summary
 echo ""

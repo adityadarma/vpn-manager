@@ -94,4 +94,75 @@ describe('Task Polling & Security', () => {
     const indexNames = indexes.map((i: any) => i.name)
     expect(indexNames).toContain('idx_tasks_node_status_created')
   })
+
+  describe('result reporting is single-shot', () => {
+    const insertTask = async (status: 'pending' | 'running') => {
+      const taskId = uuidv7()
+      await app.db('tasks').insert({
+        id: taskId,
+        node_id: nodeId,
+        action: 'test_action',
+        payload: JSON.stringify({}),
+        status,
+        created_at: new Date(),
+      })
+      return taskId
+    }
+
+    const report = (taskId: string, body: Record<string, unknown>) =>
+      app.inject({
+        method: 'POST',
+        url: `/api/v1/tasks/${taskId}/result`,
+        headers: { Authorization: 'Bearer task-poll-token' },
+        payload: body,
+      })
+
+    it('rejects a second report with 409 and keeps the original result', async () => {
+      const taskId = await insertTask('running')
+
+      const first = await report(taskId, { status: 'failed', errorMessage: 'real failure' })
+      expect(first.statusCode).toBe(200)
+
+      // A node could otherwise rewrite its own recorded failure as a success.
+      const second = await report(taskId, { status: 'success', result: { faked: true } })
+      expect(second.statusCode).toBe(409)
+
+      const task = await app.db('tasks').where({ id: taskId }).first()
+      expect(task.status).toBe('failed')
+      expect(task.error_message).toBe('real failure')
+      expect(task.result).not.toContain('faked')
+    })
+
+    it('rejects re-reporting a task that already succeeded', async () => {
+      const taskId = await insertTask('running')
+
+      expect((await report(taskId, { status: 'success', result: { n: 1 } })).statusCode).toBe(200)
+      const second = await report(taskId, { status: 'success', result: { n: 2 } })
+      expect(second.statusCode).toBe(409)
+
+      const task = await app.db('tasks').where({ id: taskId }).first()
+      expect(JSON.parse(task.result).n).toBe(1)
+    })
+
+    it('accepts only one of two concurrent reports', async () => {
+      const taskId = await insertTask('running')
+
+      // The status filter is part of the UPDATE, so exactly one of these can
+      // match a row even when they interleave.
+      const [a, b] = await Promise.all([
+        report(taskId, { status: 'success', result: { from: 'a' } }),
+        report(taskId, { status: 'success', result: { from: 'b' } }),
+      ])
+
+      const codes = [a.statusCode, b.statusCode].sort()
+      expect(codes).toEqual([200, 409])
+    })
+
+    it('still accepts a first report for a pending task', async () => {
+      // Agents normally report after claiming (running), but a pending task
+      // must not be rejected as already-finalised.
+      const taskId = await insertTask('pending')
+      expect((await report(taskId, { status: 'success', result: {} })).statusCode).toBe(200)
+    })
+  })
 })

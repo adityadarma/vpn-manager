@@ -9,11 +9,7 @@ async function execFirewall(cmd: string, engine: string) {
   try {
     await execAsync(cmd)
   } catch (err: any) {
-    if (err.message.includes('not found')) {
-      console.warn(`[firewall] ${engine} not found, mocked: ${cmd}`)
-    } else {
-      throw err
-    }
+    throw new Error(`${engine} command failed: ${err.message}`)
   }
 }
 
