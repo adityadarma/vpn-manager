@@ -20,6 +20,15 @@ const hasNftables = (() => {
   }
 })()
 
+const iptablesBackends = ['iptables', 'iptables-nft', 'iptables-legacy'].filter((command) => {
+  try {
+    execSync(`${command} --version`, { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+})
+
 describe.runIf(hasNetAdmin)('Firewall kernel integration', () => {
   const namespace = 'fwclientns'
   const serverVeth = 'fwsrv0'
@@ -41,17 +50,17 @@ describe.runIf(hasNetAdmin)('Firewall kernel integration', () => {
     try { execSync(`ip link del ${serverVeth}`, { stdio: 'ignore' }) } catch {}
   })
 
-  it('iptables accepts valid policy syntax and blocks an ICMP source explicitly', () => {
-    const chain = 'VPN_TEST_FW'
-    execSync(`iptables -N ${chain}`)
-    execSync(`iptables -I INPUT 1 -i ${serverVeth} -j ${chain}`)
-    execSync(`iptables -A ${chain} -s 198.18.0.2 -p icmp -j DROP`)
+  it.each(iptablesBackends)('%s accepts valid policy syntax and blocks ICMP explicitly', (iptables) => {
+    const chain = `VPN_TEST_${iptables.replace(/[^a-z]/g, '').toUpperCase()}`
+    execSync(`${iptables} -N ${chain}`)
+    execSync(`${iptables} -I INPUT 1 -i ${serverVeth} -j ${chain}`)
+    execSync(`${iptables} -A ${chain} -s 198.18.0.2 -p icmp -j DROP`)
 
     expect(() => execSync(`ip netns exec ${namespace} ping -c 1 -W 1 198.18.0.1`, { stdio: 'ignore' })).toThrow()
 
-    execSync(`iptables -D INPUT -i ${serverVeth} -j ${chain}`)
-    execSync(`iptables -F ${chain}`)
-    execSync(`iptables -X ${chain}`)
+    execSync(`${iptables} -D INPUT -i ${serverVeth} -j ${chain}`)
+    execSync(`${iptables} -F ${chain}`)
+    execSync(`${iptables} -X ${chain}`)
     expect(() => execSync(`ip netns exec ${namespace} ping -c 1 -W 1 198.18.0.1`, { stdio: 'ignore' })).not.toThrow()
   })
 
