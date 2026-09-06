@@ -767,6 +767,42 @@ install_agent() {
         fi
     fi
 
+    # Build host-specific mounts in a Compose override so updates never mutate
+    # the downloaded base Compose file. On updates, use the saved settings when
+    # the installer was not given a VPN type or firewall selection.
+    AGENT_VPN_TYPE="${VPN_TYPE:-}"
+    if [ -z "$AGENT_VPN_TYPE" ] && [ -f .env ]; then
+        AGENT_VPN_TYPE=$(grep -e '^VPN_TYPE=' .env | cut -d '=' -f2 | tr -d '"' | tr -d "'" || true)
+    fi
+    AGENT_VPN_TYPE="${AGENT_VPN_TYPE:-openvpn}"
+    AGENT_FIREWALL_ENGINE="${FIREWALL_ENGINE:-}"
+    if { [ -z "$AGENT_FIREWALL_ENGINE" ] || [ "$AGENT_FIREWALL_ENGINE" = "auto" ]; } && [ -f .env ]; then
+        AGENT_FIREWALL_ENGINE=$(grep -e '^FIREWALL_ENGINE=' .env | cut -d '=' -f2 | tr -d '"' | tr -d "'" || true)
+    fi
+
+    cat > docker-compose.override.yml <<'EOF'
+services:
+  agent:
+    volumes:
+EOF
+    if [ "$AGENT_VPN_TYPE" = "wireguard" ]; then
+        cat >> docker-compose.override.yml <<'EOF'
+      - /etc/wireguard:/etc/wireguard
+EOF
+    else
+        cat >> docker-compose.override.yml <<'EOF'
+      - /run/openvpn:/run/openvpn
+      - /etc/openvpn:/etc/openvpn
+      - /var/log/openvpn:/var/log/openvpn:ro
+EOF
+    fi
+    if [ "$AGENT_FIREWALL_ENGINE" = "firewalld" ]; then
+        cat >> docker-compose.override.yml <<'EOF'
+      - /run/dbus/system_bus_socket:/run/dbus/system_bus_socket
+EOF
+    fi
+    ok "Created host volume configuration for ${AGENT_VPN_TYPE}/${AGENT_FIREWALL_ENGINE:-auto}"
+
     # An existing registered agent has credentials that must never be replaced
     # by an update run. Pull and restart its current configuration instead.
     if [ -f .env ] && grep -q '^AGENT_NODE_ID=.' .env && grep -q '^AGENT_SECRET_TOKEN=.' .env; then
@@ -775,18 +811,6 @@ install_agent() {
         docker compose up -d
         ok "Agent updated successfully"
         return
-    fi
-    
-    # Adjust Docker Compose based on VPN Type only once. Re-running an agent
-    # update must not append duplicate bind mounts to the existing compose file.
-    if [ "$ENV_VPN_TYPE" = "wireguard" ] && [ -f "docker-compose.yml" ]; then
-        if ! grep -q '/etc/wireguard:/etc/wireguard' docker-compose.yml; then
-            sed -i '/volumes:/a \      - /etc/wireguard:/etc/wireguard' docker-compose.yml
-        fi
-    elif [ "$ENV_VPN_TYPE" = "openvpn" ] && [ -f "docker-compose.yml" ]; then
-        if ! grep -q '/etc/openvpn:/etc/openvpn' docker-compose.yml; then
-            sed -i '/volumes:/a \      - /run/openvpn:/run/openvpn\n      - /etc/openvpn:/etc/openvpn\n      - /var/log/openvpn:/var/log/openvpn:ro' docker-compose.yml
-        fi
     fi
     
     # Check for environment variables (support both naming conventions)

@@ -20,6 +20,20 @@ async function execFirewall(cmd: string, engine: 'iptables' | 'nftables' | 'fire
   }
 }
 
+async function resolveIptablesCommand(vpnInterface: string): Promise<'iptables' | 'iptables-legacy'> {
+  try {
+    const { stdout } = await execAsync('iptables-legacy -S FORWARD')
+    if (stdout.includes(`-i ${vpnInterface}`)) {
+      console.log(`[firewall] Using iptables-legacy because it owns the ${vpnInterface} VPN forwarding hook.`)
+      return 'iptables-legacy'
+    }
+  } catch {
+    // Alpine-based or nft-only hosts do not provide iptables-legacy.
+  }
+
+  return 'iptables'
+}
+
 interface PolicyPayload {
   id: string
   action: 'allow' | 'deny'
@@ -147,28 +161,32 @@ export async function handleApplyNetworkPolicy(
   if (firewallEngine === 'ufw') {
     console.log('[firewall] UFW mode: applying policies via iptables (server-side routing, not ufw cli).')
   }
-  return applyIptablesPolicies(policies, vpnInterface)
+  return applyIptablesPolicies(policies, vpnInterface, await resolveIptablesCommand(vpnInterface))
 }
 
-async function applyIptablesPolicies(policies: PolicyPayload[], vpnInterface: string) {
+async function applyIptablesPolicies(
+  policies: PolicyPayload[],
+  vpnInterface: string,
+  iptablesCommand: 'iptables' | 'iptables-legacy',
+) {
   try {
     // Clean up legacy dynamic hook/chain from older installs.
-    await execFirewall(`iptables -D FORWARD -i ${vpnInterface} -j ${IPTABLES_LEGACY_POLICY_CHAIN}`, 'iptables').catch(() => {})
-    await execFirewall(`iptables -F ${IPTABLES_LEGACY_POLICY_CHAIN}`, 'iptables').catch(() => {})
-    await execFirewall(`iptables -X ${IPTABLES_LEGACY_POLICY_CHAIN}`, 'iptables').catch(() => {})
+    await execFirewall(`${iptablesCommand} -D FORWARD -i ${vpnInterface} -j ${IPTABLES_LEGACY_POLICY_CHAIN}`, 'iptables').catch(() => {})
+    await execFirewall(`${iptablesCommand} -F ${IPTABLES_LEGACY_POLICY_CHAIN}`, 'iptables').catch(() => {})
+    await execFirewall(`${iptablesCommand} -X ${IPTABLES_LEGACY_POLICY_CHAIN}`, 'iptables').catch(() => {})
 
     // 1. Ensure custom chain exists
-    await execFirewall(`iptables -N ${IPTABLES_POLICY_CHAIN}`, 'iptables').catch(() => { /* ignore if already exists */ })
+    await execFirewall(`${iptablesCommand} -N ${IPTABLES_POLICY_CHAIN}`, 'iptables').catch(() => { /* ignore if already exists */ })
 
     // 2. Flush current rules from the custom chain
-    await execFirewall(`iptables -F ${IPTABLES_POLICY_CHAIN}`, 'iptables')
+    await execFirewall(`${iptablesCommand} -F ${IPTABLES_POLICY_CHAIN}`, 'iptables')
 
     // 3. Ensure FORWARD jumps to our custom chain BEFORE default accept
     try {
-      await execAsync(`iptables -C FORWARD -i ${vpnInterface} -j ${IPTABLES_POLICY_CHAIN}`)
+      await execAsync(`${iptablesCommand} -C FORWARD -i ${vpnInterface} -j ${IPTABLES_POLICY_CHAIN}`)
     } catch (checkErr: any) {
       if (checkErr.message?.includes('not found') || checkErr.code === 1) { // code 1 = rule doesn't exist
-        await execFirewall(`iptables -I FORWARD 1 -i ${vpnInterface} -j ${IPTABLES_POLICY_CHAIN}`, 'iptables')
+        await execFirewall(`${iptablesCommand} -I FORWARD 1 -i ${vpnInterface} -j ${IPTABLES_POLICY_CHAIN}`, 'iptables')
         console.log(`[firewall] Hooked ${IPTABLES_POLICY_CHAIN} into FORWARD chain for interface ${vpnInterface}.`)
       } else if (!checkErr.message?.includes('not found')) {
          throw checkErr
@@ -180,7 +198,7 @@ async function applyIptablesPolicies(policies: PolicyPayload[], vpnInterface: st
     // 4. Apply policies ordered by priority (DB already sorts it, so we append them in sequence)
     for (const p of policies) {
       try {
-        let rule = `iptables -A ${IPTABLES_POLICY_CHAIN}`
+        let rule = `${iptablesCommand} -A ${IPTABLES_POLICY_CHAIN}`
 
         // Source IP / Subnet
         if (p.user_id) {
@@ -224,11 +242,11 @@ async function applyIptablesPolicies(policies: PolicyPayload[], vpnInterface: st
     }
 
     // Default action: if it passes all above rules, RETURN to FORWARD chain
-    await execFirewall(`iptables -A ${IPTABLES_POLICY_CHAIN} -j RETURN`, 'iptables')
+    await execFirewall(`${iptablesCommand} -A ${IPTABLES_POLICY_CHAIN} -j RETURN`, 'iptables')
 
     console.log(`[firewall] Successfully applied ${appliedCount}/${policies.length} rules.`)
     
-    return { success: true, count: appliedCount }
+    return { success: true, count: appliedCount, backend: iptablesCommand }
   } catch (error: any) {
     console.error(`[firewall] Critical error applying policies:`, error.message)
     throw error
@@ -346,7 +364,7 @@ async function applyFirewalldPolicies(policies: PolicyPayload[], _vpnInterface: 
 
       if (p.protocol !== 'all') {
         if (p.target_port && ['tcp', 'udp'].includes(p.protocol)) {
-          richRule += ` ${p.protocol} port port=${p.target_port}`
+          richRule += ` port port=${p.target_port} protocol=${p.protocol}`
         }
       }
 
