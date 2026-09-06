@@ -26,10 +26,10 @@ git push origin v1.0.0
 
 Automatically builds and pushes both images with version tags.
 
-**3. Pull requests and beta branch changes**
+**3. Changes merged or pushed to main**
 
-- CI runs for pull requests targeting `main` and pushes to `beta`.
-- A merge into `main` does not run CI again because the pull request is the required validation point.
+- CI runs only when commits are pushed to `main`, including commits created by merging a pull request into `main`.
+- CI does not run when a pull request is opened or updated before it is merged.
 - Version tags run the separate Release workflow, including a fresh test pass before publishing images.
 
 ## GitHub Pages

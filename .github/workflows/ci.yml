@@ -3,7 +3,7 @@ name: CI
 on:
   push:
     branches:
-      - beta
+      - main
     paths:
       - 'apps/api/**'
       - 'apps/web/**'
@@ -12,10 +12,6 @@ on:
       - 'Dockerfile'
       - 'apps/agent/Dockerfile'
       - '.github/workflows/**'
-  pull_request:
-    branches:
-      - main
-
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   REGISTRY: ghcr.io
