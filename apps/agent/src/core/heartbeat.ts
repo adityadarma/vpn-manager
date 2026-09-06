@@ -48,15 +48,27 @@ export function startHeartbeat(env: AgentEnv, driver: VpnDriver): void {
         const { exec } = await import('node:child_process')
         const { promisify } = await import('node:util')
         const execAsync = promisify(exec)
+
+        const getIptablesCommand = async () => {
+          const vpnInterface = env.VPN_TYPE === 'wireguard' ? 'wg+' : 'tun+'
+          try {
+            const { stdout } = await execAsync('iptables-legacy -S FORWARD')
+            if (stdout.includes(`-i ${vpnInterface}`)) return 'iptables-legacy'
+          } catch {
+            // nft-only nodes do not provide the legacy executable.
+          }
+          return 'iptables'
+        }
         
         const getFirewallRules = async () => {
           if (env.FIREWALL_ENGINE === 'none') return ''
           
           if (['iptables', 'ufw', 'firewalld'].includes(env.FIREWALL_ENGINE)) {
+            const iptables = await getIptablesCommand()
             try {
-              return (await execAsync(`iptables -S ${IPTABLES_POLICY_CHAIN}`)).stdout
+              return (await execAsync(`${iptables} -S ${IPTABLES_POLICY_CHAIN}`)).stdout
             } catch {
-              return (await execAsync(`iptables -S ${IPTABLES_LEGACY_POLICY_CHAIN}`)).stdout
+              return (await execAsync(`${iptables} -S ${IPTABLES_LEGACY_POLICY_CHAIN}`)).stdout
             }
           } 
           if (env.FIREWALL_ENGINE === 'nftables') {
@@ -73,8 +85,9 @@ export function startHeartbeat(env: AgentEnv, driver: VpnDriver): void {
           }
 
           // Fallback to 'auto' mode
-          try { return (await execAsync(`iptables -S ${IPTABLES_POLICY_CHAIN}`)).stdout } catch {}
-          try { return (await execAsync(`iptables -S ${IPTABLES_LEGACY_POLICY_CHAIN}`)).stdout } catch {}
+          const iptables = await getIptablesCommand()
+          try { return (await execAsync(`${iptables} -S ${IPTABLES_POLICY_CHAIN}`)).stdout } catch {}
+          try { return (await execAsync(`${iptables} -S ${IPTABLES_LEGACY_POLICY_CHAIN}`)).stdout } catch {}
           try { return (await execAsync(`nft list chain inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_POLICY_CHAIN}`)).stdout } catch {}
           try { return (await execAsync('nft list chain inet filter VPN_FWWD')).stdout } catch {}
           return ''
