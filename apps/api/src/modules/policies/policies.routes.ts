@@ -117,7 +117,7 @@ const policyRoutes: FastifyPluginAsync = async (app) => {
  * @param affectedNodeId - when set, only that node receives the task (node-specific policy).
  *                         Pass null/undefined for global policies → all online nodes get a task.
  */
-async function enqueueApplyPolicies(app: any, affectedNodeId?: string | null) {
+export async function enqueueApplyPolicies(app: any, affectedNodeId?: string | null) {
   // Fetch fully resolved policies (joining users and groups to get VPN IPs/Subnets)
   const policies = await app.db('vpn_policies as p')
     .leftJoin('users as u', 'p.user_id', 'u.id')

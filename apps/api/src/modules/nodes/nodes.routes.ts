@@ -600,6 +600,10 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
                   bytes_received: client.bytesReceived,
                   last_activity_at: new Date(),
                 })
+                await app.db('users')
+                  .where({ id: userId })
+                  .whereNull('last_vpn_connect')
+                  .update({ last_vpn_connect: new Date(client.connectedSince) })
               } else {
               app.log.info(`[heartbeat] Creating new session for user ${userId} via WireGuard heartbeat`)
               
@@ -742,6 +746,10 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
                 bytes_received: client.bytesReceived ?? concurrentSession.bytes_received,
                 last_activity_at: new Date(),
               })
+              await app.db('users')
+                .where({ id: user.id })
+                .whereNull('last_vpn_connect')
+                .update({ last_vpn_connect: client.connectedSince ? new Date(client.connectedSince) : new Date() })
             } else {
               app.log.info(`[heartbeat] Creating OpenVPN session for ${username} (${client.virtualAddress})`)
               
@@ -772,6 +780,9 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
                 geo_city: geoCity,
                 geo_country: geoCountry,
               })
+              await app.db('users').where({ id: user.id }).update({
+                last_vpn_connect: client.connectedSince ? new Date(client.connectedSince) : new Date(),
+              })
               await logAudit(app, {
                 userId: user.id,
                 username,
@@ -789,6 +800,10 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
               bytes_received: client.bytesReceived ?? existingSession.bytes_received,
               last_activity_at: new Date(),
             })
+            await app.db('users')
+              .where({ id: user.id })
+              .whereNull('last_vpn_connect')
+              .update({ last_vpn_connect: client.connectedSince ? new Date(client.connectedSince) : new Date() })
           }
         }
 

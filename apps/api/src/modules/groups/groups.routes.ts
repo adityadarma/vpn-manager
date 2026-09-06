@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { v7 as uuidv7 } from 'uuid'
 import { nextAvailableIp, getNetmask, parseCidr, cidrsToPushRoutes } from '../../services/ip-pool'
 import { logAudit, getClientIp } from '../../utils/audit'
+import { enqueueApplyPolicies } from '../policies/policies.routes'
 interface Group {
   id: string
   name: string
@@ -133,6 +134,7 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
           updated_at: new Date(),
         })
       const updatedGroup = await app.db('groups').where({ id: request.params.id }).first()
+      if (vpn_subnet !== undefined) await enqueueApplyPolicies(app)
 
       const userObj = request.user as { id: string; username: string }
       await logAudit(app, {
@@ -251,6 +253,8 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
         }
       }
 
+      await enqueueApplyPolicies(app)
+
       const userObj = request.user as { id: string; username: string }
       await logAudit(app, {
         userId: userObj.id,
@@ -302,6 +306,8 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
             app.log.info(`[ip-pool] Queued delete_client_ccd for ${user.username} on ${ccdTasks.length} node(s)`)
           }
         }
+
+        await enqueueApplyPolicies(app)
 
         const userObj = request.user as { id: string; username: string }
         await logAudit(app, {

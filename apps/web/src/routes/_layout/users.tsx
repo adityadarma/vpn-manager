@@ -213,8 +213,8 @@ function UsersPage() {
 
   const getDaysUntilExpiry = (expiresAt: string | null) => {
     if (!expiresAt) return null
-    const days = Math.floor((new Date(expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-    return days
+    const remainingMs = new Date(expiresAt).getTime() - Date.now()
+    return remainingMs > 0 ? Math.ceil(remainingMs / (1000 * 60 * 60 * 24)) : 0
   }
 
   const toggleUser = (userId: string) => {
@@ -1045,8 +1045,9 @@ function UsersPage() {
                                 <span className="text-foreground">
                                   {formatBrowserDateTime(cert.expires_at)}
                                   {(() => {
-                                    const days = Math.floor((new Date(cert.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-                                    if (days < 0) return <span className="text-red-500 ml-1.5 font-medium">(Expired)</span>
+                                    const days = getDaysUntilExpiry(cert.expires_at)
+                                    if (days === null) return null
+                                    if (days === 0) return <span className="text-red-500 ml-1.5 font-medium">(Expired)</span>
                                     if (days < 30) return <span className="text-amber-500 ml-1.5 font-medium">({days} days left)</span>
                                     return null
                                   })()}

@@ -11,5 +11,5 @@ export function formatBrowserDateTime(value: string | number | Date): string {
   }).formatToParts(new Date(value))
 
   const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]))
-  return `${values.day}-${values.month}-${values.year}, ${values.hour}:${values.minute}:${values.second}`
+  return `${values.day}-${values.month}-${values.year} ${values.hour}:${values.minute}:${values.second}`
 }
