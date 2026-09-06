@@ -52,6 +52,7 @@ describe.runIf(hasNetAdmin)('Firewall kernel integration', () => {
 
   it.each(iptablesBackends)('%s accepts valid policy syntax and blocks ICMP explicitly', (iptables) => {
     const chain = `VPN_TEST_${iptables.replace(/[^a-z]/g, '').toUpperCase()}`
+    expect(() => execSync(`ip netns exec ${namespace} ping -c 1 -W 1 198.18.0.1`, { stdio: 'ignore' })).not.toThrow()
     execSync(`${iptables} -N ${chain}`)
     execSync(`${iptables} -I INPUT 1 -i ${serverVeth} -j ${chain}`)
     execSync(`${iptables} -A ${chain} -s 198.18.0.2 -p icmp -j DROP`)
@@ -61,7 +62,7 @@ describe.runIf(hasNetAdmin)('Firewall kernel integration', () => {
     execSync(`${iptables} -D INPUT -i ${serverVeth} -j ${chain}`)
     execSync(`${iptables} -F ${chain}`)
     execSync(`${iptables} -X ${chain}`)
-    expect(() => execSync(`ip netns exec ${namespace} ping -c 1 -W 1 198.18.0.1`, { stdio: 'ignore' })).not.toThrow()
+    expect(() => execSync(`${iptables} -S ${chain}`, { stdio: 'ignore' })).toThrow()
   })
 
   it.runIf(hasNftables)('nftables accepts valid policy syntax and blocks an ICMP source explicitly', () => {
