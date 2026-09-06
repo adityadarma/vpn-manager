@@ -122,6 +122,8 @@ jobs:
             echo "image_name=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.AGENT_IMAGE }}" >> "$GITHUB_OUTPUT"
             echo "dockerfile=apps/agent/Dockerfile" >> "$GITHUB_OUTPUT"
           fi
+          echo "version=$(jq -r .version package.json)" >> "$GITHUB_OUTPUT"
+          echo "revision=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
       # `load: true` puts the image in this runner's local Docker for smoke
       # testing. CI never publishes unversioned commit/SHA images to GHCR.
@@ -138,6 +140,8 @@ jobs:
           platforms: linux/amd64
           build-args: |
             BUILDKIT_INLINE_CACHE=1
+            VERSION=${{ steps.image-config.outputs.version }}
+            REVISION=${{ steps.image-config.outputs.revision }}
 
       # No physical VPN server or manager exists on this runner — that is the
       # point. It proves the container starts and, for the agent, that it

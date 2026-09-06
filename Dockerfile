@@ -75,6 +75,12 @@ FROM builder AS test
 FROM node:24-alpine AS runner
 WORKDIR /app
 
+ARG VERSION=dev
+ARG REVISION=unknown
+LABEL org.opencontainers.image.title="vpn-manager" \
+  org.opencontainers.image.version="$VERSION" \
+  org.opencontainers.image.revision="$REVISION"
+
 # Install runtime dependencies
 RUN apk add --no-cache curl wget bash
 RUN npm install -g tsx

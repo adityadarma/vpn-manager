@@ -6,6 +6,7 @@ import { nextAvailableIp, getNetmask, cidrToRoute, cidrsToPushRoutes } from '../
 import { assignVpnIpAtomic } from '../../services/ip-assignment'
 import { logAudit, getClientIp } from '../../utils/audit'
 import { stripTaskPayloadSecrets } from '../../utils/task-payload'
+import { enqueueApplyPolicies } from '../policies/policies.routes'
 
 const userRoutes: FastifyPluginAsync = async (app) => {
   const dbClient = String(app.db.client.config.client || '')
@@ -14,6 +15,29 @@ const userRoutes: FastifyPluginAsync = async (app) => {
     : dbClient.includes('mysql')
       ? app.db.raw("GROUP_CONCAT(g.name SEPARATOR ',') as current_groups")
       : app.db.raw('GROUP_CONCAT(g.name) as current_groups')
+
+  async function revokeCertificateOnNode(nodeId: string, username: string, clientCert: string): Promise<string | null> {
+    const taskId = uuidv7()
+    await app.db('tasks').insert({
+      id: taskId,
+      node_id: nodeId,
+      action: 'revoke_vpn_user',
+      payload: JSON.stringify({ username, client_cert: clientCert }),
+      status: 'pending',
+      created_at: new Date(),
+    })
+
+    const deadline = Date.now() + 30_000
+    while (Date.now() < deadline) {
+      const task = await app.db('tasks').where({ id: taskId }).first()
+      if (!task) return 'Revocation task disappeared unexpectedly'
+      if (task.status === 'done') return null
+      if (task.status === 'failed') return task.error_message || 'Node failed to revoke the existing credential'
+      await new Promise(resolve => setTimeout(resolve, 500))
+    }
+
+    return 'Timed out waiting for the node to revoke the existing credential'
+  }
 
   // GET /api/v1/users
   app.get(
@@ -244,6 +268,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       }
 
       await app.db('users').where({ id }).update(updates)
+      if (vpnGroupId !== undefined) await enqueueApplyPolicies(app)
       
       const userObj = request.user as { id: string; username: string }
       await logAudit(app, {
@@ -341,8 +366,15 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         .where({ user_id: id, node_id: nodeId })
         .first()
 
-      // If exists and not revoked, add to revocation list
+      // Revoke the old credential on the node before issuing a replacement.
       if (existingCert && !existingCert.is_revoked && existingCert.client_cert) {
+        const revokeError = await revokeCertificateOnNode(nodeId, user.username, existingCert.client_cert)
+        if (revokeError) {
+          return reply.status(502).send({
+            error: 'Certificate rotation failed',
+            message: `Existing credential was not revoked: ${revokeError}`,
+          })
+        }
         try {
           await app.db('cert_revocations').insert({
             id: uuidv7(),
@@ -355,7 +387,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
           })
         } catch (err: any) {
           const errMsg = err.message || 'Unknown error';
-          console.error('Failed to add to revocation list:', errMsg.includes('Certificate:') ? errMsg.split('Certificate:')[0] + '[CERTIFICATE REDACTED]' : errMsg);
+          app.log.error(`Failed to record certificate revocation: ${errMsg.includes('Certificate:') ? errMsg.split('Certificate:')[0] + '[CERTIFICATE REDACTED]' : errMsg}`)
         }
       }
 
@@ -558,8 +590,13 @@ const userRoutes: FastifyPluginAsync = async (app) => {
             .where({ user_id: userId, node_id: nodeId })
             .first()
 
-          // Revoke existing certificate
+          // Revoke the old credential on the node before issuing a replacement.
           if (existingCert && !existingCert.is_revoked && existingCert.client_cert) {
+            const revokeError = await revokeCertificateOnNode(nodeId, user.username, existingCert.client_cert)
+            if (revokeError) {
+              results.failed.push({ userId, error: `Existing credential was not revoked: ${revokeError}` })
+              continue
+            }
             try {
               // Verify node exists before inserting
               const nodeExists = await app.db('vpn_nodes').where({ id: nodeId }).first()
@@ -820,7 +857,25 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(400).send({ error: 'Bad Request', message: 'Certificate already revoked' })
       }
 
-      // Add to revocation list
+      if (!certificate.client_cert) {
+        return reply.status(409).send({
+          error: 'Certificate revocation failed',
+          message: 'Certificate has no credential to revoke on the node',
+        })
+      }
+
+      const user = await app.db('users').where({ id }).first()
+      if (!user) return reply.status(404).send({ error: 'Not Found', message: 'User not found' })
+
+      const revokeError = await revokeCertificateOnNode(certificate.node_id, user.username, certificate.client_cert)
+      if (revokeError) {
+        return reply.status(502).send({
+          error: 'Certificate revocation failed',
+          message: `Credential was not revoked on the node: ${revokeError}`,
+        })
+      }
+
+      // Record the revocation only after the node has removed the credential.
       if (certificate.client_cert) {
         try {
           await app.db('cert_revocations').insert({
@@ -833,7 +888,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
             revoked_at: new Date()
           })
         } catch (err: any) {
-          console.error('Failed to add to revocation list:', err.message)
+          app.log.error(`Failed to record certificate revocation: ${err.message}`)
         }
       }
 

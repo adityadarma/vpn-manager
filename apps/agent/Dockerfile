@@ -39,6 +39,12 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
 FROM node:24-alpine AS runner
 WORKDIR /app
 
+ARG VERSION=dev
+ARG REVISION=unknown
+LABEL org.opencontainers.image.title="vpn-agent" \
+  org.opencontainers.image.version="$VERSION" \
+  org.opencontainers.image.revision="$REVISION"
+
 # Install OpenSSL, Easy-RSA, WireGuard tools, and firewall engines
 RUN apk add --no-cache bash openssl easy-rsa wireguard-tools iptables ip6tables nftables iproute2
 
