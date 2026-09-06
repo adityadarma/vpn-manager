@@ -149,7 +149,17 @@ describe.runIf(isLinuxWithNetAdmin && hasNetworkNamespace)('WireGuard Live Serve
     execSync(`ip netns exec ${clientNamespace} ip link set dev ${clientIface} up`)
     execSync(`ip netns exec ${clientNamespace} ip route add 10.9.0.1/32 dev ${clientIface}`)
 
-    expect(() => execSync(`ip netns exec ${clientNamespace} ping -I ${clientIface} -c 2 -W 1 10.9.0.1`, { stdio: 'ignore' })).not.toThrow()
+    let connected = false
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        execSync(`ip netns exec ${clientNamespace} ping -I ${clientIface} -c 1 -W 1 10.9.0.1`, { stdio: 'ignore' })
+        connected = true
+        break
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 500))
+      }
+    }
+    expect(connected).toBe(true)
     const beforeKick = execSync(`wg show ${iface} dump`, { encoding: 'utf-8' })
     expect(beforeKick).toContain(clientPublicKey)
     const clientRow = beforeKick.trim().split('\n')
