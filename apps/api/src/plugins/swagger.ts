@@ -18,7 +18,7 @@ export default fp(async (app, options: SwaggerPluginOptions) => {
         // Keep in sync with package.json on release. Not imported from there
         // because the API ships as a bundled dist where package.json is not a
         // reliable relative path.
-        version: '1.1.4',
+        version: '1.1.5',
       },
       tags: [
         { name: 'auth', description: 'Authentication' },
