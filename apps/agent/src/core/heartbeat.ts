@@ -9,6 +9,7 @@ const NFTABLES_POLICY_CHAIN = 'VPN_POLICY_FWWD'
 
 export function startHeartbeat(env: AgentEnv, driver: VpnDriver): void {
   console.log(`💓 Heartbeat started (interval: ${env.AGENT_HEARTBEAT_INTERVAL_MS}ms)`)
+  let startup = true
 
   const beat = async () => {
     try {
@@ -110,6 +111,7 @@ export function startHeartbeat(env: AgentEnv, driver: VpnDriver): void {
           taKey,
           firewallRules,
           firewallEngine: env.FIREWALL_ENGINE,
+          startup,
           clients,
           metrics,
           serverInfo,
@@ -118,6 +120,8 @@ export function startHeartbeat(env: AgentEnv, driver: VpnDriver): void {
 
       if (!res.ok) {
         console.warn(`[heartbeat] HTTP ${res.status}`)
+      } else {
+        startup = false
       }
     } catch (err) {
       console.error('[heartbeat] Error:', (err as Error).message)

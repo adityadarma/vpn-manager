@@ -68,6 +68,22 @@ describe('Nodes API', () => {
     expect(res.statusCode).toBe(200)
   })
 
+  it('queues a policy sync when an agent starts', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/nodes/heartbeat',
+      headers: { Authorization: `Bearer ${nodeToken}` },
+      payload: { nodeId, startup: true },
+    })
+
+    expect(res.statusCode).toBe(200)
+    const task = await app.db('tasks')
+      .where({ node_id: nodeId, action: 'apply_network_policy' })
+      .orderBy('created_at', 'desc')
+      .first()
+    expect(task).toBeDefined()
+  })
+
   describe('PUT /nodes/:id/config validation', () => {
     // What the web UI actually submits (see apps/web/.../nodes.tsx initial state).
     const validConfig = {
