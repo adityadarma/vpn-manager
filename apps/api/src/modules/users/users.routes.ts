@@ -8,6 +8,20 @@ import { logAudit, getClientIp } from '../../utils/audit'
 import { stripTaskPayloadSecrets } from '../../utils/task-payload'
 import { enqueueApplyPolicies } from '../policies/policies.routes'
 
+function getCertificateExpiry(
+  vpnType: string,
+  validDays: number | null | undefined,
+  issuedAt: Date,
+  driverExpiresAt: string | null | undefined,
+): Date | null {
+  if (vpnType !== 'wireguard') return driverExpiresAt ? new Date(driverExpiresAt) : null
+  if (validDays === null || validDays === undefined || validDays === 0) return null
+
+  const expiresAt = new Date(issuedAt)
+  expiresAt.setDate(expiresAt.getDate() + validDays)
+  return expiresAt
+}
+
 const userRoutes: FastifyPluginAsync = async (app) => {
   const dbClient = String(app.db.client.config.client || '')
   const groupConcatExpr = dbClient.includes('pg')
@@ -424,6 +438,8 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         
         if (task.status === 'done') {
           const result = JSON.parse(task.result || '{}')
+          const issuedAt = new Date()
+          const expiresAt = getCertificateExpiry(node.vpn_type, validDays, issuedAt, result.expiresAt)
           
           // Save or update certificate in user_node_certificates table
           if (existingCert) {
@@ -433,8 +449,8 @@ const userRoutes: FastifyPluginAsync = async (app) => {
                 client_cert: result.clientCert,
                 client_key: result.clientKey,
                 password_protected: result.passwordProtected,
-                generated_at: new Date(),
-                expires_at: result.expiresAt ? new Date(result.expiresAt) : null,
+                generated_at: issuedAt,
+                expires_at: expiresAt,
                 is_revoked: false,
                 revoked_at: null,
                 revoked_by: null,
@@ -450,8 +466,8 @@ const userRoutes: FastifyPluginAsync = async (app) => {
               client_cert: result.clientCert,
               client_key: result.clientKey,
               password_protected: result.passwordProtected,
-              generated_at: new Date(),
-              expires_at: result.expiresAt ? new Date(result.expiresAt) : null,
+                generated_at: issuedAt,
+                expires_at: expiresAt,
               is_revoked: false,
               created_at: new Date(),
               updated_at: new Date()
@@ -471,7 +487,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
 
           return reply.send({
             message: 'Certificate generated successfully',
-            expiresAt: result.expiresAt,
+            expiresAt: expiresAt?.toISOString() ?? null,
             passwordProtected: result.passwordProtected
           })
         }
@@ -505,7 +521,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
   )
 
   // POST /api/v1/users/bulk-generate-cert
-  app.post<{ Body: { userIds: string[]; nodeId: string; password?: string; passwordProtected?: boolean; validDays?: number } }>(
+  app.post<{ Body: { userIds: string[]; nodeId: string; password?: string; passwordProtected?: boolean; validDays?: number | null } }>(
     '/users/bulk-generate-cert',
     {
       onRequest: [app.authenticate],
@@ -650,6 +666,8 @@ const userRoutes: FastifyPluginAsync = async (app) => {
             
             if (task.status === 'done') {
               const result = JSON.parse(task.result || '{}')
+              const issuedAt = new Date()
+              const expiresAt = getCertificateExpiry(node.vpn_type, validDays, issuedAt, result.expiresAt)
               
               if (existingCert) {
                 await app.db('user_node_certificates')
@@ -658,8 +676,8 @@ const userRoutes: FastifyPluginAsync = async (app) => {
                     client_cert: result.clientCert,
                     client_key: result.clientKey,
                     password_protected: result.passwordProtected,
-                    generated_at: new Date(),
-                    expires_at: result.expiresAt ? new Date(result.expiresAt) : null,
+                    generated_at: issuedAt,
+                    expires_at: expiresAt,
                     is_revoked: false,
                     revoked_at: null,
                     revoked_by: null,
@@ -675,8 +693,8 @@ const userRoutes: FastifyPluginAsync = async (app) => {
                   client_cert: result.clientCert,
                   client_key: result.clientKey,
                   password_protected: result.passwordProtected,
-                  generated_at: new Date(),
-                  expires_at: result.expiresAt ? new Date(result.expiresAt) : null,
+                  generated_at: issuedAt,
+                  expires_at: expiresAt,
                   is_revoked: false,
                   created_at: new Date(),
                   updated_at: new Date()

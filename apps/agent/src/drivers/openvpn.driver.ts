@@ -788,11 +788,17 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
 
     const clientCert = readFileSync(certPath, 'utf-8')
     const clientKey  = readFileSync(keyPath, 'utf-8')
-    const expiresAt  = certValidDays === 36500 ? null : (() => {
-      const d = new Date()
-      d.setDate(d.getDate() + certValidDays)
-      return d.toISOString()
-    })()
+    let expiresAt: string | null = null
+    if (certValidDays !== 36500) {
+      const endDate = execFileSync('openssl', ['x509', '-noout', '-enddate', '-in', certPath], {
+        encoding: 'utf-8',
+      }).trim()
+      const expiresAtMs = Date.parse(endDate.replace(/^notAfter=/, ''))
+      if (Number.isNaN(expiresAtMs)) {
+        throw new Error(`Unable to read certificate expiry: ${endDate}`)
+      }
+      expiresAt = new Date(expiresAtMs).toISOString()
+    }
 
     console.log(`[openvpn] Client certificate generated for ${username}`)
     return { clientCert, clientKey, passwordProtected: !!password, expiresAt }
