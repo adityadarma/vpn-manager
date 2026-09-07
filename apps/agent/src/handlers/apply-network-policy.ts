@@ -5,6 +5,7 @@ import type { VpnDriver } from '../drivers'
 const execAsync = promisify(exec)
 
 const IPTABLES_POLICY_CHAIN = 'VPN_POLICY_FWWD'
+const IPTABLES_PREROUTING_POLICY_CHAIN = 'VPN_POLICY_PRE'
 const IPTABLES_LEGACY_POLICY_CHAIN = 'VPN_FWWD'
 const NFTABLES_FILTER_TABLE = 'vpn_manager_filter'
 const NFTABLES_FORWARD_CHAIN = 'FORWARD'
@@ -184,6 +185,20 @@ async function applyIptablesPolicies(
     // 2. Flush current rules from the custom chain
     await execFirewall(`${iptablesCommand} -F ${IPTABLES_POLICY_CHAIN}`, 'iptables')
 
+    // Docker DNATs published ports before filter INPUT/FORWARD. Apply the same
+    // policy in mangle PREROUTING so a deny still matches the original host IP.
+    await execFirewall(`${iptablesCommand} -t mangle -N ${IPTABLES_PREROUTING_POLICY_CHAIN}`, 'iptables').catch(() => {})
+    await execFirewall(`${iptablesCommand} -t mangle -F ${IPTABLES_PREROUTING_POLICY_CHAIN}`, 'iptables')
+    try {
+      await execAsync(`${iptablesCommand} -t mangle -C PREROUTING -i ${vpnInterface} -j ${IPTABLES_PREROUTING_POLICY_CHAIN}`)
+    } catch (checkErr: any) {
+      if (checkErr.message?.includes('not found') || checkErr.code === 1) {
+        await execFirewall(`${iptablesCommand} -t mangle -I PREROUTING 1 -i ${vpnInterface} -j ${IPTABLES_PREROUTING_POLICY_CHAIN}`, 'iptables')
+      } else if (!checkErr.message?.includes('not found')) {
+        throw checkErr
+      }
+    }
+
     // 3. Filter traffic to both routed targets (FORWARD) and services hosted on
     // the VPN node itself (INPUT). A VPN client reaching the node's private IP
     // does not traverse FORWARD.
@@ -242,6 +257,16 @@ async function applyIptablesPolicies(
 
         // Execute rule
         await execFirewall(rule, 'iptables')
+
+        // Only deny rules need pre-DNAT enforcement. An allow is evaluated in
+        // the filter chain after routing and must not hide later deny rules.
+        if (action === 'DROP') {
+          const preroutingRule = rule.replace(
+            `${iptablesCommand} -A ${IPTABLES_POLICY_CHAIN}`,
+            `${iptablesCommand} -t mangle -A ${IPTABLES_PREROUTING_POLICY_CHAIN}`,
+          )
+          await execFirewall(preroutingRule, 'iptables')
+        }
         appliedCount++
       } catch (err: any) {
         console.error(`[firewall] Failed to apply rule ${p.id}: ${err.message}`)
@@ -250,6 +275,7 @@ async function applyIptablesPolicies(
 
     // Default action: if it passes all above rules, RETURN to FORWARD chain
     await execFirewall(`${iptablesCommand} -A ${IPTABLES_POLICY_CHAIN} -j RETURN`, 'iptables')
+    await execFirewall(`${iptablesCommand} -t mangle -A ${IPTABLES_PREROUTING_POLICY_CHAIN} -j RETURN`, 'iptables')
 
     console.log(`[firewall] Successfully applied ${appliedCount}/${policies.length} rules.`)
     

@@ -25,6 +25,12 @@ For WireGuard, use `VPN_TYPE=wireguard`. The optional `VPN_SUBNET=10.8.1.0/24` r
 
 The script creates `/opt/vpn-agent/.env`, registers the node at `/api/v1/nodes/register`, receives the Node ID and secret token, then starts the `vpn-agent` container. Once credentials exist, rerunning the script updates the image without overwriting the registered Agent configuration.
 
+The base `/opt/vpn-agent/docker-compose.yml` remains generic. The installer writes host-specific mounts to `/opt/vpn-agent/docker-compose.override.yml`, which Docker Compose loads automatically:
+
+- OpenVPN: `/etc/openvpn`, `/run/openvpn`, and read-only `/var/log/openvpn`.
+- WireGuard: `/etc/wireguard`.
+- firewalld: `/run/dbus/system_bus_socket` so `firewall-cmd` in the Agent can communicate with the host daemon.
+
 ## Firewall and forwarding
 
 The script detects the active firewall and offers `iptables`, `nftables`, `ufw`, `firewalld`, or `none`. Keep the firewall already active on the host unless you understand the consequences of conflicting rules.
@@ -46,7 +52,7 @@ AGENT_POLL_INTERVAL_MS=5000
 AGENT_HEARTBEAT_INTERVAL_MS=30000
 ```
 
-Copy `docker-compose.agent.yml` to `/opt/vpn-agent/docker-compose.yml`. OpenVPN requires bind mounts for `/etc/openvpn`, `/run/openvpn`, and `/var/log/openvpn`; WireGuard requires `/etc/wireguard`. Run `docker compose up -d` from that directory.
+Copy `docker-compose.agent.yml` to `/opt/vpn-agent/docker-compose.yml`, then create `/opt/vpn-agent/docker-compose.override.yml` for the host-specific mounts above. When `FIREWALL_ENGINE=firewalld`, also mount `/run/dbus/system_bus_socket` into the Agent. Run `docker compose up -d` from that directory.
 
 ## Verify the node
 

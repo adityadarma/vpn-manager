@@ -66,7 +66,7 @@ describe.runIf(hasNetAdmin)('Firewall kernel integration', () => {
   })
 
   it.each(iptablesBackends)('%s blocks a VPN client from a service on the node itself', (iptables) => {
-    const chain = `VPN_TEST_INPUT_${iptables.replace(/[^a-z]/g, '').toUpperCase()}`
+    const chain = `VPN_IN_${iptables === 'iptables' ? 'IPT' : iptables === 'iptables-nft' ? 'NFT' : 'LEG'}`
     execSync(`${iptables} -N ${chain}`)
     execSync(`${iptables} -I INPUT 1 -i ${serverVeth} -j ${chain}`)
     execSync(`${iptables} -A ${chain} -s 198.18.0.2 -p icmp -j DROP`)
