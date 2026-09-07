@@ -81,6 +81,6 @@ describe.runIf(hasFirewalld)('firewalld policy integration', () => {
 
     expect(result).toMatchObject({ success: true, count: 1 })
     expect(() => execSync(`firewall-cmd --permanent --query-rich-rule='${richRule}'`, { stdio: 'ignore' })).not.toThrow()
-    expect(execSync(`firewall-cmd --permanent --direct --get-all-rules ipv4 mangle ${preroutingChain}`, { encoding: 'utf8' })).toContain('--dport 3306 -j DROP')
+    expect(execSync('firewall-cmd --permanent --direct --get-all-rules', { encoding: 'utf8' })).toContain(`ipv4 mangle ${preroutingChain} 0 -s 198.18.0.2/32 -d 198.18.0.10/32 -p tcp --dport 3306 -j DROP`)
   })
 })
