@@ -13,6 +13,8 @@ export async function checkAndRenewCertificates(db: Knex): Promise<RenewalResult
   const results: RenewalResult[] = []
 
   try {
+    await revokeExpiredWireGuardPeers(db)
+
     // Find certificates expiring soon (within 30 days)
     const now = new Date()
     const thirtyDaysFromNow = new Date()
@@ -26,6 +28,7 @@ export async function checkAndRenewCertificates(db: Knex): Promise<RenewalResult
       .where('user_node_certificates.expires_at', '>', now.toISOString())
       .where('user_node_certificates.expires_at', '<=', thirtyDaysFromNow.toISOString())
       .where('vpn_nodes.status', 'online')
+      .whereNot('vpn_nodes.vpn_type', 'wireguard')
       .select(
         'user_node_certificates.id as cert_id',
         'user_node_certificates.user_id',
@@ -155,15 +158,57 @@ export async function checkAndRenewCertificates(db: Knex): Promise<RenewalResult
   return results
 }
 
-// Run renewal check every hour
+async function revokeExpiredWireGuardPeers(db: Knex): Promise<void> {
+  const expired = await db('user_node_certificates as c')
+    .join('users as u', 'c.user_id', 'u.id')
+    .join('vpn_nodes as n', 'c.node_id', 'n.id')
+    .where({ 'c.is_revoked': false, 'n.vpn_type': 'wireguard', 'n.status': 'online' })
+    .whereNotNull('c.expires_at')
+    .where('c.expires_at', '<=', new Date())
+    .select('c.id', 'c.user_id', 'c.node_id', 'c.client_cert', 'u.username')
+
+  for (const cert of expired) {
+    if (!cert.client_cert) continue
+    const taskId = uuidv7()
+    await db('tasks').insert({
+      id: taskId,
+      node_id: cert.node_id,
+      action: 'revoke_vpn_user',
+      payload: JSON.stringify({ username: cert.username, client_cert: cert.client_cert }),
+      status: 'pending',
+      created_at: new Date(),
+    })
+
+    const deadline = Date.now() + 30_000
+    while (Date.now() < deadline) {
+      const task = await db('tasks').where({ id: taskId }).first()
+      if (task?.status === 'done') {
+        await db('user_node_certificates').where({ id: cert.id }).update({
+          is_revoked: true,
+          revoked_at: new Date(),
+          revoke_reason: 'Expired WireGuard key',
+          updated_at: new Date(),
+        })
+        break
+      }
+      if (task?.status === 'failed') {
+        console.error(`[cert-expiry] Failed to revoke expired WireGuard peer for ${cert.username}: ${task.error_message || 'unknown error'}`)
+        break
+      }
+      await new Promise(resolve => setTimeout(resolve, 500))
+    }
+  }
+}
+
+// Check expiry every minute so expired WireGuard peers are removed promptly.
 export function startCertRenewalScheduler(db: Knex) {
   console.log('[cert-renewal] Starting certificate renewal scheduler')
   
   // Run immediately on start
   checkAndRenewCertificates(db).catch(console.error)
   
-  // Then run every hour
+  // Then run every minute.
   setInterval(() => {
     checkAndRenewCertificates(db).catch(console.error)
-  }, 60 * 60 * 1000) // 1 hour
+  }, 60 * 1000)
 }

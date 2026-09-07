@@ -11,6 +11,8 @@ const NFTABLES_FILTER_TABLE = 'vpn_manager_filter'
 const NFTABLES_FORWARD_CHAIN = 'FORWARD'
 const NFTABLES_INPUT_CHAIN = 'INPUT'
 const NFTABLES_POLICY_CHAIN = 'VPN_POLICY_FWWD'
+const NFTABLES_PREROUTING_CHAIN = 'PREROUTING'
+const NFTABLES_PREROUTING_POLICY_CHAIN = 'VPN_POLICY_PRE'
 
 async function execFirewall(cmd: string, engine: 'iptables' | 'nftables' | 'firewalld' | 'ufw') {
   try {
@@ -299,8 +301,11 @@ async function applyNftablesPolicies(policies: PolicyPayload[], vpnInterface: st
     // Ensure base FORWARD and INPUT hook chains exist (idempotent if present).
     await execFirewall(`nft add chain inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_FORWARD_CHAIN} { type filter hook forward priority 0 \\; policy accept \\; }`, 'nftables').catch(() => {})
     await execFirewall(`nft add chain inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_INPUT_CHAIN} { type filter hook input priority 0 \\; policy accept \\; }`, 'nftables').catch(() => {})
+    await execFirewall(`nft add chain inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_PREROUTING_CHAIN} { type filter hook prerouting priority mangle \\; policy accept \\; }`, 'nftables').catch(() => {})
     await execFirewall(`nft add chain inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_POLICY_CHAIN}`, 'nftables').catch(() => {})
+    await execFirewall(`nft add chain inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_PREROUTING_POLICY_CHAIN}`, 'nftables').catch(() => {})
     await execFirewall(`nft flush chain inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_POLICY_CHAIN}`, 'nftables').catch(() => {})
+    await execFirewall(`nft flush chain inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_PREROUTING_POLICY_CHAIN}`, 'nftables').catch(() => {})
 
     // 2. Filter both routed targets and services hosted on the VPN node itself.
     for (const chain of [NFTABLES_FORWARD_CHAIN, NFTABLES_INPUT_CHAIN]) {
@@ -314,6 +319,11 @@ async function applyNftablesPolicies(policies: PolicyPayload[], vpnInterface: st
           throw new Error(`nftables hook insertion failed for ${chain} on interface matcher ${vpnInterface}`)
         }
       }
+    }
+
+    const preRoutingHook = await execAsync(`nft list chain inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_PREROUTING_CHAIN}`).catch(() => ({ stdout: '' }))
+    if (!preRoutingHook.stdout?.includes(NFTABLES_PREROUTING_POLICY_CHAIN)) {
+      await execFirewall(`nft add rule inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_PREROUTING_CHAIN} iifname "${vpnInterface}" jump ${NFTABLES_PREROUTING_POLICY_CHAIN}`, 'nftables')
     }
 
     let appliedCount = 0
@@ -349,6 +359,13 @@ async function applyNftablesPolicies(policies: PolicyPayload[], vpnInterface: st
         rule += ` ${action}`
 
         await execFirewall(rule, 'nftables')
+        if (action === 'drop') {
+          const preroutingRule = rule.replace(
+            `nft add rule inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_POLICY_CHAIN}`,
+            `nft add rule inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_PREROUTING_POLICY_CHAIN}`,
+          )
+          await execFirewall(preroutingRule, 'nftables')
+        }
         appliedCount++
       } catch (err: any) {
         console.error(`[firewall] Failed to apply nftables rule ${p.id}: ${err.message}`)
@@ -361,6 +378,7 @@ async function applyNftablesPolicies(policies: PolicyPayload[], vpnInterface: st
     }
 
     await execFirewall(`nft add rule inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_POLICY_CHAIN} return`, 'nftables').catch(() => {})
+    await execFirewall(`nft add rule inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_PREROUTING_POLICY_CHAIN} return`, 'nftables').catch(() => {})
     console.log(`[firewall] Successfully applied ${appliedCount}/${policies.length} nftables rules.`)
     return { success: true, count: appliedCount }
   } catch (error: any) {
@@ -372,12 +390,18 @@ async function applyNftablesPolicies(policies: PolicyPayload[], vpnInterface: st
   }
 }
 
-async function applyFirewalldPolicies(policies: PolicyPayload[], _vpnInterface: string) {
+async function applyFirewalldPolicies(policies: PolicyPayload[], vpnInterface: string) {
   // firewalld does not support custom chains — policies are applied as rich-rules.
   // Note: unlike iptables/nftables, we cannot flush a single "chain" atomically.
   // The manager should always send the complete desired policy set.
   let appliedCount = 0
   const failedRuleIds: string[] = []
+
+  // Direct mangle rules run before Docker's nat PREROUTING chain. Keep deny
+  // rules here so they match the original host IP and published port.
+  await execFirewall(`firewall-cmd --permanent --direct --add-chain ipv4 mangle ${IPTABLES_PREROUTING_POLICY_CHAIN}`, 'firewalld').catch(() => {})
+  await execFirewall(`firewall-cmd --permanent --direct --remove-rules ipv4 mangle ${IPTABLES_PREROUTING_POLICY_CHAIN}`, 'firewalld').catch(() => {})
+  await execFirewall(`firewall-cmd --permanent --direct --add-rule ipv4 mangle PREROUTING 0 -i ${vpnInterface} -j ${IPTABLES_PREROUTING_POLICY_CHAIN}`, 'firewalld').catch(() => {})
 
   for (const p of policies) {
     try {
@@ -409,6 +433,18 @@ async function applyFirewalldPolicies(policies: PolicyPayload[], _vpnInterface: 
       richRule += ` ${action}`
 
       await execFirewall(`firewall-cmd --permanent --add-rich-rule="${richRule}"`, 'firewalld')
+      if (action === 'drop') {
+        const directArgs = [
+          '-s', p.user_id ? `${p.user_ip}/32` : p.group_id ? p.group_subnet : null,
+          '-d', p.target_network,
+          p.protocol !== 'all' ? '-p' : null,
+          p.protocol !== 'all' ? p.protocol : null,
+          p.target_port && ['tcp', 'udp'].includes(p.protocol) ? '--dport' : null,
+          p.target_port && ['tcp', 'udp'].includes(p.protocol) ? p.target_port : null,
+          '-j', 'DROP',
+        ].filter((value): value is string => value !== null).join(' ')
+        await execFirewall(`firewall-cmd --permanent --direct --add-rule ipv4 mangle ${IPTABLES_PREROUTING_POLICY_CHAIN} 0 ${directArgs}`, 'firewalld')
+      }
       appliedCount++
     } catch (err: any) {
       console.error(`[firewall] Failed to apply firewalld rule ${p.id}: ${err.message}`)

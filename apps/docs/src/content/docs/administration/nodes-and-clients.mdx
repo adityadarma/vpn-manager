@@ -19,7 +19,9 @@ The installer creates `wg0`, host keys, and UDP port `51820`. WireGuard clients 
 
 ## Expiry, revocation, and renewal
 
-Revoke credentials when a device is lost, an account is disabled, or access is no longer needed. The Manager checks credentials expiring within 30 days every hour. For online nodes, it can queue automatic renewal; the old credential is recorded as revoked and renewal waits up to 30 seconds for the Agent task result. Monitor Tasks when renewal fails or times out.
+Revoke credentials when a device is lost, an account is disabled, or access is no longer needed. The Manager checks expiry every minute. OpenVPN certificate expiry is read from the certificate's X.509 `notAfter` value; eligible OpenVPN certificates can be renewed during the 30-day renewal window.
+
+WireGuard keys have no native expiry field. For finite validity selected in the dashboard, the Manager records an application-managed `expires_at` from the issuance timestamp. Once it expires, the Manager queues a `revoke_vpn_user` task to remove the peer from an online node. WireGuard keys are not automatically renewed, because replacing a key requires distributing a new client configuration. Monitor Tasks when expiry revocation fails or the node is offline.
 
 ## Sessions and downloads
 

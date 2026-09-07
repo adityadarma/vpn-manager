@@ -5,6 +5,7 @@ import { HeartbeatSchema, validateTaskPayload } from '@vpn/shared'
 import { logAudit, getClientIp } from '../../utils/audit'
 import { secretsMatchTrimmed } from '../../utils/secret-compare'
 import geoip from 'geoip-lite'
+import { enqueueApplyPolicies } from '../policies/policies.routes'
 
 interface NodeConfig {
   port: number
@@ -529,7 +530,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       const authenticatedNode = await app.authenticateNodeToken(request, reply)
       if (!authenticatedNode) return
 
-      const { nodeId, caCert, taKey, firewallRules, firewallEngine, clients } = HeartbeatSchema.parse(request.body)
+      const { nodeId, caCert, taKey, firewallRules, firewallEngine, clients, startup } = HeartbeatSchema.parse(request.body)
       if (authenticatedNode.id !== nodeId) {
         return reply.status(403).send({
           error: 'Forbidden',
@@ -547,6 +548,11 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       if (firewallRules !== undefined) updates.firewall_rules_dump = firewallRules
       if (firewallEngine) updates.firewall_engine = firewallEngine
       await app.db('vpn_nodes').where({ id: nodeId }).update(updates)
+
+      if (startup) {
+        await enqueueApplyPolicies(app, nodeId)
+        app.log.info(`[heartbeat] Queued policy sync for node ${nodeId} after agent startup`)
+      }
       
       // If WireGuard, sync sessions manually via stateless heartbeat poll
       if (currentNode?.vpn_type === 'wireguard') {
