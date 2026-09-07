@@ -64,7 +64,7 @@ VPN Manager is an open-source app for managing VPNs centrally through a web dash
 Design principles:
 
 - **Loose Coupling:** The agent communicates through a VPN driver abstraction (no systemd dependency).
-- **Security First:** The agent runs without NET_ADMIN privileges.
+- **Security First:** The Agent is isolated in a container but requires `NET_ADMIN` and `NET_RAW` on its dedicated VPN node to manage VPN interfaces and firewall policy chains.
 - **Real-time Monitoring:** Live client data via the management interface.
 - **Hybrid Deployment:** Supports both host-based and containerized VPN.
 - **Extensible:** A driver pattern makes adding new VPN providers (IPSec, SoftEther, etc.) easy.

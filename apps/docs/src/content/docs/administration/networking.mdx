@@ -28,4 +28,19 @@ The installer enables IPv4 forwarding. For traffic to the detected LAN, bootstra
 
 Choose the firewall engine that is actually active: `iptables`, `nftables`, `ufw`, or `firewalld`. Mixing engines can create ineffective or conflicting rules. The `none` option means neither the installer nor Agent manages firewall rules.
 
+On hosts where OpenVPN forwarding is in `iptables-legacy`, the Agent detects the `tun+` or `wg+` hook and applies policy through `iptables-legacy`; otherwise it uses the default `iptables` backend. Check the backend that owns the active VPN hook rather than relying on `iptables --version` alone:
+
+```bash
+sudo iptables-nft -S FORWARD
+sudo iptables-legacy -S FORWARD
+```
+
+The Agent installs its policy chain before general allow rules on both `FORWARD` and `INPUT`. `FORWARD` covers routed LAN targets. `INPUT` covers services hosted directly on the VPN node.
+
+For a deny policy targeting a Docker-published port on the VPN node, Docker can DNAT the host IP and port before normal filter chains run. The Agent also enforces deny rules in `mangle` `PREROUTING`, preserving the original destination selected in the policy. Inspect this chain on an iptables node:
+
+```bash
+sudo iptables-legacy -t mangle -L VPN_POLICY_PRE -n -v --line-numbers
+```
+
 Before changing a production firewall, back up active rules and ensure console access is available. Test VPN UDP access, DNS, target CIDR access, return traffic, and SSH administration through a separate path.

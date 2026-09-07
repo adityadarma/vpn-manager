@@ -40,6 +40,35 @@ The OpenVPN Agent requires `/run/openvpn/server.sock` plus mounts for `/etc/open
 
 Check the Network CIDR, routes received by the client, `ip_forward`, forwarding rules, NAT or a LAN return route, and user/group policy. Check the firewall that is actually active, not only installed binaries. Subnet conflicts are common; ensure the VPN pool, LAN, Docker networks, and client local network do not overlap.
 
+## A firewall policy does not block traffic
+
+Verify that the client route uses its VPN interface, then test the port and inspect the matching counter on the node:
+
+```bash
+# Run on the VPN client.
+ip route get 172.31.10.64
+nc -vz -w 5 172.31.10.64 3306
+
+# Run on an iptables-legacy VPN node.
+sudo iptables-legacy -L VPN_POLICY_FWWD -n -v --line-numbers
+sudo iptables-legacy -t mangle -L VPN_POLICY_PRE -n -v --line-numbers
+```
+
+For macOS clients, use `route -n get 172.31.10.64` instead of `ip route get`. A zero counter means the packet did not match that chain. Use `tcpdump` to confirm the packet reaches the VPN interface:
+
+```bash
+sudo tcpdump -ni tun0 'host 10.8.2.10 and host 172.31.10.64 and tcp port 3306'
+```
+
+Traffic to another private host uses `FORWARD`; traffic to the VPN node's own private IP uses `INPUT`. Docker-published ports may be DNATed before those filter chains, so deny policies must also appear in `VPN_POLICY_PRE`.
+
+If the node uses legacy iptables, inspect the legacy backend. The nft and legacy backends hold separate rule sets:
+
+```bash
+sudo iptables-nft -S FORWARD
+sudo iptables-legacy -S FORWARD
+```
+
 ## A port is already in use
 
 ```bash
