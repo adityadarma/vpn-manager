@@ -57,10 +57,10 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
 RUN cp -r /app/apps/api/dist /prod/api/dist
 RUN cp /app/apps/api/start.sh /prod/api/start.sh
 
-# Copy packages/db (workspace local package, not included by pnpm deploy --prod)
-RUN mkdir -p /prod/api/node_modules/@vpn/db
-RUN cp -r /app/packages/db/src /prod/api/node_modules/@vpn/db/src
-RUN cp -r /app/packages/db/node_modules /prod/api/node_modules/@vpn/db/node_modules 2>/dev/null || true
+# Keep database scripts outside node_modules so Node can strip TypeScript types
+# when Knex dynamically loads migrations and seeds at startup.
+RUN cp -r /app/packages/db/src /prod/api/db
+RUN cp -r /app/packages/db/node_modules /prod/api/db/node_modules 2>/dev/null || true
 
 # Copy Vite static output -> will be served by Fastify
 RUN cp -r /app/apps/web/dist /prod/web
@@ -80,10 +80,6 @@ ARG REVISION=unknown
 LABEL org.opencontainers.image.title="vpn-manager" \
   org.opencontainers.image.version="$VERSION" \
   org.opencontainers.image.revision="$REVISION"
-
-# Install runtime dependencies
-RUN apk add --no-cache curl wget bash
-RUN npm install -g tsx
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && adduser -S apiuser -u 1001
@@ -109,7 +105,7 @@ EXPOSE 3000
 
 # Health check
 HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/v1/health || exit 1
+  CMD node -e "require('http').get('http://localhost:' + (process.env.PORT || 3000) + '/api/v1/health', response => process.exit(response.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
 
 # Single entrypoint — the start.sh runs migrations then starts Fastify
 CMD ["/app/api/start.sh"]
