@@ -1,27 +1,25 @@
 # VPN Manager — Modern VPN Management
 
-![Build Status](https://github.com/adityadarma/vpn-manager/actions/workflows/docker-publish.yml/badge.svg)
+![Build Status](https://github.com/adityadarma/vpn-manager/actions/workflows/release.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Docker](https://img.shields.io/badge/docker-ready-brightgreen.svg)
 
-VPN Manager is an open-source app for managing VPNs centrally through a web dashboard, inspired by enterprise solutions like Pritunl and Tailscale Admin. Built on top of OpenVPN with a modern TypeScript monorepo architecture, it makes it easy to provision users, manage network access (CIDRs), run multiple VPN nodes, and push connection policies in real time.
+VPN Manager is an open-source control plane for operating self-hosted VPN infrastructure from one web dashboard. It separates central management from the VPN data plane: the Manager owns users, access policies, credentials, and node configuration, while each VPN Node runs the selected VPN engine and carries client traffic. OpenVPN and WireGuard are supported today; the node-agent design keeps the control-plane API independent of a specific engine.
 
 > **Want to install right away?** Read the [Quick Start](GETTING-STARTED.md) or the [full documentation](https://adityadarma.github.io/vpn-manager/).
 
 ## Key Features
 
 - **Multi-Database Support:** SQLite (default/development), PostgreSQL, or MySQL/MariaDB.
-- **Multi-VPN Support:** OpenVPN (production-ready) and WireGuard (experimental), easy to extend to other VPN types.
+- **VPN Engine Support:** Run OpenVPN or WireGuard nodes in the same deployment. Select an engine per node without changing the Manager's user, policy, or operational workflow.
 - **Node Clustering:** Deploy multiple VPN nodes across regions, all controlled from one central Manager.
 - **Role-Based Access Control (RBAC):** Admin and User roles.
 - **Network Policies:** Decide which users can reach which internal IP segments, via CIDR-based Allow/Deny rules.
 - **Active Session Tracking:** See who is connected, their virtual IPs, data used, and session history in real time via the agent heartbeat.
-- **Client Certificate Management:**
-  - Generate certificates with flexible validity (1 day to unlimited)
-  - Password-protected private keys (optional)
-  - Auto-renewal before expiry
-  - Certificate Revocation List (CRL)
-  - Download history tracking
+- **Engine-Aware Client Credentials:**
+  - OpenVPN: issue X.509 client certificates, optional password-protected private keys, CRL revocation, and renewal before expiry.
+  - WireGuard: create and distribute peer configuration, then remove or rotate peers through the node agent.
+  - Track credential downloads, validity, renewal, and revocation centrally.
 - **Node Configuration:**
   - Customize VPN settings per node (port, protocol, tunnel mode)
   - Full/Split tunnel support
@@ -46,7 +44,7 @@ VPN Manager is an open-source app for managing VPNs centrally through a web dash
 │              │  SQLite             │    │
 │              └─────────────────────┘    │
 └────────────────────────┬────────────────┘
-                         │ HTTPS API (JWT / Token Auth)
+                         │ HTTPS API (JWT / node token)
               ┌──────────┴──────────┐
               │  VPN Node (Agent)   │
               │  ┌────────────────┐ │
@@ -55,19 +53,21 @@ VPN Manager is an open-source app for managing VPNs centrally through a web dash
               │  └────────┬───────┘ │
               │           │         │
               │  ┌────────▼───────┐ │
-              │  │   OpenVPN      │ │
-              │  │   Server       │ │
+              │  │ VPN Engine     │ │
+              │  │ OpenVPN /      │ │
+              │  │ WireGuard      │ │
               │  └────────────────┘ │
               └─────────────────────┘
 ```
 
 Design principles:
 
-- **Loose Coupling:** The agent communicates through a VPN driver abstraction (no systemd dependency).
+- **Control Plane and Data Plane Separation:** The Manager does not terminate VPN traffic. It sends desired configuration and lifecycle tasks to each node, while clients connect directly to the selected engine on that node.
+- **Engine-Aware Agent:** The Agent translates Manager tasks into engine-specific configuration, credential, peer, status, and session operations. OpenVPN uses its management/status interfaces; WireGuard uses its local interface and `wg` tooling.
 - **Security First:** The Agent is isolated in a container but requires `NET_ADMIN` and `NET_RAW` on its dedicated VPN node to manage VPN interfaces and firewall policy chains.
-- **Real-time Monitoring:** Live client data via the management interface.
+- **Real-time Monitoring:** The Agent normalizes connected-client and traffic data from the active engine before sending it to the Manager.
 - **Hybrid Deployment:** Supports both host-based and containerized VPN.
-- **Extensible:** A driver pattern makes adding new VPN providers (IPSec, SoftEther, etc.) easy.
+- **Extensible:** The Manager-facing node workflow is designed to accommodate additional VPN engines when an Agent integration is implemented.
 
 Architecture details: [Documentation: Architecture](https://adityadarma.github.io/vpn-manager/architecture/).
 
@@ -92,7 +92,7 @@ vpn-manager/
 - **Backend:** Fastify, TypeScript, Knex
 - **Frontend:** Vite, React, ShadCN UI, Tailwind CSS
 - **Database:** SQLite / PostgreSQL / MySQL (MariaDB)
-- **VPN:** OpenVPN (production), WireGuard (experimental)
+- **VPN Engines:** OpenVPN and WireGuard
 - **Tooling:** Turborepo + pnpm (monorepo)
 
 ## Available Scripts

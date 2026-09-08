@@ -6,12 +6,12 @@ export const LoginSchema = z.object({
 })
 
 export const LoginResponseSchema = z.object({
-  token: z.string(),
   user: z.object({
     id: z.string(),
     username: z.string(),
     email: z.string().nullable(),
     role: z.enum(['admin', 'user']),
+    lastLogin: z.string().datetime(),
   }),
 })
 

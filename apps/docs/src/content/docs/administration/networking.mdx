@@ -24,6 +24,91 @@ WireGuard uses `AllowedIPs` on each peer. This value both selects client routes 
 
 The installer enables IPv4 forwarding. For traffic to the detected LAN, bootstrap rules attempt to preserve the VPN client source IP so LAN servers can see the client address. Non-LAN traffic can be MASQUERADEd through the node's outbound interface. If the LAN has no return route to the VPN subnet, either add a return route to the LAN router or use NAT while understanding that the destination will no longer see the original client source.
 
+## AWS VPC private access
+
+Use this design when the VPN node is **Server A** and clients in a dedicated VPN subnet, such as `10.8.1.0/24`, must access private EC2 instances **Server B-E**. The target instances should not expose their application ports to the public internet.
+
+```text
+VPN client (10.8.1.x)
+        |
+        | OpenVPN or WireGuard
+        v
+Server A: VPN node and Agent
+        |
+        | AWS VPC private routing
+        v
+Server B-E: private workloads
+```
+
+### 1. Allocate a dedicated VPN subnet
+
+Create a VPN group in the Manager with a non-overlapping subnet, for example `10.8.1.0/24`, and add only approved users to that group. Do not overlap this subnet with the VPC CIDR, any VPC subnet, Docker networks, another VPN node, or a common client LAN.
+
+### 2. Push the VPC route to clients
+
+Add the private VPC destination to the VPN node's **Push Routes** configuration. For example, when Server B-E are in `172.31.0.0/20`:
+
+```text
+172.31.0.0/20
+```
+
+Reconnect the client and verify that the private target uses the VPN interface:
+
+```bash
+# Linux
+ip route get 172.31.10.64
+
+# macOS
+route -n get 172.31.10.64
+```
+
+The output should select the tunnel interface, such as `tun0`, `utun4`, or `wg0`.
+
+### 3. Add an AWS return route
+
+AWS target instances need a route back to the VPN subnet. In the AWS Console, open **VPC** > **Route tables**, select the route table associated with the subnet containing Server B-E, then choose **Routes** > **Edit routes** > **Add route**.
+
+| Field | Value |
+| --- | --- |
+| Destination | `10.8.1.0/24` |
+| Target | The EC2 instance or primary network interface (ENI) of Server A |
+
+Add this route to every route table used by target subnets. On Server A, disable **Source/Destination Check** in **EC2** > **Instances** > Server A > **Actions** > **Networking** > **Change source/destination check**. Without these two AWS settings, Server B-E cannot return traffic to VPN clients.
+
+### 4. Restrict AWS Security Groups
+
+On each target instance, allow only the required port from the VPN subnet. For example, to allow MySQL on Server B only for VPN clients in `10.8.1.0/24`:
+
+| Inbound field | Value |
+| --- | --- |
+| Type | MySQL/Aurora |
+| Protocol | TCP |
+| Port | `3306` |
+| Source | `10.8.1.0/24` |
+
+Use equivalent rules for SSH (`22`), HTTPS (`443`), or other approved application ports. Do not use `0.0.0.0/0` for private workload access.
+
+### 5. Add Manager policies
+
+Create an allow policy scoped to the approved group, target network, protocol, and port. Add a lower-priority global deny policy for the same target and port when users outside the group must be blocked.
+
+| Priority | Scope | Target | Protocol | Port | Action |
+| --- | --- | --- | --- | --- | --- |
+| `100` | Group with `10.8.1.0/24` | `172.31.10.64/32` | TCP | `3306` | Allow |
+| `200` | Global | `172.31.10.64/32` | TCP | `3306` | Deny |
+
+Lower numeric priorities are evaluated first. Do not use MASQUERADE for VPC traffic when AWS Security Groups need to distinguish individual VPN client addresses; preserve the original `10.8.1.x` source and use the AWS return route instead.
+
+### 6. Test both allowed and denied clients
+
+From an allowed client with an address in `10.8.1.0/24`:
+
+```bash
+nc -vz -w 5 172.31.10.64 3306
+```
+
+The connection should succeed only if the service is listening. Repeat from a client outside the approved VPN subnet; it should time out or fail. On Server A, inspect the policy counters in the active firewall backend to confirm the policy matched.
+
 ## Firewall
 
 Choose the firewall engine that is actually active: `iptables`, `nftables`, `ufw`, or `firewalld`. Mixing engines can create ineffective or conflicting rules. The `none` option means neither the installer nor Agent manages firewall rules.
