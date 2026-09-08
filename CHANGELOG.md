@@ -12,6 +12,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Added a prerouting firewall policy chain and rules.
 - Added WireGuard peer certificate expiry checks and renewal.
 
+### Changed
+
+- Reduced the VPN Manager production image size by removing runtime-only `tsx`, `curl`, and shell package installations. Database migrations and seeds now run with Node.js, and container health checks use Node.js HTTP requests.
+
 ## [1.1.6] - 2026-09-07
 
 ### Added
