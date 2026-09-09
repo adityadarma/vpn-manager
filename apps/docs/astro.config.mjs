@@ -43,6 +43,7 @@ export default defineConfig({
             { label: 'Operations and Security', slug: 'reference/operations-security' },
             { label: 'API and Development', slug: 'reference/api-development' },
             { label: 'Troubleshooting', slug: 'reference/troubleshooting' },
+            { label: 'Managed DNS', slug: 'reference/managed-dns' },
           ],
         },
       ],
