@@ -6,6 +6,7 @@ import { logAudit, getClientIp } from '../../utils/audit'
 import { secretsMatchTrimmed } from '../../utils/secret-compare'
 import geoip from 'geoip-lite'
 import { enqueueApplyPolicies } from '../policies/policies.routes'
+import { enqueueNodeDnsSync } from '../../services/managed-dns'
 
 interface NodeConfig {
   port: number
@@ -37,7 +38,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
     async () => {
       // Get all nodes
       const nodes = await app.db('vpn_nodes')
-        .select('id', 'hostname', 'ip_address', 'port', 'region', 'status', 'version', 'last_seen', 'created_at', 'vpn_type', 'public_key', 'endpoint_port', 'firewall_rules_dump')
+        .select('id', 'hostname', 'ip_address', 'port', 'region', 'status', 'version', 'last_seen', 'created_at', 'vpn_type', 'public_key', 'endpoint_port', 'firewall_rules_dump', 'managed_dns_enabled', 'managed_dns_capable', 'dns_config_revision', 'dns_sync_status', 'dns_last_sync_error', 'dns_last_synced_at', 'dns_config_hash')
       
       // Get active sessions count for each node
       const sessionCounts = await app.db('vpn_sessions')
@@ -105,8 +106,50 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
     },
   )
 
+  app.post<{ Params: { id: string } }>(
+    '/nodes/:id/dns/sync',
+    { onRequest: [app.authenticateAdmin], schema: { tags: ['nodes'], summary: 'Queue a Managed DNS sync for a node', security: [{ bearerAuth: [] }] } },
+    async (request, reply) => {
+      const node = await app.db('vpn_nodes').where({ id: request.params.id }).first()
+      if (!node) return reply.status(404).send({ error: 'Node not found' })
+      if (!node.managed_dns_enabled) return reply.status(409).send({ error: 'Managed DNS is disabled for this node' })
+      const taskId = await enqueueNodeDnsSync(app, node.id)
+      if (!taskId) return reply.status(409).send({ error: 'Managed DNS sync could not be queued' })
+      return reply.status(202).send({ task_id: taskId })
+    },
+  )
+
+  app.get<{ Params: { id: string } }>(
+    '/nodes/:id/dns/status',
+    { onRequest: [app.authenticateAdmin], schema: { tags: ['nodes'], summary: 'Get Managed DNS status for a node', security: [{ bearerAuth: [] }] } },
+    async (request, reply) => {
+      const node = await app.db('vpn_nodes').where({ id: request.params.id }).first()
+      if (!node) return reply.status(404).send({ error: 'Node not found' })
+      const listeners = await app.db('group_node_dns_settings as s')
+        .join('groups as g', 's.group_id', 'g.id')
+        .where({ 's.node_id': node.id, 's.enabled': true })
+        .select('s.group_id', 'g.name as group_name', 's.vpn_subnet', 's.listener_ip', 's.listener_port')
+        .orderBy('g.name')
+      const revisions = await app.db('node_dns_revisions')
+        .where({ node_id: node.id })
+        .orderBy('revision', 'desc')
+        .limit(10)
+      return {
+        enabled: Boolean(node.managed_dns_enabled),
+        capable: Boolean(node.managed_dns_capable),
+        status: node.dns_sync_status,
+        revision: node.dns_config_revision,
+        config_hash: node.dns_config_hash,
+        last_error: node.dns_last_sync_error,
+        last_synced_at: node.dns_last_synced_at,
+        listeners,
+        revisions,
+      }
+    },
+  )
+
   // PUT /api/v1/nodes/:id
-  app.put<{ Params: { id: string }; Body: { hostname?: string; ip_address?: string; region?: string } }>(
+  app.put<{ Params: { id: string }; Body: { hostname?: string; ip_address?: string; region?: string; managed_dns_enabled?: boolean } }>(
     '/nodes/:id',
     { 
       onRequest: [app.authenticateAdmin], 
@@ -119,7 +162,8 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
           properties: {
             hostname: { type: 'string', description: 'Node hostname' },
             ip_address: { type: 'string', description: 'Node IP address' },
-            region: { type: 'string', description: 'Node region/location' }
+            region: { type: 'string', description: 'Node region/location' },
+            managed_dns_enabled: { type: 'boolean', description: 'Enable optional Managed DNS on this node' }
           }
         }
       } 
@@ -166,6 +210,15 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       
       if (request.body.region !== undefined) {
         updates.region = request.body.region || null
+      }
+
+      if (request.body.managed_dns_enabled !== undefined) {
+        updates.managed_dns_enabled = request.body.managed_dns_enabled
+        if (!request.body.managed_dns_enabled) {
+          updates.managed_dns_capable = false
+          updates.dns_sync_status = 'disabled'
+          updates.dns_last_sync_error = null
+        }
       }
 
       if (Object.keys(updates).length === 0) {
@@ -530,7 +583,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       const authenticatedNode = await app.authenticateNodeToken(request, reply)
       if (!authenticatedNode) return
 
-      const { nodeId, caCert, taKey, firewallRules, firewallEngine, clients, startup } = HeartbeatSchema.parse(request.body)
+      const { nodeId, caCert, taKey, firewallRules, firewallEngine, clients, startup, dns } = HeartbeatSchema.parse(request.body)
       if (authenticatedNode.id !== nodeId) {
         return reply.status(403).send({
           error: 'Forbidden',
@@ -547,6 +600,21 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       if (taKey) updates.ta_key = taKey
       if (firewallRules !== undefined) updates.firewall_rules_dump = firewallRules
       if (firewallEngine) updates.firewall_engine = firewallEngine
+      if (currentNode?.managed_dns_enabled) {
+        if (dns) {
+          updates.managed_dns_capable = dns.capable
+          updates.dns_sync_status = dns.status
+          updates.dns_last_sync_error = dns.lastError ?? null
+        } else {
+          updates.managed_dns_capable = false
+          updates.dns_sync_status = 'degraded'
+          updates.dns_last_sync_error = 'Agent did not report Managed DNS status'
+        }
+      } else {
+        updates.managed_dns_capable = false
+        updates.dns_sync_status = 'disabled'
+        updates.dns_last_sync_error = null
+      }
       await app.db('vpn_nodes').where({ id: nodeId }).update(updates)
 
       if (startup) {
@@ -563,39 +631,40 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
           .where({ node_id: nodeId })
           .whereNull('disconnected_at')
         
-        const activeSessionMap = new Map(activeSessions.map((s: any) => [s.user_id, s]))
+        const activeSessionMap = new Map(activeSessions.map((s: any) => [s.credential_id ?? `legacy:${s.user_id}`, s]))
         const reportedClientMap = new Map()
 
         if (clients && clients.length > 0) {
           // Fetch certificates for mapping public key -> user
           const nodeCerts = await app.db('user_node_certificates')
             .where({ node_id: nodeId })
-            .select('user_id', 'client_cert')
+            .select('id', 'user_id', 'client_cert', 'vpn_ip')
           
           app.log.info(`[heartbeat] Found ${nodeCerts.length} certificates registered for this node.`)
           
-          // Map truncated public key (16 chars) to user_id
+          // Map truncated public key to the credential that owns the peer.
           const pubKeyToUser = new Map(
             nodeCerts
               .filter((c: any) => c.client_cert)
-              .map((c: any) => [c.client_cert.trim().substring(0, 16), c.user_id])
+              .map((c: any) => [c.client_cert.trim().substring(0, 16), c])
           )
 
           for (const client of clients) {
-            const userId = pubKeyToUser.get(client.commonName)
-            if (!userId) {
+            const credential = pubKeyToUser.get(client.commonName) as { id: string; user_id: string; vpn_ip: string | null } | undefined
+            if (!credential) {
               app.log.warn(`[heartbeat] Unmapped WG key: ${client.commonName}. Known prefixes: ${Array.from(pubKeyToUser.keys()).join(',')}`)
               continue // skip unknown guests
             }
             
-            reportedClientMap.set(userId, client)
-            const existingSession = activeSessionMap.get(userId)
+            const userId = credential.user_id
+            reportedClientMap.set(credential.id, client)
+            const existingSession = activeSessionMap.get(credential.id)
             
             if (!existingSession) {
               // Double-check no session was created between our initial query and now
               // (race with vpn/connect endpoint)
               const concurrentSession = await app.db('vpn_sessions')
-                .where({ user_id: userId, node_id: nodeId })
+                .where({ user_id: userId, node_id: nodeId, credential_id: credential.id })
                 .whereNull('disconnected_at')
                 .first()
               
@@ -631,6 +700,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
                 id: newSessionId,
                 user_id: userId,
                 node_id: nodeId,
+                credential_id: credential.id,
                 vpn_ip: client.virtualAddress,
                 real_ip: client.realAddress?.split(':')[0] || client.realAddress,
                 client_version: 'WireGuard',
@@ -681,7 +751,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         
         // 2. Disconnect sessions that dropped entirely from the wg interface dump
         for (const session of activeSessions) {
-          if (!reportedClientMap.has(session.user_id)) {
+          if (!reportedClientMap.has(session.credential_id ?? `legacy:${session.user_id}`)) {
             app.log.info(`[heartbeat] Disconnecting stale session for user ${session.user_id} via WG timeout`)
             const now = new Date()
             const duration = Math.floor((now.getTime() - new Date(session.connected_at).getTime()) / 1000)
@@ -721,27 +791,43 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
           .where({ node_id: nodeId })
           .whereNull('disconnected_at')
 
-        const activeSessionMap = new Map(activeSessions.map((s: any) => [s.user_id, s]))
+        const activeSessionMap = new Map(activeSessions.map((s: any) => [s.credential_id ?? `legacy:${s.user_id}`, s]))
         const reportedUserMap = new Map<string, any>()
 
         for (const client of clients) {
-          const username = client.commonName
-          if (!username) continue
+          const commonName = client.commonName
+          if (!commonName) continue
 
-          const user = await app.db('users').where({ username }).first()
-          if (!user) {
-            app.log.warn(`[heartbeat] OpenVPN client "${username}" not found in users table — skipping`)
+          const credential = await app.db('user_node_certificates as c')
+            .join('users as u', 'c.user_id', 'u.id')
+            .where({ 'c.node_id': nodeId, 'c.common_name': commonName, 'c.is_revoked': false })
+            .select('c.id as credential_id', 'c.vpn_ip as credential_vpn_ip', 'u.*')
+            .first()
+          // Existing OpenVPN certificates used users.username as Common Name.
+          // Keep their heartbeat path until every node credential is rotated.
+          const resolvedCredential = credential ?? await app.db('users')
+            .where({ username: commonName })
+            .select(app.db.raw('NULL as credential_id'), app.db.raw('NULL as credential_vpn_ip'), '*')
+            .first()
+          if (!resolvedCredential) {
+            app.log.warn(`[heartbeat] OpenVPN credential "${commonName}" not found — skipping`)
             continue
           }
 
-          reportedUserMap.set(user.id, client)
-          const existingSession = activeSessionMap.get(user.id)
+          const user = resolvedCredential
+          const sessionKey = resolvedCredential.credential_id ?? `legacy:${user.id}`
+          reportedUserMap.set(sessionKey, client)
+          const existingSession = activeSessionMap.get(sessionKey)
 
           if (!existingSession) {
             // Double-check no session was created between our initial query and now
             // (race with vpn/connect endpoint or event-monitor)
             const concurrentSession = await app.db('vpn_sessions')
-              .where({ user_id: user.id, node_id: nodeId })
+                .where({ user_id: user.id, node_id: nodeId })
+                .modify((query: any) => {
+                  if (resolvedCredential.credential_id) query.where({ credential_id: resolvedCredential.credential_id })
+                  else query.whereNull('credential_id')
+                })
               .whereNull('disconnected_at')
               .first()
 
@@ -757,7 +843,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
                 .whereNull('last_vpn_connect')
                 .update({ last_vpn_connect: client.connectedSince ? new Date(client.connectedSince) : new Date() })
             } else {
-              app.log.info(`[heartbeat] Creating OpenVPN session for ${username} (${client.virtualAddress})`)
+              app.log.info(`[heartbeat] Creating OpenVPN session for ${commonName} (${client.virtualAddress})`)
               
               let geoCity = null
               let geoCountry = null
@@ -775,7 +861,8 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
                 id: newSessionId,
                 user_id: user.id,
                 node_id: nodeId,
-                vpn_ip: client.virtualAddress || user.vpn_ip,
+                credential_id: resolvedCredential.credential_id ?? null,
+                vpn_ip: client.virtualAddress || resolvedCredential.credential_vpn_ip,
                 real_ip: client.realAddress?.split(':')[0] ?? null,
                 client_version: 'OpenVPN',
                 device_name: null,
@@ -791,7 +878,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
               })
               await logAudit(app, {
                 userId: user.id,
-                username,
+                username: user.username,
                 action: 'vpn_connect',
                 resourceType: 'vpn_session',
                 resourceId: newSessionId,
@@ -815,7 +902,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
 
         // Close sessions for users no longer in OpenVPN status
         for (const session of activeSessions) {
-          if (!reportedUserMap.has(session.user_id)) {
+          if (!reportedUserMap.has(session.credential_id ?? `legacy:${session.user_id}`)) {
             app.log.info(`[heartbeat] Closing stale OpenVPN session for user ${session.user_id}`)
             const now = new Date()
             const duration = Math.floor((now.getTime() - new Date(session.connected_at).getTime()) / 1000)

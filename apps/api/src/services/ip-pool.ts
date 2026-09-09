@@ -117,6 +117,35 @@ export function ipInSubnet(ip: string, subnet: string): boolean {
   return ((ipInt & maskInt) >>> 0) === networkInt
 }
 
+/** Return true when child is completely contained by parent. */
+export function cidrWithin(child: string, parent: string): boolean {
+  const childParsed = parseCidr(child)
+  const parentParsed = parseCidr(parent)
+  if (childParsed.prefixLen < parentParsed.prefixLen) return false
+  const parentMask = parentParsed.prefixLen === 0 ? 0 : (~0 << (32 - parentParsed.prefixLen)) >>> 0
+  return ((childParsed.networkInt & parentMask) >>> 0) === parentParsed.networkInt
+}
+
+/** Return true when two IPv4 CIDR ranges share at least one address. */
+export function cidrsOverlap(left: string, right: string): boolean {
+  const a = parseCidr(left)
+  const b = parseCidr(right)
+  const prefix = Math.min(a.prefixLen, b.prefixLen)
+  const mask = prefix === 0 ? 0 : (~0 << (32 - prefix)) >>> 0
+  return ((a.networkInt & mask) >>> 0) === ((b.networkInt & mask) >>> 0)
+}
+
+/** Network and broadcast addresses cannot be assigned to DNS listeners. */
+export function isUsableHostIp(ip: string, subnet: string): boolean {
+  if (!ipInSubnet(ip, subnet)) return false
+  const { networkInt, prefixLen } = parseCidr(subnet)
+  const parts = ip.split('.').map(Number)
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return false
+  const ipInt = ((parts[0]! << 24) | (parts[1]! << 16) | (parts[2]! << 8) | parts[3]!) >>> 0
+  const broadcast = (networkInt + (1 << (32 - prefixLen)) - 1) >>> 0
+  return ipInt !== networkInt && ipInt !== broadcast
+}
+
 /**
  * Convert a CIDR to an OpenVPN route directive string.
  * e.g. "172.31.0.0/16" → "route 172.31.0.0 255.255.0.0"

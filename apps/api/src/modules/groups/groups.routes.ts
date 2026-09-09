@@ -1,8 +1,9 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { v7 as uuidv7 } from 'uuid'
-import { getNetmask, parseCidr, cidrsToPushRoutes } from '../../services/ip-pool'
+import { getNetmask, parseCidr, cidrWithin, cidrsOverlap, isUsableHostIp, nodePoolCidr, cidrsToPushRoutes } from '../../services/ip-pool'
 import { logAudit, getClientIp } from '../../utils/audit'
 import { enqueueApplyPolicies } from '../policies/policies.routes'
+import { enqueueNodeDnsSync } from '../../services/managed-dns'
 interface Group {
   id: string
   name: string
@@ -251,6 +252,109 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
       }
 
       return reply.status(204).send()
+    },
+  )
+
+  app.get<{ Params: { id: string; nodeId: string } }>(
+    '/groups/:id/nodes/:nodeId/dns',
+    { onRequest: [app.authenticateAdmin], schema: { tags: ['groups'], summary: 'Get group DNS settings for a node', security: [{ bearerAuth: [] }] } },
+    async (request, reply) => {
+      const group = await app.db('groups').where({ id: request.params.id }).first()
+      if (!group) return reply.status(404).send({ error: 'Group not found' })
+      const node = await app.db('vpn_nodes').where({ id: request.params.nodeId }).first()
+      if (!node) return reply.status(404).send({ error: 'Node not found' })
+      const settings = await app.db('group_node_dns_settings')
+        .where({ group_id: request.params.id, node_id: request.params.nodeId })
+        .first()
+      return settings ?? reply.status(404).send({ error: 'DNS settings not configured for this group and node' })
+    },
+  )
+
+  app.put<{
+    Params: { id: string; nodeId: string }
+    Body: { enabled: boolean; vpn_subnet: string; listener_ip?: string | null; listener_port?: number; public_default_action?: 'allow' | 'deny'; upstreams?: string[] }
+  }>(
+    '/groups/:id/nodes/:nodeId/dns',
+    { onRequest: [app.authenticateAdmin], schema: { tags: ['groups'], summary: 'Configure group DNS settings for a node', security: [{ bearerAuth: [] }] } },
+    async (request, reply) => {
+      const { enabled, vpn_subnet, listener_ip, listener_port = 53, public_default_action = 'allow', upstreams = ['1.1.1.1', '8.8.8.8'] } = request.body
+      const group = await app.db('groups').where({ id: request.params.id }).first()
+      if (!group) return reply.status(404).send({ error: 'Group not found' })
+      const node = await app.db('vpn_nodes').where({ id: request.params.nodeId }).first()
+      if (!node) return reply.status(404).send({ error: 'Node not found' })
+      if (typeof enabled !== 'boolean' || !vpn_subnet?.trim()) return reply.status(400).send({ error: 'enabled and vpn_subnet are required' })
+      if (!Number.isInteger(listener_port) || listener_port < 1 || listener_port > 65535) {
+        return reply.status(400).send({ error: 'listener_port must be between 1 and 65535' })
+      }
+      if (!['allow', 'deny'].includes(public_default_action)) {
+        return reply.status(400).send({ error: 'public_default_action must be allow or deny' })
+      }
+      if (!Array.isArray(upstreams) || upstreams.length > 5 || !upstreams.every((upstream) => typeof upstream === 'string' && /^([0-9]{1,3}\.){3}[0-9]{1,3}$/.test(upstream.trim()))) {
+        return reply.status(400).send({ error: 'upstreams must contain up to five IPv4 addresses' })
+      }
+
+      const subnet = vpn_subnet.trim()
+      let parentPool: string
+      try {
+        parseCidr(subnet)
+        parentPool = nodePoolCidr(node.vpn_network, node.vpn_netmask)
+      } catch (error) {
+        return reply.status(400).send({ error: `Invalid VPN subnet or node pool: ${(error as Error).message}` })
+      }
+      if (!cidrWithin(subnet, parentPool)) {
+        return reply.status(400).send({ error: `vpn_subnet must be inside node pool ${parentPool}` })
+      }
+
+      const existing = await app.db('group_node_dns_settings')
+        .where({ node_id: node.id })
+        .whereNot({ group_id: group.id })
+        .select('group_id', 'vpn_subnet', 'listener_ip', 'listener_port')
+      const overlap = existing.find((setting: any) => cidrsOverlap(subnet, setting.vpn_subnet))
+      if (overlap) return reply.status(409).send({ error: `vpn_subnet overlaps allocation for group ${overlap.group_id}` })
+
+      const listenerIp = listener_ip?.trim() || null
+      if (enabled && !listenerIp) return reply.status(400).send({ error: 'listener_ip is required when Managed DNS is enabled' })
+      if (listenerIp) {
+        const octets = listenerIp.split('.').map(Number)
+        if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
+          return reply.status(400).send({ error: 'listener_ip must be a valid IPv4 address' })
+        }
+        if (!isUsableHostIp(listenerIp, subnet)) return reply.status(400).send({ error: 'listener_ip must be a usable IPv4 address inside vpn_subnet' })
+        if (existing.some((setting: any) => setting.listener_ip === listenerIp && setting.listener_port === listener_port)) {
+          return reply.status(409).send({ error: 'listener_ip and listener_port are already allocated on this node' })
+        }
+        const credential = await app.db('user_node_certificates').where({ node_id: node.id, vpn_ip: listenerIp }).first()
+        if (credential) return reply.status(409).send({ error: 'listener_ip is already assigned to a VPN credential' })
+      }
+
+      const settings = {
+        group_id: group.id,
+        node_id: node.id,
+        enabled,
+        vpn_subnet: subnet,
+        listener_ip: listenerIp,
+        listener_port,
+        public_default_action,
+        upstreams: JSON.stringify(upstreams.map((upstream) => upstream.trim())),
+        updated_at: new Date(),
+      }
+      await app.db('group_node_dns_settings')
+        .insert({ ...settings, created_at: new Date() })
+        .onConflict(['group_id', 'node_id'])
+        .merge(settings)
+      await enqueueNodeDnsSync(app, node.id)
+
+      const userObj = request.user as { id: string; username: string }
+      await logAudit(app, {
+        userId: userObj.id,
+        username: userObj.username,
+        action: 'group_node_dns_update',
+        resourceType: 'group_node_dns_settings',
+        resourceId: `${group.id}:${node.id}`,
+        ipAddress: getClientIp(request),
+        metadata: { enabled, vpn_subnet: subnet, listener_ip: listenerIp, listener_port, public_default_action },
+      })
+      return app.db('group_node_dns_settings').where({ group_id: group.id, node_id: node.id }).first()
     },
   )
 

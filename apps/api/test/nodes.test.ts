@@ -68,6 +68,39 @@ describe('Nodes API', () => {
     expect(res.statusCode).toBe(200)
   })
 
+  it('records Managed DNS health only when an admin enables it for the node', async () => {
+    const enable = await app.inject({
+      method: 'PUT',
+      url: `/api/v1/nodes/${nodeId}`,
+      headers: { Cookie: adminCookie },
+      payload: { managed_dns_enabled: true },
+    })
+    expect(enable.statusCode).toBe(200)
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/nodes/heartbeat',
+      headers: { Authorization: `Bearer ${nodeToken}` },
+      payload: {
+        nodeId,
+        dns: { enabled: true, capable: true, status: 'healthy', lastError: null },
+      },
+    })
+    expect(res.statusCode).toBe(200)
+
+    const node = await app.db('vpn_nodes').where({ id: nodeId }).first()
+    expect(node.managed_dns_enabled).toBe(1)
+    expect(node.managed_dns_capable).toBe(1)
+    expect(node.dns_sync_status).toBe('healthy')
+  })
+
+  it('returns Managed DNS status without exposing node secrets', async () => {
+    const res = await app.inject({ method: 'GET', url: `/api/v1/nodes/${nodeId}/dns/status`, headers: { Cookie: adminCookie } })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toMatchObject({ enabled: true, status: 'healthy' })
+    expect(res.body).not.toContain(nodeToken)
+  })
+
   it('queues a policy sync when an agent starts', async () => {
     const res = await app.inject({
       method: 'POST',
