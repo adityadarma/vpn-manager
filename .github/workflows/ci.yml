@@ -80,6 +80,23 @@ jobs:
       - name: Run compiled manager and agent WireGuard E2E
         run: bash scripts/e2e-wireguard-agent-binary.sh
 
+      # Runs the real Corefile generator against the pinned CoreDNS image and
+      # loads the generated nftables ruleset into the kernel. Unit tests cannot
+      # observe either behaviour.
+      - name: Run Managed DNS CoreDNS and nftables E2E
+        run: bash scripts/e2e-managed-dns.sh
+
+      # Manager + Agent + CoreDNS + a live WireGuard client. Covers the parts
+      # the component E2E cannot see: a registered node, an Agent polling real
+      # tasks, and DNS resolved through the tunnel against the group listener.
+      - name: Run Managed DNS full-loop E2E
+        run: bash scripts/e2e-managed-dns-fullloop.sh
+
+      # Same loop on the OpenVPN engine, where the firewall matches tun*, the
+      # client address comes from CCD, and the Agent uses the management socket.
+      - name: Run Managed DNS OpenVPN E2E
+        run: bash scripts/e2e-managed-dns-openvpn.sh
+
   # ── Job 2: Docker build + smoke test ────────────────────────────────────────
   #
   # Catches Dockerfile / dependency-resolution breakage on every push and PR,
