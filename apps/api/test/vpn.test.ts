@@ -78,6 +78,64 @@ describe('VPN Agent API', () => {
     expect(res.json().ok).toBe(true)
   })
 
+  it('keeps sessions for two credentials owned by one user separate', async () => {
+    const userId = uuidv7()
+    await app.db('users').insert({
+      id: userId,
+      username: 'multi_device_user',
+      email: 'multi@example.com',
+      password: 'not-used',
+      role: 'user',
+      is_active: true,
+    })
+    const firstCredential = uuidv7()
+    const secondCredential = uuidv7()
+    await app.db('user_node_certificates').insert([
+      {
+        id: firstCredential,
+        user_id: userId,
+        node_id: nodeId,
+        credential_name: 'laptop',
+        common_name: 'multi_device_laptop',
+        vpn_ip: '10.8.0.20',
+        client_cert: 'credential-one',
+        client_key: 'key-one',
+        is_revoked: false,
+      },
+      {
+        id: secondCredential,
+        user_id: userId,
+        node_id: nodeId,
+        credential_name: 'phone',
+        common_name: 'multi_device_phone',
+        vpn_ip: '10.8.0.21',
+        client_cert: 'credential-two',
+        client_key: 'key-two',
+        is_revoked: false,
+      },
+    ])
+
+    for (const [commonName, vpnIp] of [
+      ['multi_device_laptop', '10.8.0.20'],
+      ['multi_device_phone', '10.8.0.21'],
+    ]) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/v1/vpn/connect',
+        headers: { 'X-VPN-Token': 'agent-secret-token' },
+        payload: { username: commonName, vpn_ip: vpnIp, node_id: nodeId },
+      })
+      expect(response.statusCode).toBe(201)
+    }
+
+    const sessions = await app.db('vpn_sessions')
+      .where({ user_id: userId, node_id: nodeId })
+      .whereNull('disconnected_at')
+      .orderBy('credential_id')
+    expect(sessions).toHaveLength(2)
+    expect(sessions.map((session: any) => session.credential_id)).toEqual([firstCredential, secondCredential].sort())
+  })
+
   describe('X-VPN-Token validation', () => {
     const connect = (headers: Record<string, string>) =>
       app.inject({

@@ -40,14 +40,26 @@ describe('Session Safety', () => {
 
   it('disconnect should close the oldest open session, not the newest', async () => {
     const userId = uuidv7()
+    // VPN identity is credential-scoped: users.vpn_ip no longer exists.
     await app.db('users').insert({
       id: userId,
       username: 'disconnect_order_user',
       role: 'user',
       is_active: true,
+    })
+    const credentialId = uuidv7()
+    await app.db('user_node_certificates').insert({
+      id: credentialId,
+      user_id: userId,
+      node_id: nodeId,
+      credential_name: 'default',
+      common_name: 'disconnect_order_user',
       vpn_ip: '10.8.0.50',
+      is_revoked: false,
     })
 
+    // /vpn/disconnect resolves the credential by common_name and only
+    // targets sessions of that same credential_id.
     const oldSessionId = uuidv7()
     const newSessionId = uuidv7()
 
@@ -55,6 +67,7 @@ describe('Session Safety', () => {
       id: oldSessionId,
       user_id: userId,
       node_id: nodeId,
+      credential_id: credentialId,
       vpn_ip: '10.8.0.50',
       connected_at: new Date('2026-01-01T10:00:00Z'),
       bytes_sent: 0,
@@ -65,6 +78,7 @@ describe('Session Safety', () => {
       id: newSessionId,
       user_id: userId,
       node_id: nodeId,
+      credential_id: credentialId,
       vpn_ip: '10.8.0.50',
       connected_at: new Date('2026-01-01T11:00:00Z'),
       bytes_sent: 0,
@@ -93,14 +107,26 @@ describe('Session Safety', () => {
       username: 'connect_txn_user',
       role: 'user',
       is_active: true,
+    })
+    const credentialId = uuidv7()
+    await app.db('user_node_certificates').insert({
+      id: credentialId,
+      user_id: userId,
+      node_id: nodeId,
+      credential_name: 'default',
+      common_name: 'connect_txn_user',
       vpn_ip: '10.8.0.80',
+      is_revoked: false,
     })
 
+    // Reconnect only replaces the previous session of the *same* credential,
+    // so the old session must carry credential_id like a real one would.
     const oldSessionId = uuidv7()
     await app.db('vpn_sessions').insert({
       id: oldSessionId,
       user_id: userId,
       node_id: nodeId,
+      credential_id: credentialId,
       vpn_ip: '10.8.0.80',
       connected_at: new Date('2026-01-01T10:00:00Z'),
       bytes_sent: 0,
@@ -133,7 +159,16 @@ describe('Session Safety', () => {
       username: 'hb_dedup_user',
       role: 'user',
       is_active: true,
+    })
+    const credentialId = uuidv7()
+    await app.db('user_node_certificates').insert({
+      id: credentialId,
+      user_id: userId,
+      node_id: nodeId,
+      credential_name: 'default',
+      common_name: 'hb_dedup_user',
       vpn_ip: '10.8.0.70',
+      is_revoked: false,
     })
 
     const existingSessionId = uuidv7()
@@ -141,6 +176,7 @@ describe('Session Safety', () => {
       id: existingSessionId,
       user_id: userId,
       node_id: nodeId,
+      credential_id: credentialId,
       vpn_ip: '10.8.0.70',
       connected_at: new Date(),
       bytes_sent: 100,

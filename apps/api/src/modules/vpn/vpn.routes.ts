@@ -64,26 +64,36 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(400).send({ error: 'username or public_key required' })
       }
 
-      // Resolve user — OpenVPN sends username, WireGuard sends public_key prefix
-      let user: any
+      // Resolve the credential first. A user can own multiple credentials and IPs.
+      let credential: any
       if (request.body.username) {
-        user = await app.db('users').where({ username: request.body.username }).first()
+        credential = await app.db('user_node_certificates as c')
+          .join('users as u', 'c.user_id', 'u.id')
+          .where({ 'c.node_id': node_id, 'c.common_name': request.body.username, 'c.is_revoked': false })
+          .select('c.id as credential_id', 'c.vpn_ip as credential_vpn_ip', 'u.*')
+          .first()
       }
-      if (!user && request.body.public_key) {
+      // Existing deployments issued OpenVPN certificates with users.username as
+      // their Common Name before credential-scoped identities existed.
+      if (!credential && request.body.username) {
+        credential = await app.db('users').where({ username: request.body.username }).first()
+      }
+      if (!credential && request.body.public_key) {
         // WireGuard: lookup via user_node_certificates using public key prefix (16 chars)
         const keyPrefix = request.body.public_key.substring(0, 16)
-        const cert = await app.db('user_node_certificates as c')
+        credential = await app.db('user_node_certificates as c')
           .join('users as u', 'c.user_id', 'u.id')
           .where('c.node_id', node_id)
+          .where('c.is_revoked', false)
           .whereRaw(`substr(c.client_cert, 1, 16) = ?`, [keyPrefix])
-          .select('u.*')
+          .select('c.id as credential_id', 'c.vpn_ip as credential_vpn_ip', 'u.*')
           .first()
-        user = cert
       }
+      const user = credential
       if (!user) return reply.status(404).send({ error: 'User not found' })
 
       // Resolve vpn_ip — absent for static CCD (OpenVPN) or static WG peers
-      if (!vpn_ip) vpn_ip = user.vpn_ip
+      if (!vpn_ip) vpn_ip = credential.credential_vpn_ip
       if (!vpn_ip) {
         return reply.status(400).send({ error: 'vpn_ip could not be determined for this user' })
       }
@@ -159,9 +169,14 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
       }
 
       await app.db.transaction(async (trx) => {
-        // Close any previously open session for this user (defensive)
+        // A user may own multiple credentials. Only reconnects of this
+        // credential replace its previous session; other devices stay online.
         const previousSessions = await trx('vpn_sessions')
-          .where({ user_id: user.id })
+          .where({ user_id: user.id, node_id })
+          .modify((query) => {
+            if (credential.credential_id) query.where({ credential_id: credential.credential_id })
+            else query.whereNull('credential_id')
+          })
           .whereNull('disconnected_at')
         
         if (previousSessions.length > 0) {
@@ -184,6 +199,7 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
           id: sessionId,
           user_id: user.id,
           node_id: node.id,
+          credential_id: credential.credential_id ?? null,
           vpn_ip,
           real_ip: clientIp,
           client_version: client_version ?? null,
@@ -257,7 +273,12 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(400).send({ error: 'username and node_id required' })
       }
 
-      const user = await app.db('users').where({ username }).first()
+      const credential = await app.db('user_node_certificates as c')
+        .join('users as u', 'c.user_id', 'u.id')
+        .where({ 'c.node_id': node_id, 'c.common_name': username, 'c.is_revoked': false })
+        .select('c.id as credential_id', 'u.*')
+        .first()
+      const user = credential ?? await app.db('users').where({ username }).first()
       if (!user) return reply.status(404).send({ error: 'User not found' })
 
       // Get the oldest open session for this user on this node.
@@ -266,6 +287,10 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
       // (oldest) session rather than the newly created one.
       const session = await app.db('vpn_sessions')
         .where({ user_id: user.id, node_id })
+        .modify((query) => {
+          if (credential?.credential_id) query.where({ credential_id: credential.credential_id })
+          else query.whereNull('credential_id')
+        })
         .whereNull('disconnected_at')
         .orderBy('connected_at', 'asc')
         .first()

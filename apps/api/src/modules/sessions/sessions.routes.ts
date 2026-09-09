@@ -279,20 +279,15 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
         }
       })
 
-      // Look up the kicked user's username for the agent payload
+      // A session is owned by one credential. Legacy sessions created before
+      // credential_id existed fall back to the former user/node lookup.
       const kickedUser = await app.db('users').where({ id: session.user_id }).first()
-      const commonName = kickedUser?.username ?? null
-
-      // Query for additional payload data needed by WireGuard
-      let publicKey: string | null = null
-      if (session.user_id && session.node_id) {
-        const cert = await app.db('user_node_certificates')
-          .where({ user_id: session.user_id, node_id: session.node_id })
-          .first()
-        if (cert && cert.client_cert) {
-          publicKey = cert.client_cert.trim()
-        }
-      }
+      const credential = session.credential_id
+        ? await app.db('user_node_certificates').where({ id: session.credential_id }).first()
+        : await app.db('user_node_certificates').where({ user_id: session.user_id, node_id: session.node_id }).first()
+      const commonName = credential?.common_name ?? kickedUser?.username ?? null
+      const publicKey = credential?.client_cert?.trim() ?? null
+      const vpnIp = credential?.vpn_ip ?? session.vpn_ip
 
       // Dispatch kick task to the node agent so the VPN tunnel is actually dropped
       if (commonName) {
@@ -305,7 +300,7 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
               common_name: commonName, 
               permanent,
               public_key: publicKey,
-              vpn_ip: kickedUser?.vpn_ip
+              vpn_ip: vpnIp
             }),
             status: 'pending',
             result: null,
@@ -351,27 +346,21 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const kickedUser = await app.db('users').where({ id: session.user_id }).first()
-      const commonName = kickedUser?.username ?? null
+      const credential = session.credential_id
+        ? await app.db('user_node_certificates').where({ id: session.credential_id }).first()
+        : await app.db('user_node_certificates').where({ user_id: session.user_id, node_id: session.node_id }).first()
+      const commonName = credential?.common_name ?? kickedUser?.username ?? null
 
       if (!commonName) {
         return reply.status(422).send({ error: 'Could not resolve username for this session' })
       }
 
-      // Query for additional payload data needed by WireGuard
-      let publicKey: string | null = null
-      if (session.user_id && session.node_id) {
-        const cert = await app.db('user_node_certificates')
-          .where({ user_id: session.user_id, node_id: session.node_id })
-          .first()
-        if (cert && cert.client_cert) {
-          publicKey = cert.client_cert.trim()
-        }
-      }
+      const publicKey = credential?.client_cert?.trim() ?? null
 
       // If user has a group, fetch netmask for restore
       let netmask = '255.255.255.0'
-      if (kickedUser?.vpn_group_id) {
-        const group = await app.db('groups').where({ id: kickedUser.vpn_group_id }).first()
+      if (credential?.group_id) {
+        const group = await app.db('groups').where({ id: credential.group_id }).first()
         if (group && group.vpn_subnet) {
           const { getNetmask } = await import('../../services/ip-pool')
           netmask = getNetmask(group.vpn_subnet)
@@ -387,7 +376,7 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
           payload: JSON.stringify({ 
             common_name: commonName,
             public_key: publicKey,
-            vpn_ip: kickedUser?.vpn_ip,
+            vpn_ip: credential?.vpn_ip ?? session.vpn_ip,
             netmask
           }),
           status: 'pending',

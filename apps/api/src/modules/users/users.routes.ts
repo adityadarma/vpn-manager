@@ -2,8 +2,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { v7 as uuidv7 } from 'uuid'
 import bcrypt from 'bcryptjs'
 import { CreateUserSchema, UpdateUserSchema } from '@vpn/shared'
-import { nextAvailableIp, getNetmask, cidrToRoute, cidrsToPushRoutes } from '../../services/ip-pool'
-import { assignVpnIpAtomic } from '../../services/ip-assignment'
+import { nextAvailableIp, getNetmask, cidrToRoute, cidrsToPushRoutes, nodePoolCidr } from '../../services/ip-pool'
 import { logAudit, getClientIp } from '../../utils/audit'
 import { stripTaskPayloadSecrets } from '../../utils/task-payload'
 import { enqueueApplyPolicies } from '../policies/policies.routes'
@@ -113,61 +112,21 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       const passwordHash = input.password ? await bcrypt.hash(input.password, 10) : null
       const id = uuidv7()
 
-      // --- Auto-assign VPN IP from group subnet (atomic with retry) ---
-      let vpnIp: string | null = null
       let resolvedGroupId: string | null = vpnGroupId ?? null
-      let targetSubnet: string | null = null
 
       if (vpnGroupId) {
         const group = await app.db('groups').where({ id: vpnGroupId }).first()
         if (!group) return reply.status(400).send({ error: 'vpn_group_id not found' })
-        if (group.vpn_subnet) targetSubnet = group.vpn_subnet
       }
 
-      // Use transaction to atomically assign IP + insert user
-      const maxRetries = 3
-      for (let attempt = 0; attempt < maxRetries; attempt++) {
-        try {
-          await app.db.transaction(async (trx) => {
-            if (targetSubnet) {
-              const usedIps = await trx('users').whereNotNull('vpn_ip').pluck('vpn_ip') as string[]
-              vpnIp = nextAvailableIp(targetSubnet, usedIps)
-              if (!vpnIp) {
-                throw Object.assign(new Error('SUBNET_FULL'), { isSubnetFull: true })
-              }
-            }
-
-            await trx('users').insert({
-              id,
-              username: input.username,
-              email: input.email ?? null,
-              password: passwordHash,
-              role: input.role ?? 'user',
-              is_active: true,
-              vpn_ip: vpnIp,
-              vpn_group_id: resolvedGroupId,
-            })
-          })
-          break // success
-        } catch (err: any) {
-          if (err.isSubnetFull) {
-            return reply.status(422).send({
-              error: 'Subnet full',
-              message: `Group subnet ${targetSubnet} has no available IPs`,
-            })
-          }
-          const msg = (err.message || '').toLowerCase()
-          const isUniqueViolation =
-            msg.includes('unique') || msg.includes('duplicate') ||
-            msg.includes('constraint') || err.code === '23505' ||
-            err.code === 'ER_DUP_ENTRY' || err.errno === 19
-
-          if (isUniqueViolation && attempt < maxRetries - 1) {
-            continue // retry with fresh IP
-          }
-          throw err
-        }
-      }
+      await app.db('users').insert({
+        id,
+        username: input.username,
+        email: input.email ?? null,
+        password: passwordHash,
+        role: input.role ?? 'user',
+        is_active: true,
+      })
 
       // Also add to user_groups table if group was specified
       if (resolvedGroupId) {
@@ -176,21 +135,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
           .onConflict(['group_id', 'user_id']).ignore()
       }
 
-      // Enqueue write_client_ccd task to all online nodes (if IP was assigned)
-      if (vpnIp) {
-        let netmask = '255.255.255.0'
-        if (resolvedGroupId) {
-          const group = await app.db('groups').where({ id: resolvedGroupId }).first()
-          if (group?.vpn_subnet) netmask = getNetmask(group.vpn_subnet)
-        }
-        await enqueueCcdTask(app, input.username, vpnIp, netmask, id)
-      }
-
-      const user = await app.db('users as u')
-        .leftJoin('groups as g', 'u.vpn_group_id', 'g.id')
-        .select('u.id', 'u.username', 'u.email', 'u.role', 'u.is_active', 'u.vpn_ip', 'u.vpn_group_id', 'g.name as vpn_group_name', 'u.created_at')
-        .where('u.id', id)
-        .first()
+      const user = await app.db('users').where({ id }).first()
 
       const userObj = request.user as { id: string; username: string }
       await logAudit(app, {
@@ -243,41 +188,18 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         updates['password'] = await bcrypt.hash(input.password, 10)
       }
 
-      // Handle group change → reassign VPN IP
+      // Group membership controls credential policy; IP assignment happens when a
+      // credential is issued for a concrete node.
       if (vpnGroupId !== undefined) {
         if (vpnGroupId === null) {
-          // Remove from group
-          updates['vpn_group_id'] = null
-          updates['vpn_ip'] = null
-        } else if (vpnGroupId !== user.vpn_group_id) {
-          // Moving to a different group
+          await app.db('user_groups').where({ user_id: id }).delete()
+          await app.db('user_node_certificates').where({ user_id: id }).update({ group_id: null, updated_at: new Date() })
+        } else {
           const newGroup = await app.db('groups').where({ id: vpnGroupId }).first()
           if (!newGroup) return reply.status(400).send({ error: 'vpn_group_id not found' })
-
-          if (newGroup.vpn_subnet) {
-            // Atomic IP assignment with retry to prevent race conditions
-            const newIp = await assignVpnIpAtomic(app.db, id, newGroup.vpn_subnet, id)
-            if (!newIp) {
-              return reply.status(422).send({
-                error: 'Subnet full',
-                message: `Group "${newGroup.name}" subnet ${newGroup.vpn_subnet} has no available IPs`,
-              })
-            }
-            updates['vpn_ip'] = newIp
-            updates['vpn_group_id'] = vpnGroupId
-
-            // Update user_groups membership
-            await app.db('user_groups').where({ user_id: id }).delete()
-            await app.db('user_groups')
-              .insert({ group_id: vpnGroupId, user_id: id })
-              .onConflict(['group_id', 'user_id']).ignore()
-
-            // Enqueue CCD update
-            const netmask = getNetmask(newGroup.vpn_subnet)
-            await enqueueCcdTask(app, user.username, newIp, netmask, id)
-          } else {
-            updates['vpn_group_id'] = vpnGroupId
-          }
+          await app.db('user_groups').where({ user_id: id }).delete()
+          await app.db('user_groups').insert({ group_id: vpnGroupId, user_id: id })
+          await app.db('user_node_certificates').where({ user_id: id }).update({ group_id: vpnGroupId, updated_at: new Date() })
         }
       }
 
@@ -295,16 +217,12 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         metadata: { updated_fields: Object.keys(updates) }
       })
 
-      return app.db('users as u')
-        .leftJoin('groups as g', 'u.vpn_group_id', 'g.id')
-        .select('u.id', 'u.username', 'u.email', 'u.role', 'u.is_active', 'u.vpn_ip', 'u.vpn_group_id', 'g.name as vpn_group_name', 'u.updated_at')
-        .where('u.id', id)
-        .first()
+      return app.db('users').where({ id }).first()
     },
   )
 
   // POST /api/v1/users/:id/generate-cert
-  app.post<{ Params: { id: string }; Body: { nodeId: string; password?: string; passwordProtected?: boolean; validDays?: number | null } }>(
+  app.post<{ Params: { id: string }; Body: { nodeId: string; credentialName?: string; password?: string; passwordProtected?: boolean; validDays?: number | null } }>(
     '/users/:id/generate-cert',
     {
       onRequest: [app.authenticate],
@@ -317,6 +235,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
           required: ['nodeId'],
           properties: {
             nodeId: { type: 'string', format: 'uuid' },
+            credentialName: { type: 'string', description: 'Unique device label for this credential on the node' },
             password: { type: 'string', description: 'Password to encrypt private key (optional)' },
             passwordProtected: { type: 'boolean', description: 'Whether to password-protect the key', default: false },
             validDays: { type: ['number', 'null'], description: 'Certificate validity in days (null = unlimited)', default: null }
@@ -326,7 +245,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
     },
     async (request, reply) => {
       const { id } = request.params
-      const { nodeId, password, passwordProtected, validDays = null } = request.body
+      const { nodeId, credentialName, password, passwordProtected, validDays = null } = request.body
 
       const authUser = request.user as { id: string; role: string }
       if (authUser.role !== 'admin') {
@@ -342,68 +261,40 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       if (!node) {
         return reply.status(400).send({ error: 'Bad Request', message: 'Node not found or offline' })
       }
+      const membership = await app.db('user_groups').where({ user_id: id }).first('group_id')
 
-      // Ensure user has a VPN IP before configuring WireGuard/OpenVPN
-      if (!user.vpn_ip) {
-        let subnetToUse = ''
-        
-        if (user.vpn_group_id) {
-          const group = await app.db('groups').where({ id: user.vpn_group_id }).first()
-          if (group?.vpn_subnet) subnetToUse = group.vpn_subnet
-        }
-        
-        // Dynamic fallback to node's configured network instead of hardcoded 10.8.0.0/24
-        if (!subnetToUse) {
-          const network = node.vpn_network || '10.8.0.0'
-          let prefixLen = 24
-          if (node.vpn_netmask) {
-            const parts = node.vpn_netmask.split('.').map(Number)
-            if (parts.length === 4) {
-               const intMask = (parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]
-               prefixLen = 32 - Math.log2((~intMask >>> 0) + 1)
-               if (isNaN(prefixLen) || prefixLen < 8 || prefixLen > 30) prefixLen = 24
-            }
-          }
-          subnetToUse = `${network}/${prefixLen}`
-        }
-
-        // Atomic IP assignment with retry to prevent race conditions
-        const newIp = await assignVpnIpAtomic(app.db, id, subnetToUse)
-        if (!newIp) {
-          return reply.status(422).send({ error: 'Subnet full', message: `No available IPs in ${subnetToUse}` })
-        }
-        user.vpn_ip = newIp
+      const label = credentialName?.trim() || 'default'
+      if (label.length === 0 || label.length > 100 || /[\r\n\u0000]/.test(label)) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'credentialName must be a single line up to 100 characters' })
       }
-
-      // Check if certificate already exists for this user-node combination
-      const existingCert = await app.db('user_node_certificates')
-        .where({ user_id: id, node_id: nodeId })
+      const existingCredential = await app.db('user_node_certificates')
+        .where({ user_id: id, node_id: nodeId, credential_name: label, is_revoked: false })
         .first()
-
-      // Revoke the old credential on the node before issuing a replacement.
-      if (existingCert && !existingCert.is_revoked && existingCert.client_cert) {
-        const revokeError = await revokeCertificateOnNode(nodeId, user.username, existingCert.client_cert)
-        if (revokeError) {
-          return reply.status(502).send({
-            error: 'Certificate rotation failed',
-            message: `Existing credential was not revoked: ${revokeError}`,
-          })
-        }
-        try {
-          await app.db('cert_revocations').insert({
-            id: uuidv7(),
-            user_id: id,
-            node_id: nodeId,
-            revoked_cert: existingCert.client_cert,
-            reason: 'Certificate regenerated',
-            revoked_by: authUser.id,
-            revoked_at: new Date()
-          })
-        } catch (err: any) {
-          const errMsg = err.message || 'Unknown error';
-          app.log.error(`Failed to record certificate revocation: ${errMsg.includes('Certificate:') ? errMsg.split('Certificate:')[0] + '[CERTIFICATE REDACTED]' : errMsg}`)
-        }
+      if (existingCredential) {
+        return reply.status(409).send({ error: 'Conflict', message: 'An active credential with this name already exists on the node' })
       }
+
+      let pool: string
+      try {
+        pool = nodePoolCidr(node.vpn_network, node.vpn_netmask)
+      } catch (error) {
+        return reply.status(400).send({ error: 'Bad Request', message: `Node VPN pool is invalid: ${(error as Error).message}` })
+      }
+      if (membership?.group_id) {
+        const allocation = await app.db('group_node_dns_settings')
+          .where({ group_id: membership.group_id, node_id: nodeId })
+          .first('vpn_subnet')
+        if (allocation) pool = allocation.vpn_subnet
+      }
+      const usedIps = await app.db('user_node_certificates')
+        .where({ node_id: nodeId })
+        .whereNotNull('vpn_ip')
+        .pluck('vpn_ip') as string[]
+      const vpnIp = nextAvailableIp(pool, usedIps)
+      if (!vpnIp) return reply.status(422).send({ error: 'Subnet full', message: `No available IPs in ${pool}` })
+
+      const credentialId = uuidv7()
+      const commonName = `${user.username.slice(0, 20)}-${credentialId.replace(/-/g, '').slice(-11)}`
 
       // Create task for agent to generate certificate
       const taskId = uuidv7()
@@ -412,7 +303,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         node_id: nodeId,
         action: 'generate_client_cert',
         payload: JSON.stringify({
-          username: user.username,
+          username: commonName,
           password: passwordProtected ? password : undefined,
           validDays: validDays
         }),
@@ -441,52 +332,31 @@ const userRoutes: FastifyPluginAsync = async (app) => {
           const issuedAt = new Date()
           const expiresAt = getCertificateExpiry(node.vpn_type, validDays, issuedAt, result.expiresAt)
           
-          // Save or update certificate in user_node_certificates table
-          if (existingCert) {
-            await app.db('user_node_certificates')
-              .where({ user_id: id, node_id: nodeId })
-              .update({
-                client_cert: result.clientCert,
-                client_key: result.clientKey,
-                password_protected: result.passwordProtected,
-                generated_at: issuedAt,
-                expires_at: expiresAt,
-                is_revoked: false,
-                revoked_at: null,
-                revoked_by: null,
-                revoke_reason: null,
-                download_count: 0,
-                updated_at: new Date()
-              })
-          } else {
-            await app.db('user_node_certificates').insert({
-              id: uuidv7(),
-              user_id: id,
-              node_id: nodeId,
-              client_cert: result.clientCert,
-              client_key: result.clientKey,
-              password_protected: result.passwordProtected,
-                generated_at: issuedAt,
-                expires_at: expiresAt,
-              is_revoked: false,
-              created_at: new Date(),
-              updated_at: new Date()
-            })
-          }
+          await app.db('user_node_certificates').insert({
+            id: credentialId,
+            user_id: id,
+            node_id: nodeId,
+            credential_name: label,
+            common_name: commonName,
+            vpn_ip: vpnIp,
+            group_id: membership?.group_id ?? null,
+            client_cert: result.clientCert,
+            client_key: result.clientKey,
+            password_protected: result.passwordProtected,
+            generated_at: issuedAt,
+            expires_at: expiresAt,
+            is_revoked: false,
+            created_at: new Date(),
+            updated_at: new Date(),
+          })
 
-          // Important for WireGuard: We must inject the newly generated peer to the server config!
-          if (user.vpn_ip) {
-            // Find netmask to pass to enqueueCcdTask
-            let netmask = '255.255.255.0'
-            if (user.vpn_group_id) {
-              const group = await app.db('groups').where({ id: user.vpn_group_id }).first()
-              if (group?.vpn_subnet) netmask = getNetmask(group.vpn_subnet)
-            }
-            await enqueueCcdTask(app, user.username, user.vpn_ip, netmask, id)
-          }
+          await enqueueCredentialCcdTask(app, nodeId, commonName, vpnIp, getNetmask(pool), result.clientCert)
 
           return reply.send({
             message: 'Certificate generated successfully',
+            credentialId,
+            commonName,
+            vpnIp,
             expiresAt: expiresAt?.toISOString() ?? null,
             passwordProtected: result.passwordProtected
           })
@@ -568,71 +438,34 @@ const userRoutes: FastifyPluginAsync = async (app) => {
             results.failed.push({ userId, error: 'User not found' })
             continue
           }
+          const membership = await app.db('user_groups').where({ user_id: userId }).first('group_id')
 
-          // Ensure user has a VPN IP before generating cert
-          if (!user.vpn_ip) {
-            let subnetToUse = ''
-            
-            if (user.vpn_group_id) {
-              const group = await app.db('groups').where({ id: user.vpn_group_id }).first()
-              if (group?.vpn_subnet) subnetToUse = group.vpn_subnet
-            }
-            
-            // Dynamic fallback to node's configured network
-            if (!subnetToUse) {
-              const network = node.vpn_network || '10.8.0.0'
-              let prefixLen = 24
-              if (node.vpn_netmask) {
-                const parts = node.vpn_netmask.split('.').map(Number)
-                if (parts.length === 4) {
-                   const intMask = (parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]
-                   prefixLen = 32 - Math.log2((~intMask >>> 0) + 1)
-                   if (isNaN(prefixLen) || prefixLen < 8 || prefixLen > 30) prefixLen = 24
-                }
-              }
-              subnetToUse = `${network}/${prefixLen}`
-            }
-
-            // Atomic IP assignment with retry to prevent race conditions
-            const newIp = await assignVpnIpAtomic(app.db, userId, subnetToUse)
-            if (!newIp) {
-              results.failed.push({ userId, error: `No available IPs in ${subnetToUse}` })
-              continue
-            }
-            user.vpn_ip = newIp
+          let pool: string
+          try {
+            pool = nodePoolCidr(node.vpn_network, node.vpn_netmask)
+          } catch (error) {
+            results.failed.push({ userId, error: `Node VPN pool is invalid: ${(error as Error).message}` })
+            continue
+          }
+          if (membership?.group_id) {
+            const allocation = await app.db('group_node_dns_settings')
+              .where({ group_id: membership.group_id, node_id: nodeId })
+              .first('vpn_subnet')
+            if (allocation) pool = allocation.vpn_subnet
+          }
+          const usedIps = await app.db('user_node_certificates')
+            .where({ node_id: nodeId })
+            .whereNotNull('vpn_ip')
+            .pluck('vpn_ip') as string[]
+          const vpnIp = nextAvailableIp(pool, usedIps)
+          if (!vpnIp) {
+            results.failed.push({ userId, error: `No available IPs in ${pool}` })
+            continue
           }
 
-          const existingCert = await app.db('user_node_certificates')
-            .where({ user_id: userId, node_id: nodeId })
-            .first()
-
-          // Revoke the old credential on the node before issuing a replacement.
-          if (existingCert && !existingCert.is_revoked && existingCert.client_cert) {
-            const revokeError = await revokeCertificateOnNode(nodeId, user.username, existingCert.client_cert)
-            if (revokeError) {
-              results.failed.push({ userId, error: `Existing credential was not revoked: ${revokeError}` })
-              continue
-            }
-            try {
-              // Verify node exists before inserting
-              const nodeExists = await app.db('vpn_nodes').where({ id: nodeId }).first()
-              if (nodeExists) {
-                await app.db('cert_revocations').insert({
-                  id: uuidv7(),
-                  user_id: userId,
-                  node_id: nodeId,
-                  revoked_cert: existingCert.client_cert,
-                  reason: 'Bulk certificate generation',
-                  revoked_by: authUser.id,
-                  revoked_at: new Date()
-                })
-              }
-            } catch (err: any) {
-              const errMsg = err.message || 'Unknown error';
-              console.warn(`[bulk-gen] Failed to add revocation for user ${userId}:`, errMsg.includes('Certificate:') ? errMsg.split('Certificate:')[0] + '[CERTIFICATE REDACTED]' : errMsg);
-              // Continue with certificate generation even if revocation logging fails
-            }
-          }
+          const credentialId = uuidv7()
+          const commonName = `${user.username.slice(0, 20)}-${credentialId.replace(/-/g, '').slice(-11)}`
+          const credentialName = `bulk-${credentialId.replace(/-/g, '').slice(-11)}`
 
           // Create task
           const taskId = uuidv7()
@@ -641,7 +474,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
             node_id: nodeId,
             action: 'generate_client_cert',
             payload: JSON.stringify({
-              username: user.username,
+              username: commonName,
               password: passwordProtected ? password : undefined,
               validDays: validDays
             }),
@@ -669,47 +502,25 @@ const userRoutes: FastifyPluginAsync = async (app) => {
               const issuedAt = new Date()
               const expiresAt = getCertificateExpiry(node.vpn_type, validDays, issuedAt, result.expiresAt)
               
-              if (existingCert) {
-                await app.db('user_node_certificates')
-                  .where({ user_id: userId, node_id: nodeId })
-                  .update({
-                    client_cert: result.clientCert,
-                    client_key: result.clientKey,
-                    password_protected: result.passwordProtected,
-                    generated_at: issuedAt,
-                    expires_at: expiresAt,
-                    is_revoked: false,
-                    revoked_at: null,
-                    revoked_by: null,
-                    revoke_reason: null,
-                    download_count: 0,
-                    updated_at: new Date()
-                  })
-              } else {
-                await app.db('user_node_certificates').insert({
-                  id: uuidv7(),
-                  user_id: userId,
-                  node_id: nodeId,
-                  client_cert: result.clientCert,
-                  client_key: result.clientKey,
-                  password_protected: result.passwordProtected,
-                  generated_at: issuedAt,
-                  expires_at: expiresAt,
-                  is_revoked: false,
-                  created_at: new Date(),
-                  updated_at: new Date()
-                })
-              }
+              await app.db('user_node_certificates').insert({
+                id: credentialId,
+                user_id: userId,
+                node_id: nodeId,
+                credential_name: credentialName,
+                common_name: commonName,
+                vpn_ip: vpnIp,
+                group_id: membership?.group_id ?? null,
+                client_cert: result.clientCert,
+                client_key: result.clientKey,
+                password_protected: result.passwordProtected,
+                generated_at: issuedAt,
+                expires_at: expiresAt,
+                is_revoked: false,
+                created_at: new Date(),
+                updated_at: new Date(),
+              })
 
-              // Important for WireGuard: We must inject the newly generated peer to the server config!
-              if (user.vpn_ip) {
-                let netmask = '255.255.255.0'
-                if (user.vpn_group_id) {
-                  const group = await app.db('groups').where({ id: user.vpn_group_id }).first()
-                  if (group?.vpn_subnet) netmask = getNetmask(group.vpn_subnet)
-                }
-                await enqueueCcdTask(app, user.username, user.vpn_ip, netmask, userId)
-              }
+              await enqueueCredentialCcdTask(app, nodeId, commonName, vpnIp, getNetmask(pool), result.clientCert)
 
               success = true
               break
@@ -819,6 +630,9 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         .select(
           'user_node_certificates.id',
           'user_node_certificates.node_id',
+          'user_node_certificates.credential_name',
+          'user_node_certificates.common_name',
+          'user_node_certificates.vpn_ip',
           'vpn_nodes.hostname as node_hostname',
           'vpn_nodes.ip_address as node_ip',
           'vpn_nodes.status as node_status',
@@ -870,6 +684,11 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       if (!certificate) {
         return reply.status(404).send({ error: 'Not Found', message: 'Certificate not found' })
       }
+
+      await app.db('vpn_sessions')
+        .where({ credential_id: certificate.id })
+        .whereNull('disconnected_at')
+        .update({ disconnected_at: new Date(), disconnect_reason: 'cert_revoked' })
 
       if (certificate.is_revoked) {
         return reply.status(400).send({ error: 'Bad Request', message: 'Certificate already revoked' })
@@ -950,9 +769,16 @@ const userRoutes: FastifyPluginAsync = async (app) => {
           .where({ id: certId, user_id: id })
           .first()
       } else if (nodeId) {
-        certificate = await app.db('user_node_certificates')
+        const certificates = await app.db('user_node_certificates')
           .where({ user_id: id, node_id: nodeId })
-          .first()
+          .orderBy('generated_at', 'desc')
+        if (certificates.length > 1) {
+          return reply.status(400).send({
+            error: 'Bad Request',
+            message: 'Multiple credentials exist on this node; certId is required',
+          })
+        }
+        certificate = certificates[0]
       } else {
         // Get any certificate (prefer non-revoked)
         certificate = await app.db('user_node_certificates')
@@ -1042,6 +868,13 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       const protocol = node.protocol || 'udp'
       const cipher = node.cipher || 'AES-128-GCM'
       const authDigest = node.auth_digest || 'SHA256'
+      let clientDns = node.dns_servers || ''
+      if (node.managed_dns_enabled && node.dns_sync_status === 'healthy' && Number(node.dns_config_revision) > 0 && certificate.group_id) {
+        const groupDns = await app.db('group_node_dns_settings')
+          .where({ group_id: certificate.group_id, node_id: node.id, enabled: true })
+          .first('listener_ip')
+        if (groupDns?.listener_ip) clientDns = groupDns.listener_ip
+      }
 
       // Fetch all network CIDRs assigned to ALL user's groups → split-tunnel routes
       const userGroupIds = await app.db('user_groups')
@@ -1111,8 +944,8 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         const endpoint = `${node.ip_address}:${actualPort}`
         const wgConfig = `[Interface]
 PrivateKey = ${certificate.client_key.trim()}
-Address = ${user.vpn_ip || '10.8.0.2'}/32
-${node.dns_servers ? `DNS = ${node.dns_servers}` : ''}
+Address = ${certificate.vpn_ip}/32
+${clientDns ? `DNS = ${clientDns}` : ''}
 
 [Peer]
 PublicKey = ${node.public_key}
@@ -1135,6 +968,12 @@ PersistentKeepalive = 25
         tlsCipher = 'TLS-ECDHE-RSA-WITH-AES-256-GCM-SHA384'
       }
 
+      const openVpnDns = clientDns
+        .split(',')
+        .map((dns: string) => dns.trim())
+        .filter(Boolean)
+        .map((dns: string) => `dhcp-option DNS ${dns}`)
+        .join('\n')
       let config = `client
 proto ${protoClient}
 ${protocol === 'udp' ? 'explicit-exit-notify' : ''}
@@ -1154,6 +993,7 @@ tls-cipher ${tlsCipher}
 ignore-unknown-option block-outside-dns
 setenv opt block-outside-dns
 verb 3
+${openVpnDns}
 ${routeLines}
 <ca>
 ${node.ca_cert?.trim() ?? ''}
@@ -1278,6 +1118,25 @@ async function enqueueCcdTask(
 
   await app.db('tasks').insert(tasks)
   app.log.info(`[ip-pool] Queued write_client_ccd for ${username} → ${vpnIp} on ${tasks.length} node(s)`)
+}
+
+/** Configure one credential only on the node that issued it. */
+async function enqueueCredentialCcdTask(
+  app: any,
+  nodeId: string,
+  commonName: string,
+  vpnIp: string,
+  netmask: string,
+  publicKey: string,
+): Promise<void> {
+  await app.db('tasks').insert({
+    id: uuidv7(),
+    node_id: nodeId,
+    action: 'write_client_ccd',
+    payload: JSON.stringify({ username: commonName, vpn_ip: vpnIp, netmask, public_key: publicKey }),
+    status: 'pending',
+    created_at: new Date(),
+  })
 }
 
 export default userRoutes

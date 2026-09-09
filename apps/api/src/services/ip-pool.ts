@@ -91,6 +91,20 @@ export function getNetmask(subnet: string): string {
   return parseCidr(subnet).netmask
 }
 
+/** Build the parent CIDR from a node's IPv4 network address and dotted netmask. */
+export function nodePoolCidr(network: string, netmask: string): string {
+  const parts = netmask.split('.').map(Number)
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+    throw new Error(`Invalid netmask: ${netmask}`)
+  }
+  const mask = ((parts[0]! << 24) | (parts[1]! << 16) | (parts[2]! << 8) | parts[3]!) >>> 0
+  const inverted = (~mask) >>> 0
+  if ((inverted & (inverted + 1)) !== 0) throw new Error(`Non-contiguous netmask: ${netmask}`)
+  const prefix = 32 - Math.log2(inverted + 1)
+  const { networkInt } = parseCidr(`${network}/${prefix}`)
+  return `${intToIp(networkInt)}/${prefix}`
+}
+
 /**
  * Validate that an IP belongs to a given subnet.
  */

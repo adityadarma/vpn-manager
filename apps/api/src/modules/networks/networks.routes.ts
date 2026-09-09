@@ -203,35 +203,35 @@ async function reenqueueNetworkCcdTasks(app: any, networkId: string): Promise<vo
 
   if (groupIds.length === 0) return
 
-  // Find all users in those groups that have a VPN IP
-  const members = await app.db('user_groups as ug')
-    .join('users as u', 'ug.user_id', 'u.id')
+  // Find credentials in those groups. VPN addresses belong to credentials.
+  const members = await app.db('user_node_certificates as c')
+    .join('users as u', 'c.user_id', 'u.id')
+    .join('user_groups as ug', 'u.id', 'ug.user_id')
     .whereIn('ug.group_id', groupIds)
-    .whereNotNull('u.vpn_ip')
-    .distinct('u.id', 'u.username', 'u.vpn_ip', 'u.vpn_group_id')
-    .select('u.id', 'u.username', 'u.vpn_ip', 'u.vpn_group_id')
+    .where({ 'c.is_revoked': false })
+    .whereNotNull('c.vpn_ip')
+    .distinct('c.id', 'c.node_id', 'c.common_name', 'c.client_cert', 'c.vpn_ip', 'c.group_id', 'u.id as user_id')
+    .select('c.id', 'c.node_id', 'c.common_name', 'c.client_cert', 'c.vpn_ip', 'c.group_id', 'u.id as user_id')
 
   if (members.length === 0) return
-
-  const onlineNodes = await app.db('vpn_nodes').where({ status: 'online' }).select('id', 'hostname')
-  if (onlineNodes.length === 0) return
 
   const tasks: any[] = []
 
   for (const member of members) {
     // Get all group IDs for this user
     const userGroupIds = await app.db('user_groups')
-      .where({ user_id: member.id })
+      .where({ user_id: member.user_id })
       .pluck('group_id') as string[]
 
     // Get netmask from primary group
     let netmask = '255.255.255.0'
-    if (member.vpn_group_id) {
-      const primaryGroup = await app.db('groups').where({ id: member.vpn_group_id }).first()
+    if (member.group_id) {
+      const primaryGroup = await app.db('groups').where({ id: member.group_id }).first()
       if (primaryGroup?.vpn_subnet) netmask = getNetmask(primaryGroup.vpn_subnet)
     }
 
-    for (const node of onlineNodes) {
+    const node = await app.db('vpn_nodes').where({ id: member.node_id, status: 'online' }).first()
+    if (node) {
       // Per-node filtering: global (no node) → all nodes, specific → matched node only
       const allGroupNetworks = await app.db('group_networks as gn')
         .join('networks as n', 'gn.network_id', 'n.id')
@@ -249,22 +249,16 @@ async function reenqueueNetworkCcdTasks(app: any, networkId: string): Promise<vo
 
       const extraLines = cidrsToPushRoutes(filteredCidrs)
 
-      // For wireguard: fetch public key
-      const cert = await app.db('user_node_certificates')
-        .where({ user_id: member.id, node_id: node.id })
-        .first()
-      const publicKey = cert?.client_cert ?? undefined
-
       tasks.push({
         id: uuidv7(),
         node_id: node.id,
         action: 'write_client_ccd',
         payload: JSON.stringify({
-          username: member.username,
+          username: member.common_name,
           vpn_ip: member.vpn_ip,
           netmask,
           extra_lines: extraLines,
-          public_key: publicKey,
+          public_key: member.client_cert ?? undefined,
         }),
         status: 'pending',
         created_at: new Date(),
