@@ -1,5 +1,12 @@
 import { z } from 'zod'
 
+export const DnsStatusSchema = z.object({
+  enabled: z.boolean(),
+  capable: z.boolean(),
+  status: z.enum(['disabled', 'healthy', 'degraded']),
+  lastError: z.string().max(1000).nullable().optional(),
+})
+
 export const RegisterNodeSchema = z.object({
   hostname: z.string().min(1),
   ip: z.string().ip(),
@@ -15,6 +22,7 @@ export const HeartbeatSchema = z.object({
   firewallRules: z.string().optional(),
   firewallEngine: z.string().optional(),
   startup: z.boolean().optional(),
+  dns: DnsStatusSchema.optional(),
   
   // Real-time VPN data from management interface
   clients: z.array(z.object({

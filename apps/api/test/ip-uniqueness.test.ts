@@ -49,10 +49,10 @@ describe('VPN IP Uniqueness', () => {
       payload: { username: 'ip_test_user2', password: 'Test@1234!', vpn_group_id: groupId },
     })
     expect(res2.statusCode).toBe(201)
-    // VPN identity is now credential-scoped, so user creation never
-    // auto-allocates users.vpn_ip (the column itself is dropped in a later migration).
-    expect(res1.json().vpn_ip).toBeNull()
-    expect(res2.json().vpn_ip).toBeNull()
+    // `users.vpn_ip` was removed once credential-scoped identity replaced it —
+    // the response no longer carries this field at all.
+    expect(res1.json().vpn_ip).toBeUndefined()
+    expect(res2.json().vpn_ip).toBeUndefined()
   })
 
   it('rejects duplicate VPN IP for credentials on the same node', async () => {
@@ -91,5 +91,13 @@ describe('VPN IP Uniqueness', () => {
         vpn_ip: '10.99.0.50',
       })
     ).rejects.toThrow()
+  })
+
+  it('removes the legacy users.vpn_ip and users.vpn_group_id columns from the schema', async () => {
+    // Migration 20260101000034 drops both columns once VPN identity became
+    // credential-scoped (user_node_certificates.vpn_ip). This asserts the
+    // schema itself no longer carries them, not just that call sites avoid them.
+    await expect(app.db.schema.hasColumn('users', 'vpn_ip')).resolves.toBe(false)
+    await expect(app.db.schema.hasColumn('users', 'vpn_group_id')).resolves.toBe(false)
   })
 })

@@ -321,6 +321,38 @@ const ApplyNetworkPolicyPayload = z.object({
   vpn_type: VpnTypeSchema.optional(),
 })
 
+const DnsRecordPayload = z.object({
+  name: z.string().max(253).regex(/^(?:@|[a-z0-9][a-z0-9.-]*)$/),
+  type: z.enum(['A', 'AAAA', 'CNAME', 'TXT']),
+  value: z.string().min(1).max(1024).refine((value) => !/[\r\n\u0000]/.test(value)),
+  ttl: z.number().int().min(30).max(86400),
+})
+
+const SyncGroupDnsPayload = z.object({
+  revision: z.number().int().min(1),
+  config_hash: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  groups: z.array(z.object({
+    id: z.string().uuid(),
+    name: z.string().min(1).max(100),
+    vpn_subnet: Ipv4OrCidrSchema,
+    listener_ip: Ipv4Schema,
+    listener_port: z.number().int().min(1).max(65535),
+    public_default_action: z.enum(['allow', 'deny']),
+    upstreams: z.array(Ipv4Schema).max(5),
+    zones: z.array(z.object({
+      name: z.string().max(253).regex(/^[a-z0-9][a-z0-9.-]*$/),
+      records: z.array(DnsRecordPayload).max(10000),
+    })).max(100),
+    policies: z.array(z.object({
+      domain_pattern: z.string().max(253).regex(/^(?:\*\.)?[a-z0-9][a-z0-9.-]*$/),
+      action: z.enum(['allow', 'block', 'sinkhole']),
+      scope: z.enum(['public', 'internal', 'any']),
+      priority: z.number().int().min(-10000).max(10000),
+      sinkhole_ipv4: Ipv4Schema.nullable(),
+    })).max(1000),
+  })).max(200),
+})
+
 /** Actions that legitimately carry no parameters. */
 const EmptyPayload = z.object({}).passthrough()
 
@@ -342,6 +374,7 @@ export const TASK_PAYLOAD_SCHEMAS = {
   add_firewall_rule: FirewallRulePayload,
   remove_firewall_rule: FirewallRulePayload,
   apply_network_policy: ApplyNetworkPolicyPayload,
+  sync_group_dns: SyncGroupDnsPayload,
   reload_openvpn: EmptyPayload,
   sync_certificates: EmptyPayload,
   sync_server_config: EmptyPayload,
