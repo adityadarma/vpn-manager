@@ -39,6 +39,8 @@
 #   VPN_SUBNET - VPN network CIDR (e.g. 10.8.0.0/16, default: auto-assigned by manager)
 #   VPN_TYPE - VPN engine: openvpn (default) or wireguard
 #   FIREWALL_ENGINE - Firewall: iptables (default), nftables, ufw, firewalld, none
+#   DNS_ENABLED - Enable Managed DNS (CoreDNS) on this node: true or false (default)
+#   DNS_BLOCK_DOT - Block DNS-over-TLS (port 853) to force clients through Managed DNS: true or false (default)
 #
 # Environment Variables (Manual registration):
 #   MANAGER_URL or AGENT_API_MANAGER_URL - Manager API URL
@@ -77,6 +79,18 @@ detect_active_firewall() {
     fi
 
     echo "$detected"
+}
+
+set_compose_dns_profile() {
+    # Exporting COMPOSE_PROFILES=dns makes `docker compose` also start the
+    # coredns service defined in docker-compose.agent.yml (profiles: ["dns"]).
+    # Using the env var avoids ordering issues since --profile must precede
+    # the subcommand (e.g. `docker compose --profile dns up`, not `up --profile dns`).
+    if [ "${ENV_DNS_ENABLED:-false}" = "true" ]; then
+        export COMPOSE_PROFILES="dns"
+    else
+        unset COMPOSE_PROFILES
+    fi
 }
 
 mask_to_prefix() {
@@ -366,6 +380,36 @@ if [ -n "$VPN_SUBNET" ]; then
     export VPN_NETWORK VPN_NETMASK
     info "VPN Subnet: ${VPN_NETWORK}/${_vpn_prefix} (netmask: ${VPN_NETMASK})"
 fi
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ─── Managed DNS Prompt ──────────────────────────────────────────────────────
+# Managed DNS (CoreDNS) is optional and layered on top of any VPN engine.
+# Only prompt when the agent is about to be installed/updated and DNS_ENABLED
+# was not already supplied via environment/CLI args.
+if [[ "$mode" == "1" || "$mode" == "2" || "$mode" == "3" ]] && [ -z "$DNS_ENABLED" ]; then
+    echo ""
+    echo "Managed DNS (CoreDNS):"
+    echo "  Lets the Manager push per-group DNS policies (allow/deny domains,"
+    echo "  DNS-based ad/tracker blocking) enforced on this node via CoreDNS."
+    read -p "Enable Managed DNS on this node? [y/N]: " _dns_choice </dev/tty
+    if [[ "$_dns_choice" == "y" || "$_dns_choice" == "Y" ]]; then
+        DNS_ENABLED="true"
+        if [ -z "$DNS_BLOCK_DOT" ]; then
+            read -p "Block DNS-over-TLS (port 853) to force clients through Managed DNS? [y/N]: " _dot_choice </dev/tty
+            if [[ "$_dot_choice" == "y" || "$_dot_choice" == "Y" ]]; then
+                DNS_BLOCK_DOT="true"
+            else
+                DNS_BLOCK_DOT="false"
+            fi
+        fi
+    else
+        DNS_ENABLED="false"
+    fi
+fi
+DNS_ENABLED="${DNS_ENABLED:-false}"
+DNS_BLOCK_DOT="${DNS_BLOCK_DOT:-false}"
+export ENV_DNS_ENABLED="$DNS_ENABLED"
+export ENV_DNS_BLOCK_DOT="$DNS_BLOCK_DOT"
 # ─────────────────────────────────────────────────────────────────────────────
 
 echo ""
@@ -807,6 +851,17 @@ EOF
     # by an update run. Pull and restart its current configuration instead.
     if [ -f .env ] && grep -q '^AGENT_NODE_ID=.' .env && grep -q '^AGENT_SECRET_TOKEN=.' .env; then
         info "Existing registered agent found; preserving its configuration"
+        if grep -q '^DNS_ENABLED=' .env; then
+            sed -i "s|^DNS_ENABLED=.*|DNS_ENABLED=${ENV_DNS_ENABLED}|" .env
+        else
+            echo "DNS_ENABLED=${ENV_DNS_ENABLED}" >> .env
+        fi
+        if grep -q '^DNS_BLOCK_DOT=' .env; then
+            sed -i "s|^DNS_BLOCK_DOT=.*|DNS_BLOCK_DOT=${ENV_DNS_BLOCK_DOT}|" .env
+        else
+            echo "DNS_BLOCK_DOT=${ENV_DNS_BLOCK_DOT}" >> .env
+        fi
+        set_compose_dns_profile
         docker compose pull
         docker compose up -d
         ok "Agent updated successfully"
@@ -930,6 +985,8 @@ AGENT_SECRET_TOKEN=
 AGENT_POLL_INTERVAL_MS=5000
 AGENT_HEARTBEAT_INTERVAL_MS=30000
 FIREWALL_ENGINE=${ENV_FIREWALL_ENGINE:-auto}
+DNS_ENABLED=${ENV_DNS_ENABLED}
+DNS_BLOCK_DOT=${ENV_DNS_BLOCK_DOT}
 EOF
         if [ "$ENV_VPN_TYPE" = "wireguard" ]; then
             echo "VPN_TYPE=wireguard" >> .env
@@ -1005,6 +1062,8 @@ AGENT_SECRET_TOKEN=${ENV_SECRET_TOKEN}
 AGENT_POLL_INTERVAL_MS=5000
 AGENT_HEARTBEAT_INTERVAL_MS=30000
 FIREWALL_ENGINE=${ENV_FIREWALL_ENGINE:-auto}
+DNS_ENABLED=${ENV_DNS_ENABLED}
+DNS_BLOCK_DOT=${ENV_DNS_BLOCK_DOT}
 EOF
         if [ "$ENV_VPN_TYPE" = "wireguard" ]; then
             echo "VPN_TYPE=wireguard" >> .env
@@ -1016,6 +1075,7 @@ EOF
     
     # Start agent
     info "Starting agent..."
+    set_compose_dns_profile
     docker compose pull
     docker compose up -d
     
@@ -1059,7 +1119,18 @@ else
                     else
                         echo "FIREWALL_ENGINE=${ENV_FIREWALL_ENGINE}" >> "$INSTALL_DIR/.env"
                     fi
-                    cd "$INSTALL_DIR" && docker compose restart
+                    if grep -q "^DNS_ENABLED=" "$INSTALL_DIR/.env"; then
+                        sed -i "s|^DNS_ENABLED=.*|DNS_ENABLED=${ENV_DNS_ENABLED}|" "$INSTALL_DIR/.env"
+                    else
+                        echo "DNS_ENABLED=${ENV_DNS_ENABLED}" >> "$INSTALL_DIR/.env"
+                    fi
+                    if grep -q "^DNS_BLOCK_DOT=" "$INSTALL_DIR/.env"; then
+                        sed -i "s|^DNS_BLOCK_DOT=.*|DNS_BLOCK_DOT=${ENV_DNS_BLOCK_DOT}|" "$INSTALL_DIR/.env"
+                    else
+                        echo "DNS_BLOCK_DOT=${ENV_DNS_BLOCK_DOT}" >> "$INSTALL_DIR/.env"
+                    fi
+                    set_compose_dns_profile
+                    cd "$INSTALL_DIR" && docker compose up -d
                 fi
             else
                 install_openvpn
@@ -1088,6 +1159,12 @@ else
     echo "OpenVPN: $(systemctl is-active openvpn-server@server 2>/dev/null || systemctl is-active openvpn@server 2>/dev/null || echo 'not running')"
 fi
 echo "Agent: $(docker ps --filter name=vpn-agent --format '{{.Status}}' 2>/dev/null || echo 'not running')"
+if [ "${ENV_DNS_ENABLED:-false}" = "true" ]; then
+    echo "Managed DNS: enabled (DNS_BLOCK_DOT=${ENV_DNS_BLOCK_DOT})"
+    echo "CoreDNS: $(docker ps --filter name=coredns --format '{{.Status}}' 2>/dev/null || echo 'not running')"
+else
+    echo "Managed DNS: disabled"
+fi
 echo ""
 echo "Useful Commands:"
 if [ "$ENV_VPN_TYPE" = "wireguard" ]; then
