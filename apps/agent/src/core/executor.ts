@@ -16,6 +16,7 @@ import { handleUnkickSession } from '../handlers/unkick-session'
 import { handleWriteClientCcd } from '../handlers/write-client-ccd'
 import { handleDeleteClientCcd } from '../handlers/delete-client-ccd'
 import { handleApplyNetworkPolicy } from '../handlers/apply-network-policy'
+import { handleSyncGroupDns } from '../handlers/sync-group-dns'
 
 interface Task {
   id: string
@@ -50,7 +51,7 @@ export async function executeTask(env: AgentEnv, task: Task, driver: VpnDriver):
   let result: Record<string, unknown> = {}
   let errorMessage: string | undefined
 
-  if (!handler) {
+  if (!handler && task.action !== 'sync_group_dns') {
     const supported = Object.keys(HANDLERS).sort().join(', ')
     errorMessage = `Unknown action "${task.action}". Supported actions: ${supported}`
     console.error(`[executor] Task ${task.id} rejected: ${errorMessage}`)
@@ -61,7 +62,12 @@ export async function executeTask(env: AgentEnv, task: Task, driver: VpnDriver):
         firewall_engine: env.FIREWALL_ENGINE,
         vpn_type: env.VPN_TYPE,
       }
-      result = await handler(enrichedPayload, driver)
+      if (task.action === 'sync_group_dns') {
+        result = await handleSyncGroupDns(enrichedPayload, driver, env)
+      } else {
+        // The unknown-action branch above guarantees this is present.
+        result = await handler!(enrichedPayload, driver)
+      }
       const failureField = ['success', 'kicked', 'unkicked'].find((field) => result[field] === false)
       if (failureField) {
         const detail = [result['error'], result['reason'], result['message']]

@@ -103,6 +103,7 @@ async function main() {
   console.log(`   VPN Type: ${env.VPN_TYPE}`)
   console.log(`   Poll:     every ${env.AGENT_POLL_INTERVAL_MS}ms`)
   console.log(`   Heartbeat: every ${env.AGENT_HEARTBEAT_INTERVAL_MS}ms`)
+  console.log(`   Managed DNS: ${env.DNS_ENABLED ? 'enabled' : 'disabled'}`)
 
   // Initialize VPN driver (factory pattern)
   const driver = createVpnDriver(env)

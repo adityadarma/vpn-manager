@@ -16,6 +16,12 @@ const AgentEnvSchema = z.object({
   
   // Firewall Engine (auto tries to detect iptables vs nftables)
   FIREWALL_ENGINE: z.enum(['iptables', 'nftables', 'ufw', 'firewalld', 'none', 'auto']).default('auto'),
+
+  // Managed DNS is optional. A disabled agent never requires CoreDNS.
+  DNS_ENABLED: z.coerce.boolean().default(false),
+  COREDNS_CONFIG_DIR: z.string().min(1).default('/etc/vpn-manager/coredns'),
+  COREDNS_HEALTH_URL: z.string().url().default('http://127.0.0.1:8181/health'),
+  DNS_BLOCK_DOT: z.coerce.boolean().default(false),
 })
 
 export type AgentEnv = z.infer<typeof AgentEnvSchema>

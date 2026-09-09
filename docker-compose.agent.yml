@@ -39,6 +39,10 @@ services:
       AGENT_POLL_INTERVAL_MS: ${AGENT_POLL_INTERVAL_MS:-5000}
       AGENT_HEARTBEAT_INTERVAL_MS: ${AGENT_HEARTBEAT_INTERVAL_MS:-30000}
       FIREWALL_ENGINE: ${FIREWALL_ENGINE:-auto}
+      DNS_ENABLED: ${DNS_ENABLED:-false}
+      COREDNS_CONFIG_DIR: /etc/vpn-manager/coredns
+      COREDNS_HEALTH_URL: ${COREDNS_HEALTH_URL:-http://127.0.0.1:8181/health}
+      DNS_BLOCK_DOT: ${DNS_BLOCK_DOT:-false}
 
     # Use host network for direct access to host VPN management interface and iptables bindings
     network_mode: host
@@ -48,8 +52,25 @@ services:
       - NET_ADMIN
       - NET_RAW
 
+    # The Agent writes generated DNS revisions here. The volume remains harmless
+    # when DNS_ENABLED=false and lets CoreDNS mount the same files read-only.
+    volumes:
+      - managed-dns:/etc/vpn-manager/coredns
+
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
+
+  coredns:
+    image: coredns/coredns:1.12.0
+    profiles: ["dns"]
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - managed-dns:/etc/coredns:ro
+    command: -conf /etc/coredns/Corefile
+
+volumes:
+  managed-dns:
