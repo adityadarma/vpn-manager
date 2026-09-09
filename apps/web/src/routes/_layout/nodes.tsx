@@ -16,6 +16,7 @@ interface NodeForm {
   hostname: string
   ipAddress: string
   region: string
+  managedDnsEnabled?: boolean
 }
 
 interface NodeConfig {
@@ -50,7 +51,7 @@ function NodesPage() {
   const [configNode, setConfigNode] = useState<string | null>(null)
   const [editNode, setEditNode] = useState<VpnNode | null>(null)
   const [viewFirewallNode, setViewFirewallNode] = useState<VpnNode | null>(null)
-  const [editForm, setEditForm] = useState<NodeForm>({ hostname: '', ipAddress: '', region: '' })
+  const [editForm, setEditForm] = useState<NodeForm>({ hostname: '', ipAddress: '', region: '', managedDnsEnabled: false })
   const [nodeConfig, setNodeConfig] = useState<NodeConfig>({
     port: 1194,
     protocol: 'udp',
@@ -170,7 +171,8 @@ function NodesPage() {
     setEditForm({
       hostname: node.hostname,
       ipAddress: node.ip_address,
-      region: node.region || ''
+      region: node.region || '',
+      managedDnsEnabled: Boolean((node as any).managed_dns_enabled),
     })
   }
 
@@ -179,7 +181,8 @@ function NodesPage() {
       api.put(`/api/v1/nodes/${data.nodeId}`, {
         hostname: data.updates.hostname,
         ip_address: data.updates.ipAddress,
-        region: data.updates.region || null
+        region: data.updates.region || null,
+        managed_dns_enabled: data.updates.managedDnsEnabled,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['nodes'] })
@@ -557,6 +560,18 @@ function NodesPage() {
                   className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
+              <label className="flex items-start gap-3 rounded-lg border border-border p-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={Boolean(editForm.managedDnsEnabled)}
+                  onChange={e => setEditForm({ ...editForm, managedDnsEnabled: e.target.checked })}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="block text-sm font-medium">Enable Managed DNS</span>
+                  <span className="block text-xs text-muted-foreground mt-0.5">Allows this node to receive CoreDNS sync tasks. Start the DNS Compose profile on the node before enabling it.</span>
+                </span>
+              </label>
               <div className="flex gap-3 pt-2">
                 <Button
                   type="button"
