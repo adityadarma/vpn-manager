@@ -7,6 +7,13 @@
 #
 # Usage:
 #   sudo bash scripts/install-manager.sh
+#
+#   # Install the beta channel instead of the default stable channel:
+#   curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-manager.sh | \
+#     sudo bash -s -- CHANNEL=beta
+#
+# Environment variables:
+#   CHANNEL - Image and source channel: latest (default) or beta
 # ============================================================
 
 set -e
@@ -23,12 +30,28 @@ error(){ echo -e "${R}✗ $1${NC}"; }
 
 INSTALL_DIR="/opt/vpn-manager"
 
+# Preserve environment variables passed as command-line KEY=VALUE arguments.
+# This supports `sudo bash -s -- CHANNEL=beta` when invoked through curl.
+for arg in "$@"; do
+    if [[ "$arg" == *"="* ]]; then
+        export "$arg"
+    fi
+done
+
+CHANNEL="${CHANNEL:-latest}"
+case "$CHANNEL" in
+    latest) REPO_REF="main"; IMAGE_VERSION="latest" ;;
+    beta) REPO_REF="beta"; IMAGE_VERSION="beta" ;;
+    *) error "CHANNEL must be latest or beta (received: $CHANNEL)"; exit 1 ;;
+esac
+
 # Check root
 [ "$EUID" -ne 0 ] && { error "Must run as root"; exit 1; }
 
 echo -e "${B}============================================================"
 echo "  VPN Manager - Installation"
 echo "============================================================${NC}"
+info "Installation channel: ${CHANNEL} (Manager image: ${IMAGE_VERSION})"
 echo ""
 
 # Check Docker
@@ -53,16 +76,22 @@ cd "$INSTALL_DIR"
 ok "Directory created: $INSTALL_DIR"
 echo ""
 
-# Download docker-compose.yml if not present
-if [ ! -f "docker-compose.yml" ]; then
-    info "Downloading docker-compose.yml..."
-    REPO_URL="https://raw.githubusercontent.com/adityadarma/vpn-manager/main"
-    if curl -fsSL "$REPO_URL/docker-compose.prod.yml" -o docker-compose.yml; then
-        ok "Downloaded docker-compose.yml"
-    else
-        error "Failed to download docker-compose.yml"
-        exit 1
-    fi
+# Refresh the managed Compose file from the selected channel. Credentials and
+# database settings live in .env and are deliberately preserved below. Preserve
+# a timestamped copy first because an existing installation may have local
+# Compose customizations.
+if [ -f "docker-compose.yml" ]; then
+    backup="docker-compose.yml.backup-$(date +%Y%m%d-%H%M%S)"
+    cp docker-compose.yml "$backup"
+    info "Backed up existing docker-compose.yml to $backup"
+fi
+info "Downloading docker-compose.yml from ${REPO_REF}..."
+REPO_URL="https://raw.githubusercontent.com/adityadarma/vpn-manager/${REPO_REF}"
+if curl -fsSL "$REPO_URL/docker-compose.prod.yml" -o docker-compose.yml; then
+    ok "Downloaded docker-compose.yml"
+else
+    error "Failed to download docker-compose.prod.yml from channel ${CHANNEL}"
+    exit 1
 fi
 echo ""
 
@@ -78,6 +107,11 @@ if [ -f .env ]; then
         *) DATABASE_PROFILE="" ;;
     esac
     APP_URL="http://localhost:${APP_PORT}"
+    if grep -q '^IMAGE_VERSION=' .env; then
+        sed -i "s|^IMAGE_VERSION=.*|IMAGE_VERSION=${IMAGE_VERSION}|" .env
+    else
+        echo "IMAGE_VERSION=${IMAGE_VERSION}" >> .env
+    fi
     EXISTING_INSTALL=true
     warn "Existing .env found; preserving its configuration and secrets"
 else
@@ -145,6 +179,7 @@ else
 # App
 NODE_ENV=production
 PORT=${APP_PORT}
+IMAGE_VERSION=${IMAGE_VERSION}
 
 # Database
 DATABASE_TYPE=${DATABASE_TYPE}

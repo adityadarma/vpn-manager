@@ -33,6 +33,7 @@
 #     sudo -E bash install-agent.sh
 #
 # Environment Variables (Auto-registration):
+#   CHANNEL - Image and source channel: latest (default) or beta
 #   MANAGER_URL or AGENT_API_MANAGER_URL - Manager API URL
 #   VPN_TOKEN - VPN authentication token
 #   REG_KEY or NODE_REGISTRATION_KEY - Registration key
@@ -206,9 +207,17 @@ for arg in "$@"; do
     fi
 done
 
+CHANNEL="${CHANNEL:-latest}"
+case "$CHANNEL" in
+    latest) REPO_REF="main"; IMAGE_VERSION="latest" ;;
+    beta) REPO_REF="beta"; IMAGE_VERSION="beta" ;;
+    *) error "CHANNEL must be latest or beta (received: $CHANNEL)"; exit 1 ;;
+esac
+
 echo -e "${B}============================================================"
 echo "  VPN Manager - Node Installation/Update"
 echo "============================================================${NC}"
+info "Installation channel: ${CHANNEL} (Agent image: ${IMAGE_VERSION})"
 echo ""
 
 # Show environment variable support
@@ -799,16 +808,22 @@ install_agent() {
     mkdir -p "$INSTALL_DIR"
     cd "$INSTALL_DIR"
     
-    # Download docker-compose.yml if not exists
-    if [ ! -f "docker-compose.yml" ]; then
-        info "Downloading docker-compose.yml for agent..."
-        REPO_URL="https://raw.githubusercontent.com/adityadarma/vpn-manager/main"
-        if curl -fsSL "$REPO_URL/docker-compose.agent.yml" -o docker-compose.yml; then
-            ok "Downloaded docker-compose.yml"
-        else
-            error "Failed to download docker-compose.agent.yml"
-            info "Please ensure docker-compose.yml is in $INSTALL_DIR"
-        fi
+    # Refresh the managed Compose file from the selected channel. The local
+    # .env and docker-compose.override.yml carry node credentials/mounts and
+    # are never replaced by this update. Preserve a timestamped copy first in
+    # case an administrator also made direct edits to the base Compose file.
+    if [ -f "docker-compose.yml" ]; then
+        backup="docker-compose.yml.backup-$(date +%Y%m%d-%H%M%S)"
+        cp docker-compose.yml "$backup"
+        info "Backed up existing docker-compose.yml to $backup"
+    fi
+    info "Downloading docker-compose.yml for agent from ${REPO_REF}..."
+    REPO_URL="https://raw.githubusercontent.com/adityadarma/vpn-manager/${REPO_REF}"
+    if curl -fsSL "$REPO_URL/docker-compose.agent.yml" -o docker-compose.yml; then
+        ok "Downloaded docker-compose.yml"
+    else
+        error "Failed to download docker-compose.agent.yml from channel ${CHANNEL}"
+        return 1
     fi
 
     # Build host-specific mounts in a Compose override so updates never mutate
@@ -851,6 +866,11 @@ EOF
     # by an update run. Pull and restart its current configuration instead.
     if [ -f .env ] && grep -q '^AGENT_NODE_ID=.' .env && grep -q '^AGENT_SECRET_TOKEN=.' .env; then
         info "Existing registered agent found; preserving its configuration"
+        if grep -q '^IMAGE_VERSION=' .env; then
+            sed -i "s|^IMAGE_VERSION=.*|IMAGE_VERSION=${IMAGE_VERSION}|" .env
+        else
+            echo "IMAGE_VERSION=${IMAGE_VERSION}" >> .env
+        fi
         if grep -q '^DNS_ENABLED=' .env; then
             sed -i "s|^DNS_ENABLED=.*|DNS_ENABLED=${ENV_DNS_ENABLED}|" .env
         else
@@ -985,6 +1005,7 @@ AGENT_SECRET_TOKEN=
 AGENT_POLL_INTERVAL_MS=5000
 AGENT_HEARTBEAT_INTERVAL_MS=30000
 FIREWALL_ENGINE=${ENV_FIREWALL_ENGINE:-auto}
+IMAGE_VERSION=${IMAGE_VERSION}
 DNS_ENABLED=${ENV_DNS_ENABLED}
 DNS_BLOCK_DOT=${ENV_DNS_BLOCK_DOT}
 EOF
@@ -1062,6 +1083,7 @@ AGENT_SECRET_TOKEN=${ENV_SECRET_TOKEN}
 AGENT_POLL_INTERVAL_MS=5000
 AGENT_HEARTBEAT_INTERVAL_MS=30000
 FIREWALL_ENGINE=${ENV_FIREWALL_ENGINE:-auto}
+IMAGE_VERSION=${IMAGE_VERSION}
 DNS_ENABLED=${ENV_DNS_ENABLED}
 DNS_BLOCK_DOT=${ENV_DNS_BLOCK_DOT}
 EOF

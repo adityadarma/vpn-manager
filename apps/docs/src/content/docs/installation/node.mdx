@@ -25,6 +25,21 @@ For WireGuard, use `VPN_TYPE=wireguard`. The optional `VPN_SUBNET=10.8.1.0/24` r
 
 The script creates `/opt/vpn-agent/.env`, registers the node at `/api/v1/nodes/register`, receives the Node ID and secret token, then starts the `vpn-agent` container. Once credentials exist, rerunning the script updates the image without overwriting the registered Agent configuration.
 
+### Release channels
+
+The command above installs the stable `latest` channel. To install the moving beta channel for testing, add `CHANNEL=beta`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-agent.sh | sudo bash -s -- \
+  CHANNEL=beta \
+  MANAGER_URL=https://vpn.example.com \
+  VPN_TOKEN=replace-with-vpn-token \
+  REG_KEY=replace-with-registration-key \
+  VPN_TYPE=openvpn
+```
+
+The installer downloads `docker-compose.agent.yml` from the `beta` branch and writes `IMAGE_VERSION=beta` to `/opt/vpn-agent/.env`, so later installer updates stay on beta. The release workflow publishes `ghcr.io/adityadarma/vpn-agent:beta` from every push to the `beta` branch. Beta is intended for testing only; omit `CHANNEL=beta` for stable production deployments.
+
 The base `/opt/vpn-agent/docker-compose.yml` remains generic. The installer writes host-specific mounts to `/opt/vpn-agent/docker-compose.override.yml`, which Docker Compose loads automatically:
 
 - OpenVPN: `/etc/openvpn`, `/run/openvpn`, and read-only `/var/log/openvpn`.

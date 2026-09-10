@@ -26,7 +26,7 @@
 
 services:
   agent:
-    image: ghcr.io/adityadarma/vpn-agent:1
+    image: ghcr.io/adityadarma/vpn-agent:${IMAGE_VERSION:-latest}
     container_name: vpn-agent
     restart: unless-stopped
     environment:

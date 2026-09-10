@@ -24,6 +24,17 @@ curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/script
 
 The script creates `/opt/vpn-manager`, downloads `docker-compose.prod.yml`, creates `.env` when it does not exist, selects a database, and starts the containers. Reinstallation preserves `.env` so existing secrets, database settings, nodes, and sessions remain unchanged.
 
+### Release channels
+
+The command above installs the stable `latest` channel. To test the moving beta channel instead, add `CHANNEL=beta`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-manager.sh | \
+  sudo bash -s -- CHANNEL=beta
+```
+
+The beta installer downloads its Compose file from the `beta` branch and sets `IMAGE_VERSION=beta` in `/opt/vpn-manager/.env`, so subsequent installer updates remain on beta. The release workflow publishes `ghcr.io/adityadarma/vpn-manager:beta` from every push to the `beta` branch. Beta is for testing and can change without a stable release; use the default channel for production.
+
 Choose one of these databases when prompted:
 
 | Option | `DATABASE_TYPE` value | Use case |
