@@ -38,7 +38,7 @@ curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/script
   VPN_TYPE=openvpn
 ```
 
-The installer downloads `docker-compose.agent.yml` from the `beta` branch and writes `IMAGE_VERSION=beta` to `/opt/vpn-agent/.env`, so later installer updates stay on beta. The release workflow publishes `ghcr.io/adityadarma/vpn-agent:beta` from every push to the `beta` branch. Beta is intended for testing only; omit `CHANNEL=beta` for stable production deployments.
+The installer writes `IMAGE_VERSION=beta` to `/opt/vpn-agent/.env`, so later installer updates stay on beta. The release workflow publishes `ghcr.io/adityadarma/vpn-agent:beta` whenever a beta prerelease tag (such as `v1.1.8-beta.1`) is pushed. Beta is intended for testing only; omit `CHANNEL=beta` for stable production deployments.
 
 The base `/opt/vpn-agent/docker-compose.yml` remains generic. The installer writes host-specific mounts to `/opt/vpn-agent/docker-compose.override.yml`, which Docker Compose loads automatically:
 

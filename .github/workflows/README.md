@@ -6,8 +6,8 @@ Builds and pushes Docker images for VPN Manager.
 
 ### Images
 
-- `ghcr.io/OWNER/vpn-manager:latest` - Manager (web + api)
-- `ghcr.io/OWNER/vpn-agent:latest` - Agent
+- `ghcr.io/adityadarma/vpn-manager:latest` - Manager (web + api)
+- `ghcr.io/adityadarma/vpn-agent:latest` - Agent
 
 ### Triggers
 
@@ -26,11 +26,12 @@ git push origin v1.0.0
 
 Automatically builds and pushes both images with version tags.
 
-**3. Changes merged or pushed to main**
+**3. Changes merged or pushed to main or beta**
 
-- CI runs only when commits are pushed to `main`, including commits created by merging a pull request into `main`.
+- CI runs when commits are pushed to `main` or `beta`, including commits created by merging a pull request.
 - CI does not run when a pull request is opened or updated before it is merged.
-- Version tags run the separate Release workflow, including a fresh test pass before publishing images.
+- A stable version tag publishes `:latest` and semver aliases. A prerelease tag such as `v1.2.0-beta.1` publishes its immutable tag plus the moving `:beta` alias.
+- Version tags run the separate Release workflow, which waits for the existing CI run on the exact tagged commit. It publishes only after CI succeeds; it waits for pending CI and stops if CI fails or no matching CI run appears.
 
 ## GitHub Pages
 

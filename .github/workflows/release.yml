@@ -24,35 +24,64 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  # ── Job 1: Test ─────────────────────────────────────────────────────────────
-  test:
-    name: Test
+  # ── Job 1: Verify the existing CI result ─────────────────────────────────────
+  #
+  # A release tag must point at a commit that CI has already tested after its
+  # push to main. Re-running every test here wastes a second full CI run
+  # and can give a different result for the same source. Instead, locate the
+  # CI workflow run for this exact SHA on main, wait if it is still pending,
+  # and only publish when that run concludes successfully.
+  verify-ci:
+    name: Verify Existing CI
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Type check
-        run: pnpm typecheck
-
-      - name: Unit tests
+      - name: Wait for CI on this release commit
         run: |
-          pnpm --filter @vpn/api test
-          pnpm --filter @vpn/agent test
+          set -euo pipefail
+
+          # A tag is immutable, so its SHA is the only safe CI lookup key.
+          # We verify the CI run that executed on main for this exact commit.
+          for attempt in $(seq 1 90); do
+            response=$(gh api \
+              "/repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&branch=main&per_page=1")
+            count=$(jq -r '.total_count' <<<"$response")
+
+            if [ "$count" = "0" ]; then
+              echo "No CI run found on main for ${GITHUB_SHA} yet (attempt ${attempt}/90)"
+              sleep 10
+              continue
+            fi
+
+            ci_status=$(jq -r '.workflow_runs[0].status' <<<"$response")
+            ci_conclusion=$(jq -r '.workflow_runs[0].conclusion // empty' <<<"$response")
+            url=$(jq -r '.workflow_runs[0].html_url' <<<"$response")
+            echo "CI run on main: ${url} (${ci_status}${ci_conclusion:+, ${ci_conclusion}})"
+
+            case "$ci_status" in
+              completed)
+                if [ "$ci_conclusion" = "success" ]; then
+                  echo "CI succeeded on main for release commit ${GITHUB_SHA}"
+                  exit 0
+                fi
+                echo "CI did not succeed on main for release commit ${GITHUB_SHA}: ${ci_conclusion}" >&2
+                exit 1
+                ;;
+              queued|in_progress|waiting|requested|pending)
+                sleep 10
+                ;;
+              *)
+                echo "Unexpected CI status: ${ci_status}" >&2
+                exit 1
+                ;;
+            esac
+          done
+
+          echo "Timed out waiting for CI on main for release commit ${GITHUB_SHA}" >&2
+          exit 1
         env:
-          ADMIN_PASSWORD: ci-test-admin-password-32chars!!
+          GH_TOKEN: ${{ github.token }}
 
   # ── Job 2: Prepare ──────────────────────────────────────────────────────────
   prepare:
@@ -86,7 +115,7 @@ jobs:
   # standalone prerelease tag. No SHA images are stored in GHCR.
   publish:
     name: Publish (${{ matrix.image }})
-    needs: [test, prepare]
+    needs: [verify-ci, prepare]
     if: needs.prepare.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -245,11 +274,11 @@ jobs:
   # ── Job 5: Bump version + create GitHub Release (tag only) ──────────────────
   release:
     name: Release
-    needs: [test, publish, test-deployment]
+    needs: [verify-ci, publish, test-deployment]
     if: >
       always() &&
       startsWith(github.ref, 'refs/tags/v') &&
-      needs.test.result == 'success' &&
+      needs.verify-ci.result == 'success' &&
       needs.publish.result == 'success' &&
       (needs.test-deployment.result == 'success' || needs.test-deployment.result == 'skipped')
     runs-on: ubuntu-latest

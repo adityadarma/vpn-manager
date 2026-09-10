@@ -33,7 +33,7 @@ curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/script
   sudo bash -s -- CHANNEL=beta
 ```
 
-The beta installer downloads its Compose file from the `beta` branch and sets `IMAGE_VERSION=beta` in `/opt/vpn-manager/.env`, so subsequent installer updates remain on beta. The release workflow publishes `ghcr.io/adityadarma/vpn-manager:beta` from every push to the `beta` branch. Beta is for testing and can change without a stable release; use the default channel for production.
+The beta installer sets `IMAGE_VERSION=beta` in `/opt/vpn-manager/.env`, so subsequent installer updates remain on beta. The release workflow publishes `ghcr.io/adityadarma/vpn-manager:beta` whenever a beta prerelease tag (such as `v1.1.8-beta`) is pushed. Beta is for testing and can change without a stable release; use the default channel for production.
 
 Choose one of these databases when prompted:
 
