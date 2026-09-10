@@ -1060,10 +1060,14 @@ EOF
         fi
         JSON_PAYLOAD="$JSON_PAYLOAD}}"
 
-        RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${ENV_MANAGER_URL}/api/v1/nodes/register" \
+        # curl failures inside a command substitution otherwise trigger `set -e`
+        # and exit the installer silently before the HTTP/error handling below.
+        # Keep the failure as a response so the user sees the actual registration
+        # error and the Agent is never started with blank credentials.
+        RESPONSE=$(curl -sS -m 20 -w "\n%{http_code}" -X POST "${ENV_MANAGER_URL}/api/v1/nodes/register" \
             -H "Content-Type: application/json" \
             -H "X-VPN-Token: ${ENV_VPN_TOKEN}" \
-            -d "$JSON_PAYLOAD")
+            -d "$JSON_PAYLOAD" 2>&1 || true)
         
         HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
         BODY=$(echo "$RESPONSE" | sed '$d')
@@ -1082,6 +1086,12 @@ EOF
                 error "Agent was not started because registration credentials are missing"
                 return 1
             fi
+        elif [ -z "$HTTP_CODE" ] || [ "$HTTP_CODE" = "000" ] || ! [[ "$HTTP_CODE" =~ ^[0-9]{3}$ ]]; then
+            error "Could not reach Manager registration endpoint"
+            warn "Check MANAGER_URL, DNS, network/firewall access, and TLS certificate validity"
+            [ -n "$BODY" ] && warn "curl: $BODY"
+            error "Agent was not started because node registration could not connect"
+            return 1
         else
             error "Node registration failed (HTTP $HTTP_CODE)"
             warn "Response: $BODY"
