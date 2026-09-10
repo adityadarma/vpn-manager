@@ -905,6 +905,32 @@ EOF
     ENV_SECRET_TOKEN="${AGENT_SECRET_TOKEN}"
     ENV_FIREWALL_ENGINE="${FIREWALL_ENGINE}"
     ENV_VPN_CIDR="${VPN_SUBNET}"
+
+    # When the Manager and Agent are installed on this same host, use the
+    # Manager's locally stored registration credentials by default. Loopback
+    # avoids a public-IP hairpin/NAT timeout and lets Auto-register fill
+    # AGENT_NODE_ID/AGENT_SECRET_TOKEN without asking the operator to copy
+    # secrets from /opt/vpn-manager/.env. Explicit CLI/env values always win.
+    LOCAL_MANAGER_ENV="/opt/vpn-manager/.env"
+    if [ -f "$LOCAL_MANAGER_ENV" ]; then
+        _manager_port=$(grep -e '^PORT=' "$LOCAL_MANAGER_ENV" | tail -n1 | cut -d '=' -f2- | tr -d '"' | tr -d "'" || true)
+        _manager_port="${_manager_port:-3000}"
+        _local_vpn_token=$(grep -e '^VPN_TOKEN=' "$LOCAL_MANAGER_ENV" | tail -n1 | cut -d '=' -f2- | tr -d '"' | tr -d "'" || true)
+        _local_reg_key=$(grep -e '^NODE_REGISTRATION_KEY=' "$LOCAL_MANAGER_ENV" | tail -n1 | cut -d '=' -f2- | tr -d '"' | tr -d "'" || true)
+
+        # Only activate local discovery when no Manager URL was supplied. An
+        # explicit remote URL must never be paired with credentials from a
+        # different local Manager by accident.
+        if [ -z "$ENV_MANAGER_URL" ]; then
+            ENV_MANAGER_URL="http://127.0.0.1:${_manager_port}"
+            if [ -z "$ENV_VPN_TOKEN" ]; then ENV_VPN_TOKEN="$_local_vpn_token"; fi
+            if [ -z "$ENV_REG_KEY" ]; then ENV_REG_KEY="$_local_reg_key"; fi
+
+            if [ -n "$ENV_VPN_TOKEN" ] && [ -n "$ENV_REG_KEY" ]; then
+                info "Detected local Manager; using its loopback URL and registration credentials"
+            fi
+        fi
+    fi
     
     # Determine registration mode
     AUTO_REGISTER=false
