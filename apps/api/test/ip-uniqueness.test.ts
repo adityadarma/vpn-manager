@@ -26,7 +26,7 @@ describe('VPN IP Uniqueness', () => {
     await app.close()
   })
 
-  it('should assign unique VPN IPs to users in the same group', async () => {
+  it('does not allocate a VPN IP until a node credential is issued', async () => {
     const groupId = uuidv7()
     await app.db('groups').insert({
       id: groupId,
@@ -49,26 +49,55 @@ describe('VPN IP Uniqueness', () => {
       payload: { username: 'ip_test_user2', password: 'Test@1234!', vpn_group_id: groupId },
     })
     expect(res2.statusCode).toBe(201)
-    expect(res1.json().vpn_ip).not.toBe(res2.json().vpn_ip)
+    // `users.vpn_ip` was removed once credential-scoped identity replaced it —
+    // the response no longer carries this field at all.
+    expect(res1.json().vpn_ip).toBeUndefined()
+    expect(res2.json().vpn_ip).toBeUndefined()
   })
 
-  it('should reject duplicate VPN IP at database level', async () => {
-    await app.db('users').insert({
+  it('rejects duplicate VPN IP for credentials on the same node', async () => {
+    const nodeId = uuidv7()
+    await app.db('vpn_nodes').insert({
+      id: nodeId,
+      hostname: 'credential-ip-node',
+      ip_address: '192.0.2.1',
+      token: 'credential-ip-node-token',
+      status: 'online',
+    })
+    const firstUserId = uuidv7()
+    const secondUserId = uuidv7()
+    await app.db('users').insert([
+      { id: firstUserId, username: 'dup_ip_test_1', role: 'user', is_active: true },
+      { id: secondUserId, username: 'dup_ip_test_2', role: 'user', is_active: true },
+    ])
+    await app.db('user_node_certificates').insert({
       id: uuidv7(),
-      username: 'dup_ip_test_1',
-      role: 'user',
-      is_active: true,
+      user_id: firstUserId,
+      node_id: nodeId,
+      credential_name: 'first',
+      common_name: 'dup_ip_first',
       vpn_ip: '10.99.0.50',
+      is_revoked: false,
     })
 
     await expect(
-      app.db('users').insert({
+      app.db('user_node_certificates').insert({
         id: uuidv7(),
-        username: 'dup_ip_test_2',
-        role: 'user',
-        is_active: true,
+        user_id: secondUserId,
+        node_id: nodeId,
+        credential_name: 'second',
+        common_name: 'dup_ip_second',
+        is_revoked: false,
         vpn_ip: '10.99.0.50',
       })
     ).rejects.toThrow()
+  })
+
+  it('removes the legacy users.vpn_ip and users.vpn_group_id columns from the schema', async () => {
+    // Migration 20260101000034 drops both columns once VPN identity became
+    // credential-scoped (user_node_certificates.vpn_ip). This asserts the
+    // schema itself no longer carries them, not just that call sites avoid them.
+    await expect(app.db.schema.hasColumn('users', 'vpn_ip')).resolves.toBe(false)
+    await expect(app.db.schema.hasColumn('users', 'vpn_group_id')).resolves.toBe(false)
   })
 })

@@ -4,6 +4,7 @@ import type { Env } from './config/env'
 import { NodeStatusChecker } from './services/node-status-checker'
 import { startCertRenewalScheduler } from './services/cert-renewal'
 import { TokenRevocationSweeper } from './services/token-revocation'
+import { pruneNodeDnsRevisions } from './services/managed-dns'
 
 import corsPlugin from './plugins/cors'
 import cookiePlugin from './plugins/cookie'
@@ -25,6 +26,7 @@ import vpnRoutes from './modules/vpn/vpn.routes'
 import groupRoutes from './modules/groups/groups.routes'
 import networkRoutes from './modules/networks/networks.routes'
 import auditRoutes from './modules/audit/audit.routes'
+import dnsRoutes from './modules/dns/dns.routes'
 
 export async function buildApp(env: Env) {
   const db = createDb({
@@ -64,6 +66,7 @@ export async function buildApp(env: Env) {
       await v1.register(vpnRoutes)
       await v1.register(groupRoutes)
       await v1.register(networkRoutes)
+      await v1.register(dnsRoutes)
       await v1.register(auditRoutes)
     },
     { prefix: '/api/v1' },
@@ -77,6 +80,7 @@ export async function buildApp(env: Env) {
   const shouldStartSchedulers = env.NODE_ENV !== 'test'
   let nodeStatusChecker: NodeStatusChecker | null = null
   let tokenRevocationSweeper: TokenRevocationSweeper | null = null
+  let dnsRevisionPruner: ReturnType<typeof setInterval> | null = null
 
   if (shouldStartSchedulers) {
     nodeStatusChecker = new NodeStatusChecker(
@@ -90,12 +94,16 @@ export async function buildApp(env: Env) {
     // Prune revoked-token rows once they can no longer affect verification.
     tokenRevocationSweeper = new TokenRevocationSweeper(db, 60 * 60 * 1000) // hourly
     tokenRevocationSweeper.start()
+    // Revision history is audit data, but cap it even when DNS config stops
+    // changing so old terminal rows do not accumulate indefinitely.
+    dnsRevisionPruner = setInterval(() => void pruneNodeDnsRevisions({ db }).catch(() => undefined), 24 * 60 * 60 * 1000)
   }
 
   // Cleanup on shutdown
   app.addHook('onClose', async () => {
     nodeStatusChecker?.stop()
     tokenRevocationSweeper?.stop()
+    if (dnsRevisionPruner) clearInterval(dnsRevisionPruner)
   })
 
   return app

@@ -1,0 +1,74 @@
+---
+title: Managed DNS
+description: Deploy and operate optional CoreDNS on VPN nodes.
+---
+
+Managed DNS runs CoreDNS next to the Node Agent. It is optional. Nodes without the DNS profile continue to use their configured `dns_servers` values.
+
+## Enable a node
+
+1. Enable Managed DNS for the node in the Nodes administration page or API.
+2. Configure a group-node allocation. The group subnet must be inside that node's own VPN pool.
+3. Configure a DNS listener IP inside the group allocation, for example `10.20.10.53`.
+4. Start the DNS Compose profile on the VPN node:
+
+```sh
+DNS_ENABLED=true docker compose -f docker-compose.agent.yml --profile dns up -d
+```
+
+The regular Agent deployment does not start CoreDNS:
+
+```sh
+docker compose -f docker-compose.agent.yml up -d
+```
+
+The Agent and CoreDNS share the `managed-dns` Docker volume. The Agent writes configuration at `/etc/vpn-manager/coredns`; CoreDNS reads the same files at `/etc/coredns` with a read-only mount.
+
+## DNS Resolution
+
+Default public upstreams are:
+
+```text
+1.1.1.1
+8.8.8.8
+```
+
+A client receives its group DNS listener only after the node reports a healthy DNS revision. Until then, OpenVPN and WireGuard client configurations use the node's existing `dns_servers` value.
+
+## Policies
+
+Supported CoreDNS standard-image policies:
+
+- `block` for exact domains and `*.example.com` wildcard domains. It responds with `NXDOMAIN`.
+- `sinkhole` answers `A` requests with the configured IPv4 address and returns `NXDOMAIN` for every other record type, so a sinkholed name never reaches an upstream resolver.
+- `public` and `any` scopes.
+
+Unsupported policies are rejected during sync, not silently ignored:
+
+- `public_default_action=deny`, which needs a custom CoreDNS plugin or separate policy resolver.
+- `internal` policy scope, which needs per-zone policy support beyond the standard template setup.
+
+DNS policies do not replace network policy. Clients can still access an IP directly unless firewall CIDR/port policy denies it. The Agent blocks ordinary UDP/TCP DNS port `53` bypass for managed groups on supported firewall engines. DNS-over-HTTPS uses HTTPS port `443` and is not fully blockable with these rules.
+
+## Firewall Support
+
+Managed DNS firewall enforcement supports `iptables`, `ufw`, `auto`, `nftables`, and `firewalld`.
+
+The `iptables` path uses the dedicated `VPN_DNS_INPUT` and `VPN_DNS_FWWD` chains. The `nftables` path uses its own `inet vpn_manager_dns` table. On firewalld's nftables backend, runtime enforcement uses that same isolated nft table while permanent Direct chains preserve the rules across reboot. This avoids a global `firewall-cmd --reload`, which can disrupt Docker bridge networking, and avoids assigning VPN subnets to a source-based zone that would alter non-DNS traffic. All paths apply the group's own resolver as an accept rule before dropping every other port `53` request from managed subnets.
+
+## Troubleshooting
+
+Check node DNS state in **Managed DNS** dashboard or through:
+
+```text
+GET /api/v1/nodes/:id/dns/status
+```
+
+Useful checks on the node:
+
+```sh
+docker compose -f docker-compose.agent.yml --profile dns ps
+docker compose -f docker-compose.agent.yml --profile dns logs coredns
+```
+
+If a revision fails, the Agent retains the previous active CoreDNS configuration and reports the failure to the Manager task queue.

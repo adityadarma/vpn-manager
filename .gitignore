@@ -45,6 +45,9 @@ coverage/
 # Deployment & Hosting
 .vercel/
 .npm/
+.opencode
+graphify-out
+AGENTS.md
 
 # Package manager state
 .pnpm-state

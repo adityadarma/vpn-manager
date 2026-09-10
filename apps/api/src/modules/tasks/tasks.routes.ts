@@ -153,6 +153,29 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
         })
       }
 
+      if (task.action === 'sync_group_dns') {
+        const result = input.result ?? {}
+        const revision = typeof result['revision'] === 'number'
+          ? result['revision']
+          : JSON.parse(task.payload || '{}').revision
+        const revisionStatus = input.status === 'success' ? 'healthy' : 'failed'
+        await app.db('node_dns_revisions')
+          .where({ task_id: id })
+          .update({
+            status: revisionStatus,
+            error_message: input.errorMessage ?? null,
+            applied_at: input.status === 'success' ? new Date() : null,
+            updated_at: new Date(),
+          })
+        await app.db('vpn_nodes').where({ id: authenticatedNode.id }).update({
+          dns_config_revision: input.status === 'success' ? revision : app.db.raw('dns_config_revision'),
+          dns_config_hash: input.status === 'success' && typeof result['config_hash'] === 'string' ? result['config_hash'] : app.db.raw('dns_config_hash'),
+          dns_sync_status: revisionStatus,
+          dns_last_sync_error: input.errorMessage ?? null,
+          dns_last_synced_at: input.status === 'success' ? new Date() : app.db.raw('dns_last_synced_at'),
+        })
+      }
+
       // The agent has consumed the payload, so any secret in it (e.g. the
       // private-key passphrase for generate_client_cert) is no longer needed.
       // Drop it rather than leaving cleartext in the database indefinitely.

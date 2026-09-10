@@ -15,6 +15,7 @@ import {
   ChevronsUpDown,
   ListTodo,
   FileText,
+  NetworkIcon,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -43,6 +44,7 @@ const NAV_ITEMS = [
   { href: '/nodes', label: 'Nodes', icon: Server },
   { href: '/sessions', label: 'Sessions', icon: Activity },
   { href: '/policies', label: 'Policies', icon: Shield },
+  { href: '/dns', label: 'Managed DNS', icon: NetworkIcon },
   { href: '/tasks', label: 'Tasks', icon: ListTodo },
   { href: '/audit', label: 'Audit Logs', icon: FileText, adminOnly: true },
 ] as const

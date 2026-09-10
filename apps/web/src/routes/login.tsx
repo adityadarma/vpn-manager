@@ -92,7 +92,7 @@ function LoginPage() {
                 <Input
                   id="username"
                   type="text"
-                  placeholder="admin"
+                  placeholder="Enter your username"
                   autoComplete="username"
                   value={form.username}
                   onChange={(e) => setForm({ ...form, username: e.target.value })}
@@ -104,7 +104,7 @@ function LoginPage() {
                 <Input
                   id="password"
                   type="password"
-                  placeholder="••••••••"
+                  placeholder="Enter your password"
                   autoComplete="current-password"
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}

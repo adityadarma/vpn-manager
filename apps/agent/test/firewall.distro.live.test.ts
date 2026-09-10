@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { execSync } from 'node:child_process'
 import type { VpnDriver } from '../src/drivers'
 import { handleApplyNetworkPolicy } from '../src/handlers/apply-network-policy'
+import { applyManagedDnsFirewall } from '../src/services/managed-dns-firewall'
 
 const driver = {} as VpnDriver
 const policy = {
@@ -64,11 +65,21 @@ describe.runIf(hasUfw)('UFW policy integration', () => {
 })
 
 describe.runIf(hasFirewalld)('firewalld policy integration', () => {
+  const dnsInputChain = 'VPN_DNS_INPUT'
+  const dnsForwardChain = 'VPN_DNS_FWWD'
+
   afterEach(() => {
     try { execSync(`firewall-cmd --permanent --remove-rich-rule='${richRule}'`, { stdio: 'ignore' }) } catch {}
     try { execSync(`firewall-cmd --permanent --direct --remove-rules ipv4 mangle ${preroutingChain}`, { stdio: 'ignore' }) } catch {}
     try { execSync(`firewall-cmd --permanent --direct --remove-chain ipv4 mangle ${preroutingChain}`, { stdio: 'ignore' }) } catch {}
     try { execSync(`firewall-cmd --permanent --direct --remove-rule ipv4 mangle PREROUTING 0 -i tun+ -j ${preroutingChain}`, { stdio: 'ignore' }) } catch {}
+    try { execSync(`firewall-cmd --permanent --direct --remove-rule ipv4 filter INPUT 0 -i tun+ -j ${dnsInputChain}`, { stdio: 'ignore' }) } catch {}
+    try { execSync(`firewall-cmd --permanent --direct --remove-rule ipv4 filter FORWARD 0 -i tun+ -j ${dnsForwardChain}`, { stdio: 'ignore' }) } catch {}
+    try { execSync(`firewall-cmd --permanent --direct --remove-rules ipv4 filter ${dnsInputChain}`, { stdio: 'ignore' }) } catch {}
+    try { execSync(`firewall-cmd --permanent --direct --remove-rules ipv4 filter ${dnsForwardChain}`, { stdio: 'ignore' }) } catch {}
+    try { execSync(`firewall-cmd --permanent --direct --remove-chain ipv4 filter ${dnsInputChain}`, { stdio: 'ignore' }) } catch {}
+    try { execSync(`firewall-cmd --permanent --direct --remove-chain ipv4 filter ${dnsForwardChain}`, { stdio: 'ignore' }) } catch {}
+    try { execSync('nft delete table inet vpn_manager_dns', { stdio: 'ignore' }) } catch {}
     try { execSync('firewall-cmd --reload', { stdio: 'ignore' }) } catch {}
   })
 
@@ -82,5 +93,27 @@ describe.runIf(hasFirewalld)('firewalld policy integration', () => {
     expect(result).toMatchObject({ success: true, count: 1 })
     expect(() => execSync(`firewall-cmd --permanent --query-rich-rule='${richRule}'`, { stdio: 'ignore' })).not.toThrow()
     expect(execSync('firewall-cmd --permanent --direct --get-all-rules', { encoding: 'utf8' })).toContain(`ipv4 mangle ${preroutingChain} 0 -s 198.18.0.2/32 -d 198.18.0.10/32 -p tcp --dport 3306 -j DROP`)
+  })
+
+  it('applies idempotent Managed DNS Direct chains with accepts before drops', async () => {
+    const groups = [{ vpn_subnet: '10.88.10.0/24', listener_ip: '10.88.10.53', listener_port: 53 }]
+    await applyManagedDnsFirewall(groups, 'firewalld', 'openvpn')
+    await applyManagedDnsFirewall(groups, 'firewalld', 'openvpn')
+
+    const inputRules = execSync(
+      `firewall-cmd --permanent --direct --get-rules ipv4 filter ${dnsInputChain}`,
+      { encoding: 'utf8' },
+    ).trim().split('\n')
+    expect(inputRules).toEqual([
+      '0 -s 10.88.10.0/24 -d 10.88.10.53 -p udp --dport 53 -j ACCEPT',
+      '1 -s 10.88.10.0/24 -d 10.88.10.53 -p tcp --dport 53 -j ACCEPT',
+      '1000 -s 10.88.10.0/24 -p udp --dport 53 -j DROP',
+      '1002 -s 10.88.10.0/24 -p tcp --dport 53 -j DROP',
+    ])
+    expect(execSync(
+      `firewall-cmd --permanent --direct --get-rules ipv4 filter ${dnsForwardChain}`,
+      { encoding: 'utf8' },
+    )).toContain('-s 10.88.10.0/24 -p udp --dport 53 -j DROP')
+    expect(execSync('nft list table inet vpn_manager_dns', { encoding: 'utf8' })).toContain('iifname "tun*"')
   })
 })

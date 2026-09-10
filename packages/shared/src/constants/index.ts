@@ -1,8 +1,21 @@
+import packageJson from '../../package.json' with { type: 'json' }
+
+// Destructured in a separate statement, not inlined as
+// `packageJson.version` in the export itself — Rolldown/Vite's JSON-module
+// interop has been observed to inline the whole default-exported object in
+// place of an inline property access, which silently rendered the entire
+// package.json in the UI instead of the version string.
+const { version } = packageJson
+
 /**
  * Application version, reported by GET /api/v1/health and shown in the UI.
- * Keep in sync with package.json on release (see .github/workflows/release.yml).
+ *
+ * Read directly from this package's package.json instead of a hardcoded
+ * string, so it can never drift out of sync — the previous hardcoded value
+ * silently fell behind because .github/workflows/release.yml bumps every
+ * package.json on release but did not update this literal.
  */
-export const APP_VERSION = '1.1.0'
+export const APP_VERSION = version
 
 export const AGENT = {
   POLL_INTERVAL_MS: 5_000,

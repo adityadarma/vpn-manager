@@ -1,0 +1,144 @@
+# ============================================================
+# VPN Manager — Beta Branch Testing Compose
+# ============================================================
+# Builds the Manager and Agent images FROM SOURCE (this checkout),
+# instead of pulling ghcr.io/adityadarma/*:latest like
+# docker-compose.prod.yml and docker-compose.agent.yml do.
+#
+# Use this only to test an unreleased branch (e.g. `beta`) end-to-end
+# on a real server. For a normal production install, use
+# docker-compose.prod.yml (Manager) and docker-compose.agent.yml
+# (Agent) with the published images instead.
+#
+# Usage — Manager only:
+#   docker compose -f docker-compose.beta-testing.yml up -d --build manager
+#
+# Usage — Manager + Agent on the same host (VPN engine already
+# installed on this host, e.g. via `scripts/install-agent.sh` with the
+# "OpenVPN only" / "WireGuard only" option):
+#   docker compose -f docker-compose.beta-testing.yml up -d --build manager agent
+#
+# Usage — also start CoreDNS (Managed DNS), only meaningful once the
+# agent has DNS_ENABLED=true in .env and a group DNS listener is
+# configured in the Manager:
+#   docker compose -f docker-compose.beta-testing.yml --profile dns up -d --build
+#
+# Required .env (see .env.example and .env.agent for the full list):
+#   JWT_SECRET, VPN_TOKEN, NODE_REGISTRATION_KEY   — Manager
+#   VPN_TOKEN, AGENT_MANAGER_URL, AGENT_NODE_ID,
+#   AGENT_SECRET_TOKEN                              — Agent
+#   VPN_TYPE=openvpn|wireguard                      — Agent (default openvpn)
+#   DNS_ENABLED=true, DNS_BLOCK_DOT=false            — Agent (Managed DNS, optional)
+# ============================================================
+
+services:
+  # ── VPN Manager (Web + API), built from this checkout ──
+  manager:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vpn-manager
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: ${PORT:-3000}
+      HOST: "0.0.0.0"
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      NODE_REGISTRATION_KEY: ${NODE_REGISTRATION_KEY}
+      VPN_TOKEN: ${VPN_TOKEN}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      DATABASE_TYPE: ${DATABASE_TYPE:-sqlite}
+      DATABASE_URL: ${DATABASE_URL:-}
+      DATABASE_SQLITE_PATH: /data/vpn.sqlite
+      WEB_STATIC_PATH: /app/web
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    volumes:
+      - manager_data:/data
+    healthcheck:
+      test: [ "CMD", "node", "-e", "require('http').get('http://localhost:' + (process.env.PORT || 3000) + '/api/v1/health', response => process.exit(response.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - vpn-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Node Agent, built from this checkout ──
+  # Requires OpenVPN or WireGuard already installed and running on THIS host
+  # (e.g. `sudo bash scripts/install-agent.sh` with the VPN-engine-only option).
+  agent:
+    build:
+      context: .
+      dockerfile: apps/agent/Dockerfile
+    container_name: vpn-agent
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      VPN_TOKEN: ${VPN_TOKEN:?VPN_TOKEN is required}
+      VPN_TYPE: ${VPN_TYPE:-openvpn}
+      AGENT_MANAGER_URL: ${AGENT_MANAGER_URL:?AGENT_MANAGER_URL is required}
+      AGENT_NODE_ID: ${AGENT_NODE_ID:?AGENT_NODE_ID is required}
+      AGENT_SECRET_TOKEN: ${AGENT_SECRET_TOKEN:?AGENT_SECRET_TOKEN is required}
+      AGENT_POLL_INTERVAL_MS: ${AGENT_POLL_INTERVAL_MS:-5000}
+      AGENT_HEARTBEAT_INTERVAL_MS: ${AGENT_HEARTBEAT_INTERVAL_MS:-30000}
+      FIREWALL_ENGINE: ${FIREWALL_ENGINE:-auto}
+      DNS_ENABLED: ${DNS_ENABLED:-false}
+      COREDNS_CONFIG_DIR: /etc/vpn-manager/coredns
+      COREDNS_HEALTH_URL: ${COREDNS_HEALTH_URL:-http://127.0.0.1:8181/health}
+      DNS_BLOCK_DOT: ${DNS_BLOCK_DOT:-false}
+
+    # Host network: the agent talks to the Manager API over the network and
+    # reads the host's OpenVPN/WireGuard management interface directly.
+    network_mode: host
+
+    # Required for the agent to manage firewall/NAT rules.
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+
+    volumes:
+      # OpenVPN state (skip/replace with the WireGuard lines below if
+      # VPN_TYPE=wireguard).
+      - /run/openvpn:/run/openvpn
+      - /etc/openvpn:/etc/openvpn
+      - /var/log/openvpn:/var/log/openvpn:ro
+      # WireGuard state — uncomment if VPN_TYPE=wireguard, and comment out
+      # the three OpenVPN lines above instead.
+      # - /etc/wireguard:/etc/wireguard
+      # The Agent writes generated Managed DNS revisions here; CoreDNS mounts
+      # the same volume read-only below. Harmless when DNS_ENABLED=false.
+      - managed-dns:/etc/vpn-manager/coredns
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── CoreDNS (Managed DNS), only started with --profile dns ──
+  coredns:
+    image: coredns/coredns:1.12.0
+    profiles: ["dns"]
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      agent:
+        condition: service_started
+    volumes:
+      - managed-dns:/etc/coredns:ro
+    command: -conf /etc/coredns/Corefile
+
+networks:
+  vpn-network:
+    driver: bridge
+
+volumes:
+  manager_data:
+  managed-dns:

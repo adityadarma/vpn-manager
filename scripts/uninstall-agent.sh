@@ -5,7 +5,7 @@
 # Removes OpenVPN, WireGuard + Agent completely
 #
 # Usage:
-#   sudo bash scripts/uninstall-node.sh
+#   sudo bash scripts/uninstall-agent.sh
 # ============================================================
 
 set -e
@@ -181,10 +181,10 @@ warn "This will remove $DETECTED_VPN, the Agent, and all matching certificates/k
 echo ""
 if [ "$FORCE_PURGE" = true ]; then
     warn "Agent metadata is missing. This can remove VPN software not installed by VPN Manager."
-    read -p "Type PURGE to remove both OpenVPN and WireGuard: " confirm
+    read -p "Type PURGE to remove both OpenVPN and WireGuard: " confirm < /dev/tty
     [ "$confirm" != "PURGE" ] && { echo "Aborted."; exit 0; }
 else
-    read -p "Continue? [y/N]: " confirm
+    read -p "Continue? [y/N]: " confirm < /dev/tty
     [[ "$confirm" != "y" && "$confirm" != "Y" ]] && { echo "Aborted."; exit 0; }
 fi
 

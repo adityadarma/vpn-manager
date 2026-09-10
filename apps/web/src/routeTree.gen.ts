@@ -20,6 +20,7 @@ import { Route as LayoutPoliciesRouteImport } from './routes/_layout/policies'
 import { Route as LayoutNodesRouteImport } from './routes/_layout/nodes'
 import { Route as LayoutNetworksRouteImport } from './routes/_layout/networks'
 import { Route as LayoutGroupsRouteImport } from './routes/_layout/groups'
+import { Route as LayoutDnsRouteImport } from './routes/_layout/dns'
 import { Route as LayoutAuditRouteImport } from './routes/_layout/audit'
 
 const LoginRoute = LoginRouteImport.update({
@@ -76,6 +77,11 @@ const LayoutGroupsRoute = LayoutGroupsRouteImport.update({
   path: '/groups',
   getParentRoute: () => LayoutRoute,
 } as any)
+const LayoutDnsRoute = LayoutDnsRouteImport.update({
+  id: '/dns',
+  path: '/dns',
+  getParentRoute: () => LayoutRoute,
+} as any)
 const LayoutAuditRoute = LayoutAuditRouteImport.update({
   id: '/audit',
   path: '/audit',
@@ -86,6 +92,7 @@ export interface FileRoutesByFullPath {
   '/': typeof LayoutIndexRoute
   '/login': typeof LoginRoute
   '/audit': typeof LayoutAuditRoute
+  '/dns': typeof LayoutDnsRoute
   '/groups': typeof LayoutGroupsRoute
   '/networks': typeof LayoutNetworksRoute
   '/nodes': typeof LayoutNodesRoute
@@ -98,6 +105,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/audit': typeof LayoutAuditRoute
+  '/dns': typeof LayoutDnsRoute
   '/groups': typeof LayoutGroupsRoute
   '/networks': typeof LayoutNetworksRoute
   '/nodes': typeof LayoutNodesRoute
@@ -113,6 +121,7 @@ export interface FileRoutesById {
   '/_layout': typeof LayoutRouteWithChildren
   '/login': typeof LoginRoute
   '/_layout/audit': typeof LayoutAuditRoute
+  '/_layout/dns': typeof LayoutDnsRoute
   '/_layout/groups': typeof LayoutGroupsRoute
   '/_layout/networks': typeof LayoutNetworksRoute
   '/_layout/nodes': typeof LayoutNodesRoute
@@ -129,6 +138,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/audit'
+    | '/dns'
     | '/groups'
     | '/networks'
     | '/nodes'
@@ -141,6 +151,7 @@ export interface FileRouteTypes {
   to:
     | '/login'
     | '/audit'
+    | '/dns'
     | '/groups'
     | '/networks'
     | '/nodes'
@@ -155,6 +166,7 @@ export interface FileRouteTypes {
     | '/_layout'
     | '/login'
     | '/_layout/audit'
+    | '/_layout/dns'
     | '/_layout/groups'
     | '/_layout/networks'
     | '/_layout/nodes'
@@ -250,6 +262,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutGroupsRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/_layout/dns': {
+      id: '/_layout/dns'
+      path: '/dns'
+      fullPath: '/dns'
+      preLoaderRoute: typeof LayoutDnsRouteImport
+      parentRoute: typeof LayoutRoute
+    }
     '/_layout/audit': {
       id: '/_layout/audit'
       path: '/audit'
@@ -262,6 +281,7 @@ declare module '@tanstack/react-router' {
 
 interface LayoutRouteChildren {
   LayoutAuditRoute: typeof LayoutAuditRoute
+  LayoutDnsRoute: typeof LayoutDnsRoute
   LayoutGroupsRoute: typeof LayoutGroupsRoute
   LayoutNetworksRoute: typeof LayoutNetworksRoute
   LayoutNodesRoute: typeof LayoutNodesRoute
@@ -275,6 +295,7 @@ interface LayoutRouteChildren {
 
 const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutAuditRoute: LayoutAuditRoute,
+  LayoutDnsRoute: LayoutDnsRoute,
   LayoutGroupsRoute: LayoutGroupsRoute,
   LayoutNetworksRoute: LayoutNetworksRoute,
   LayoutNodesRoute: LayoutNodesRoute,

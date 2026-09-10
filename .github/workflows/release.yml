@@ -2,6 +2,8 @@ name: Release
 
 on:
   push:
+    branches:
+      - beta
     tags:
       - 'v*.*.*'
   workflow_dispatch:
@@ -133,15 +135,19 @@ jobs:
           IMG="${{ steps.image-config.outputs.image_name }}"
           TAGS=""
           if [ -n "$VERSION" ]; then
-            # A prerelease is intentionally standalone. For v1.2.0-beta.1,
-            # publish only :1.2.0-beta.1: never move :latest, :1, or :1.2.
+            # A prerelease gets its immutable version tag plus the moving beta
+            # channel alias. It never moves :latest, :1, or :1.2.
             if [[ "$VERSION" == *-* ]]; then
-              TAGS="$IMG:$VERSION"
+              TAGS="$IMG:$VERSION,$IMG:beta"
             else
               MAJOR_MINOR=$(echo "$VERSION" | cut -d. -f1,2)
               MAJOR=$(echo "$VERSION" | cut -d. -f1)
               TAGS="$IMG:$VERSION,$IMG:$MAJOR_MINOR,$IMG:$MAJOR,$IMG:latest"
             fi
+          elif [ "${{ github.ref_name }}" = "beta" ]; then
+            # Manual workflow dispatch from branch beta publishes the moving
+            # channel alias without creating a release tag.
+            TAGS="$IMG:beta"
           elif [ "${{ github.ref_name }}" = "main" ]; then
             TAGS="$IMG:latest"
           fi
@@ -179,7 +185,7 @@ jobs:
     if: >
       needs.prepare.outputs.should_build == 'true' &&
       contains(needs.prepare.outputs.images, 'manager') &&
-      !contains(github.ref_name, '-') &&
+      (github.ref_name == 'main' || (startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-'))) &&
       (github.event_name != 'workflow_dispatch' || inputs.push_images == true)
     runs-on: ubuntu-latest
     steps:

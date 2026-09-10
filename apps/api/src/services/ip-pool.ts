@@ -91,6 +91,20 @@ export function getNetmask(subnet: string): string {
   return parseCidr(subnet).netmask
 }
 
+/** Build the parent CIDR from a node's IPv4 network address and dotted netmask. */
+export function nodePoolCidr(network: string, netmask: string): string {
+  const parts = netmask.split('.').map(Number)
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+    throw new Error(`Invalid netmask: ${netmask}`)
+  }
+  const mask = ((parts[0]! << 24) | (parts[1]! << 16) | (parts[2]! << 8) | parts[3]!) >>> 0
+  const inverted = (~mask) >>> 0
+  if ((inverted & (inverted + 1)) !== 0) throw new Error(`Non-contiguous netmask: ${netmask}`)
+  const prefix = 32 - Math.log2(inverted + 1)
+  const { networkInt } = parseCidr(`${network}/${prefix}`)
+  return `${intToIp(networkInt)}/${prefix}`
+}
+
 /**
  * Validate that an IP belongs to a given subnet.
  */
@@ -101,6 +115,35 @@ export function ipInSubnet(ip: string, subnet: string): boolean {
   if (parts.length !== 4) return false
   const ipInt = (parts[0]! << 24) | (parts[1]! << 16) | (parts[2]! << 8) | parts[3]!
   return ((ipInt & maskInt) >>> 0) === networkInt
+}
+
+/** Return true when child is completely contained by parent. */
+export function cidrWithin(child: string, parent: string): boolean {
+  const childParsed = parseCidr(child)
+  const parentParsed = parseCidr(parent)
+  if (childParsed.prefixLen < parentParsed.prefixLen) return false
+  const parentMask = parentParsed.prefixLen === 0 ? 0 : (~0 << (32 - parentParsed.prefixLen)) >>> 0
+  return ((childParsed.networkInt & parentMask) >>> 0) === parentParsed.networkInt
+}
+
+/** Return true when two IPv4 CIDR ranges share at least one address. */
+export function cidrsOverlap(left: string, right: string): boolean {
+  const a = parseCidr(left)
+  const b = parseCidr(right)
+  const prefix = Math.min(a.prefixLen, b.prefixLen)
+  const mask = prefix === 0 ? 0 : (~0 << (32 - prefix)) >>> 0
+  return ((a.networkInt & mask) >>> 0) === ((b.networkInt & mask) >>> 0)
+}
+
+/** Network and broadcast addresses cannot be assigned to DNS listeners. */
+export function isUsableHostIp(ip: string, subnet: string): boolean {
+  if (!ipInSubnet(ip, subnet)) return false
+  const { networkInt, prefixLen } = parseCidr(subnet)
+  const parts = ip.split('.').map(Number)
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return false
+  const ipInt = ((parts[0]! << 24) | (parts[1]! << 16) | (parts[2]! << 8) | parts[3]!) >>> 0
+  const broadcast = (networkInt + (1 << (32 - prefixLen)) - 1) >>> 0
+  return ipInt !== networkInt && ipInt !== broadcast
 }
 
 /**

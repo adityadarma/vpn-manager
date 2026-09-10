@@ -53,7 +53,7 @@ services:
 
   # ── VPN Manager (Web + API) ──
   manager:
-    image: ghcr.io/adityadarma/vpn-manager:latest
+    image: ghcr.io/adityadarma/vpn-manager:${IMAGE_VERSION:-latest}
     container_name: vpn-manager
     restart: unless-stopped
     environment:

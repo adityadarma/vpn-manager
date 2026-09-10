@@ -7,6 +7,27 @@ const IPTABLES_LEGACY_POLICY_CHAIN = 'VPN_FWWD'
 const NFTABLES_FILTER_TABLE = 'vpn_manager_filter'
 const NFTABLES_POLICY_CHAIN = 'VPN_POLICY_FWWD'
 
+async function getDnsStatus(env: AgentEnv) {
+  if (!env.DNS_ENABLED) {
+    return { enabled: false, capable: false, status: 'disabled' as const, lastError: null }
+  }
+
+  try {
+    const response = await fetch(env.COREDNS_HEALTH_URL, { signal: AbortSignal.timeout(2_000) })
+    if (response.ok) {
+      return { enabled: true, capable: true, status: 'healthy' as const, lastError: null }
+    }
+    return { enabled: true, capable: false, status: 'degraded' as const, lastError: `CoreDNS health check returned HTTP ${response.status}` }
+  } catch (error) {
+    return {
+      enabled: true,
+      capable: false,
+      status: 'degraded' as const,
+      lastError: `CoreDNS health check failed: ${(error as Error).message}`.slice(0, 1000),
+    }
+  }
+}
+
 export function startHeartbeat(env: AgentEnv, driver: VpnDriver): void {
   console.log(`💓 Heartbeat started (interval: ${env.AGENT_HEARTBEAT_INTERVAL_MS}ms)`)
   let startup = true
@@ -18,6 +39,7 @@ export function startHeartbeat(env: AgentEnv, driver: VpnDriver): void {
       let clients: any[] = []
       let metrics: any = {}
       let serverInfo: any = {}
+      const dns = await getDnsStatus(env)
 
       // Read certificates
       try {
@@ -115,6 +137,7 @@ export function startHeartbeat(env: AgentEnv, driver: VpnDriver): void {
           clients,
           metrics,
           serverInfo,
+          dns,
         }),
       })
 

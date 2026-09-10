@@ -37,7 +37,7 @@ Save the installation output, especially the `admin` password, `NODE_REGISTRATIO
 Run this on the OpenVPN or WireGuard host. Replace the placeholder values with the secrets printed by the Manager installer.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-node.sh | sudo bash -s -- \
+curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-agent.sh | sudo bash -s -- \
   MANAGER_URL=https://vpn.example.com \
   VPN_TOKEN=replace-with-vpn-token \
   REG_KEY=replace-with-registration-key \
@@ -45,6 +45,17 @@ curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/script
 ```
 
 Use `VPN_TYPE=wireguard` to install WireGuard. Confirm the node appears as `online` in the Manager dashboard before creating client credentials.
+
+### Beta channel
+
+Both installers use the stable `latest` channel by default. Add `CHANNEL=beta` to test the moving beta images published from the `beta` branch:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-manager.sh | \
+  sudo bash -s -- CHANNEL=beta
+```
+
+For a VPN node, add `CHANNEL=beta` alongside `MANAGER_URL`, `VPN_TOKEN`, `REG_KEY`, and `VPN_TYPE` in the node command above. The beta channel can change without a stable release; use the default channel for production.
 
 ## Local Development
 

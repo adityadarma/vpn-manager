@@ -1,0 +1,40 @@
+#
+
+# CoreDNS reference configuration for Managed DNS policy enforcement.
+#
+# Two properties are load-bearing and were verified against
+# coredns/coredns:1.12.0:
+#
+#   1. A listener must be declared as `.:port` plus an explicit `bind`.
+#      Writing `10.20.10.53:53 {` makes CoreDNS treat the address as a zone
+#      name, and every ordinary query is answered with REFUSED.
+#
+#   2. Every `template` block must end with `fallthrough`. CoreDNS orders
+#      plugins by its own plugin.cfg rather than Corefile order, so `template`
+#      runs before `hosts`, `file` and `forward`. A block without
+#      `fallthrough` answers every query for the listener and turns all
+#      lookups into SERVFAIL.
+.:1053 {
+    bind 127.0.0.1
+    errors
+    hosts {
+        10.20.10.15 git.corp.internal
+        fallthrough
+    }
+    template IN A {
+        match ^(?:tracker\.example)\.$
+        answer "{{ .Name }} 60 IN A 10.20.10.254"
+        fallthrough
+    }
+    template IN AAAA {
+        match ^(?:tracker\.example)\.$
+        rcode NXDOMAIN
+        fallthrough
+    }
+    template IN A {
+        match ^(?:.+\.youtube\.com|blocked\.example)\.$
+        rcode NXDOMAIN
+        fallthrough
+    }
+    forward . 1.1.1.1 8.8.8.8
+}

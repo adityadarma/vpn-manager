@@ -10,18 +10,18 @@
 #
 # Usage:
 #   Interactive mode:
-#     sudo bash scripts/install-node.sh
+#     sudo bash scripts/install-agent.sh
 #
 #   Non-interactive mode (pass as arguments):
-#     curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-node.sh | \
+#     curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-agent.sh | \
 #     sudo bash -s -- \
 #       MANAGER_URL=https://api-vpn.example.com \
 #       VPN_TOKEN=your-vpn-token \
 #       REG_KEY=your-registration-key
 #
 #   Or download first:
-#     curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-node.sh -o install-node.sh
-#     sudo bash install-node.sh \
+#     curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-agent.sh -o install-agent.sh
+#     sudo bash install-agent.sh \
 #       MANAGER_URL=https://api-vpn.example.com \
 #       VPN_TOKEN=your-vpn-token \
 #       REG_KEY=your-registration-key
@@ -30,15 +30,18 @@
 #     export MANAGER_URL=https://api-vpn.example.com
 #     export VPN_TOKEN=your-vpn-token
 #     export REG_KEY=your-registration-key
-#     sudo -E bash install-node.sh
+#     sudo -E bash install-agent.sh
 #
 # Environment Variables (Auto-registration):
+#   CHANNEL - Image and source channel: latest (default) or beta
 #   MANAGER_URL or AGENT_API_MANAGER_URL - Manager API URL
 #   VPN_TOKEN - VPN authentication token
 #   REG_KEY or NODE_REGISTRATION_KEY - Registration key
 #   VPN_SUBNET - VPN network CIDR (e.g. 10.8.0.0/16, default: auto-assigned by manager)
 #   VPN_TYPE - VPN engine: openvpn (default) or wireguard
 #   FIREWALL_ENGINE - Firewall: iptables (default), nftables, ufw, firewalld, none
+#   DNS_ENABLED - Enable Managed DNS (CoreDNS) on this node: true or false (default)
+#   DNS_BLOCK_DOT - Block DNS-over-TLS (port 853) to force clients through Managed DNS: true or false (default)
 #
 # Environment Variables (Manual registration):
 #   MANAGER_URL or AGENT_API_MANAGER_URL - Manager API URL
@@ -77,6 +80,18 @@ detect_active_firewall() {
     fi
 
     echo "$detected"
+}
+
+set_compose_dns_profile() {
+    # Exporting COMPOSE_PROFILES=dns makes `docker compose` also start the
+    # coredns service defined in docker-compose.agent.yml (profiles: ["dns"]).
+    # Using the env var avoids ordering issues since --profile must precede
+    # the subcommand (e.g. `docker compose --profile dns up`, not `up --profile dns`).
+    if [ "${ENV_DNS_ENABLED:-false}" = "true" ]; then
+        export COMPOSE_PROFILES="dns"
+    else
+        unset COMPOSE_PROFILES
+    fi
 }
 
 mask_to_prefix() {
@@ -185,16 +200,24 @@ else
 fi
 
 # Preserve environment variables from command line arguments
-# This allows: sudo bash install-node.sh MANAGER_URL=... VPN_TOKEN=... REG_KEY=...
+# This allows: sudo bash install-agent.sh MANAGER_URL=... VPN_TOKEN=... REG_KEY=...
 for arg in "$@"; do
     if [[ "$arg" == *"="* ]]; then
         export "$arg"
     fi
 done
 
+CHANNEL="${CHANNEL:-latest}"
+case "$CHANNEL" in
+    latest) REPO_REF="main"; IMAGE_VERSION="latest" ;;
+    beta) REPO_REF="beta"; IMAGE_VERSION="beta" ;;
+    *) error "CHANNEL must be latest or beta (received: $CHANNEL)"; exit 1 ;;
+esac
+
 echo -e "${B}============================================================"
 echo "  VPN Manager - Node Installation/Update"
 echo "============================================================${NC}"
+info "Installation channel: ${CHANNEL} (Agent image: ${IMAGE_VERSION})"
 echo ""
 
 # Show environment variable support
@@ -366,6 +389,36 @@ if [ -n "$VPN_SUBNET" ]; then
     export VPN_NETWORK VPN_NETMASK
     info "VPN Subnet: ${VPN_NETWORK}/${_vpn_prefix} (netmask: ${VPN_NETMASK})"
 fi
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ─── Managed DNS Prompt ──────────────────────────────────────────────────────
+# Managed DNS (CoreDNS) is optional and layered on top of any VPN engine.
+# Only prompt when the agent is about to be installed/updated and DNS_ENABLED
+# was not already supplied via environment/CLI args.
+if [[ "$mode" == "1" || "$mode" == "2" || "$mode" == "3" ]] && [ -z "$DNS_ENABLED" ]; then
+    echo ""
+    echo "Managed DNS (CoreDNS):"
+    echo "  Lets the Manager push per-group DNS policies (allow/deny domains,"
+    echo "  DNS-based ad/tracker blocking) enforced on this node via CoreDNS."
+    read -p "Enable Managed DNS on this node? [y/N]: " _dns_choice </dev/tty
+    if [[ "$_dns_choice" == "y" || "$_dns_choice" == "Y" ]]; then
+        DNS_ENABLED="true"
+        if [ -z "$DNS_BLOCK_DOT" ]; then
+            read -p "Block DNS-over-TLS (port 853) to force clients through Managed DNS? [y/N]: " _dot_choice </dev/tty
+            if [[ "$_dot_choice" == "y" || "$_dot_choice" == "Y" ]]; then
+                DNS_BLOCK_DOT="true"
+            else
+                DNS_BLOCK_DOT="false"
+            fi
+        fi
+    else
+        DNS_ENABLED="false"
+    fi
+fi
+DNS_ENABLED="${DNS_ENABLED:-false}"
+DNS_BLOCK_DOT="${DNS_BLOCK_DOT:-false}"
+export ENV_DNS_ENABLED="$DNS_ENABLED"
+export ENV_DNS_BLOCK_DOT="$DNS_BLOCK_DOT"
 # ─────────────────────────────────────────────────────────────────────────────
 
 echo ""
@@ -755,16 +808,22 @@ install_agent() {
     mkdir -p "$INSTALL_DIR"
     cd "$INSTALL_DIR"
     
-    # Download docker-compose.yml if not exists
-    if [ ! -f "docker-compose.yml" ]; then
-        info "Downloading docker-compose.yml for agent..."
-        REPO_URL="https://raw.githubusercontent.com/adityadarma/vpn-manager/main"
-        if curl -fsSL "$REPO_URL/docker-compose.agent.yml" -o docker-compose.yml; then
-            ok "Downloaded docker-compose.yml"
-        else
-            error "Failed to download docker-compose.agent.yml"
-            info "Please ensure docker-compose.yml is in $INSTALL_DIR"
-        fi
+    # Refresh the managed Compose file from the selected channel. The local
+    # .env and docker-compose.override.yml carry node credentials/mounts and
+    # are never replaced by this update. Preserve a timestamped copy first in
+    # case an administrator also made direct edits to the base Compose file.
+    if [ -f "docker-compose.yml" ]; then
+        backup="docker-compose.yml.backup-$(date +%Y%m%d-%H%M%S)"
+        cp docker-compose.yml "$backup"
+        info "Backed up existing docker-compose.yml to $backup"
+    fi
+    info "Downloading docker-compose.yml for agent from ${REPO_REF}..."
+    REPO_URL="https://raw.githubusercontent.com/adityadarma/vpn-manager/${REPO_REF}"
+    if curl -fsSL "$REPO_URL/docker-compose.agent.yml" -o docker-compose.yml; then
+        ok "Downloaded docker-compose.yml"
+    else
+        error "Failed to download docker-compose.agent.yml from channel ${CHANNEL}"
+        return 1
     fi
 
     # Build host-specific mounts in a Compose override so updates never mutate
@@ -807,6 +866,22 @@ EOF
     # by an update run. Pull and restart its current configuration instead.
     if [ -f .env ] && grep -q '^AGENT_NODE_ID=.' .env && grep -q '^AGENT_SECRET_TOKEN=.' .env; then
         info "Existing registered agent found; preserving its configuration"
+        if grep -q '^IMAGE_VERSION=' .env; then
+            sed -i "s|^IMAGE_VERSION=.*|IMAGE_VERSION=${IMAGE_VERSION}|" .env
+        else
+            echo "IMAGE_VERSION=${IMAGE_VERSION}" >> .env
+        fi
+        if grep -q '^DNS_ENABLED=' .env; then
+            sed -i "s|^DNS_ENABLED=.*|DNS_ENABLED=${ENV_DNS_ENABLED}|" .env
+        else
+            echo "DNS_ENABLED=${ENV_DNS_ENABLED}" >> .env
+        fi
+        if grep -q '^DNS_BLOCK_DOT=' .env; then
+            sed -i "s|^DNS_BLOCK_DOT=.*|DNS_BLOCK_DOT=${ENV_DNS_BLOCK_DOT}|" .env
+        else
+            echo "DNS_BLOCK_DOT=${ENV_DNS_BLOCK_DOT}" >> .env
+        fi
+        set_compose_dns_profile
         docker compose pull
         docker compose up -d
         ok "Agent updated successfully"
@@ -930,6 +1005,9 @@ AGENT_SECRET_TOKEN=
 AGENT_POLL_INTERVAL_MS=5000
 AGENT_HEARTBEAT_INTERVAL_MS=30000
 FIREWALL_ENGINE=${ENV_FIREWALL_ENGINE:-auto}
+IMAGE_VERSION=${IMAGE_VERSION}
+DNS_ENABLED=${ENV_DNS_ENABLED}
+DNS_BLOCK_DOT=${ENV_DNS_BLOCK_DOT}
 EOF
         if [ "$ENV_VPN_TYPE" = "wireguard" ]; then
             echo "VPN_TYPE=wireguard" >> .env
@@ -1005,6 +1083,9 @@ AGENT_SECRET_TOKEN=${ENV_SECRET_TOKEN}
 AGENT_POLL_INTERVAL_MS=5000
 AGENT_HEARTBEAT_INTERVAL_MS=30000
 FIREWALL_ENGINE=${ENV_FIREWALL_ENGINE:-auto}
+IMAGE_VERSION=${IMAGE_VERSION}
+DNS_ENABLED=${ENV_DNS_ENABLED}
+DNS_BLOCK_DOT=${ENV_DNS_BLOCK_DOT}
 EOF
         if [ "$ENV_VPN_TYPE" = "wireguard" ]; then
             echo "VPN_TYPE=wireguard" >> .env
@@ -1016,6 +1097,7 @@ EOF
     
     # Start agent
     info "Starting agent..."
+    set_compose_dns_profile
     docker compose pull
     docker compose up -d
     
@@ -1059,7 +1141,18 @@ else
                     else
                         echo "FIREWALL_ENGINE=${ENV_FIREWALL_ENGINE}" >> "$INSTALL_DIR/.env"
                     fi
-                    cd "$INSTALL_DIR" && docker compose restart
+                    if grep -q "^DNS_ENABLED=" "$INSTALL_DIR/.env"; then
+                        sed -i "s|^DNS_ENABLED=.*|DNS_ENABLED=${ENV_DNS_ENABLED}|" "$INSTALL_DIR/.env"
+                    else
+                        echo "DNS_ENABLED=${ENV_DNS_ENABLED}" >> "$INSTALL_DIR/.env"
+                    fi
+                    if grep -q "^DNS_BLOCK_DOT=" "$INSTALL_DIR/.env"; then
+                        sed -i "s|^DNS_BLOCK_DOT=.*|DNS_BLOCK_DOT=${ENV_DNS_BLOCK_DOT}|" "$INSTALL_DIR/.env"
+                    else
+                        echo "DNS_BLOCK_DOT=${ENV_DNS_BLOCK_DOT}" >> "$INSTALL_DIR/.env"
+                    fi
+                    set_compose_dns_profile
+                    cd "$INSTALL_DIR" && docker compose up -d
                 fi
             else
                 install_openvpn
@@ -1088,6 +1181,12 @@ else
     echo "OpenVPN: $(systemctl is-active openvpn-server@server 2>/dev/null || systemctl is-active openvpn@server 2>/dev/null || echo 'not running')"
 fi
 echo "Agent: $(docker ps --filter name=vpn-agent --format '{{.Status}}' 2>/dev/null || echo 'not running')"
+if [ "${ENV_DNS_ENABLED:-false}" = "true" ]; then
+    echo "Managed DNS: enabled (DNS_BLOCK_DOT=${ENV_DNS_BLOCK_DOT})"
+    echo "CoreDNS: $(docker ps --filter name=coredns --format '{{.Status}}' 2>/dev/null || echo 'not running')"
+else
+    echo "Managed DNS: disabled"
+fi
 echo ""
 echo "Useful Commands:"
 if [ "$ENV_VPN_TYPE" = "wireguard" ]; then

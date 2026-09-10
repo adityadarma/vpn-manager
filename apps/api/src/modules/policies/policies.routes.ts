@@ -118,9 +118,8 @@ const policyRoutes: FastifyPluginAsync = async (app) => {
  *                         Pass null/undefined for global policies → all online nodes get a task.
  */
 export async function enqueueApplyPolicies(app: any, affectedNodeId?: string | null) {
-  // Fetch fully resolved policies (joining users and groups to get VPN IPs/Subnets)
+  // VPN IPs belong to credentials, so user policies are expanded per target node.
   const policies = await app.db('vpn_policies as p')
-    .leftJoin('users as u', 'p.user_id', 'u.id')
     .leftJoin('groups as g', 'p.group_id', 'g.id')
     .select(
       'p.id',
@@ -132,7 +131,6 @@ export async function enqueueApplyPolicies(app: any, affectedNodeId?: string | n
       'p.user_id',
       'p.group_id',
       'p.node_id',
-      'u.vpn_ip as user_ip',
       'g.vpn_subnet as group_subnet'
     )
     .orderBy('p.priority', 'asc')
@@ -162,7 +160,20 @@ export async function enqueueApplyPolicies(app: any, affectedNodeId?: string | n
 
   for (const node of targetNodes) {
     // Filter policies for this specific node (include globals where node_id is null)
-    const nodePolicies = policies.filter((p: any) => p.node_id === null || p.node_id === node.id)
+    const nodePolicies = []
+    for (const policy of policies.filter((p: any) => p.node_id === null || p.node_id === node.id)) {
+      if (!policy.user_id) {
+        nodePolicies.push(policy)
+        continue
+      }
+      const credentials = await app.db('user_node_certificates')
+        .where({ user_id: policy.user_id, node_id: node.id, is_revoked: false })
+        .whereNotNull('vpn_ip')
+        .select('vpn_ip')
+      for (const credential of credentials) {
+        nodePolicies.push({ ...policy, user_ip: credential.vpn_ip })
+      }
+    }
 
     tasks.push({
       id: uuidv7(),
