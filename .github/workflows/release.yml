@@ -136,7 +136,7 @@ jobs:
             # A prerelease is intentionally standalone. For v1.2.0-beta.1,
             # publish only :1.2.0-beta.1: never move :latest, :1, or :1.2.
             if [[ "$VERSION" == *-* ]]; then
-              TAGS="$IMG:$VERSION"
+              TAGS="$IMG:$VERSION,$IMG:beta"
             else
               MAJOR_MINOR=$(echo "$VERSION" | cut -d. -f1,2)
               MAJOR=$(echo "$VERSION" | cut -d. -f1)
