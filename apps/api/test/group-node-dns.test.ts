@@ -147,6 +147,41 @@ describe('Group-node DNS settings', () => {
     await app.db('vpn_nodes').where({ id: nodeId }).update({ managed_dns_enabled: false, dns_sync_status: 'disabled' })
   })
 
+  it('queues a new revision when the previous sync task is already running', async () => {
+    await app.db('vpn_nodes').where({ id: nodeId }).update({ managed_dns_enabled: true })
+    const zone = await app.inject({
+      method: 'POST', url: '/api/v1/dns/zones',
+      headers: { Cookie: adminCookie }, payload: { name: 'running-revision.internal' },
+    })
+    expect(zone.statusCode).toBe(201)
+
+    const sync = await app.inject({
+      method: 'POST', url: `/api/v1/nodes/${nodeId}/dns/sync`, headers: { Cookie: adminCookie },
+    })
+    expect(sync.statusCode).toBe(202)
+    const firstTask = await app.db('tasks').where({ node_id: nodeId, action: 'sync_group_dns' }).first()
+    await app.db('tasks').where({ id: firstTask.id }).update({ status: 'running' })
+
+    const policy = await app.inject({
+      method: 'POST', url: `/api/v1/groups/${engineeringId}/dns/policies`,
+      headers: { Cookie: adminCookie },
+      payload: { domain_pattern: 'running-revision.example', action: 'block', scope: 'public' },
+    })
+    expect(policy.statusCode).toBe(201)
+
+    const revisions = await app.db('node_dns_revisions').where({ node_id: nodeId }).orderBy('revision')
+    expect(revisions).toHaveLength(2)
+    expect(revisions.map((row: any) => row.revision)).toEqual([1, 2])
+    const secondTask = await app.db('tasks').where({ node_id: nodeId, action: 'sync_group_dns', status: 'pending' }).first()
+    expect(JSON.parse(secondTask.payload).groups[0]?.policies).toContainEqual(expect.objectContaining({ domain_pattern: 'running-revision.example' }))
+
+    await app.db('node_dns_revisions').where({ node_id: nodeId }).delete()
+    await app.db('tasks').where({ node_id: nodeId, action: 'sync_group_dns' }).delete()
+    await app.db('dns_policies').where({ group_id: engineeringId }).delete()
+    await app.db('dns_zones').where({ id: zone.json().id }).delete()
+    await app.db('vpn_nodes').where({ id: nodeId }).update({ managed_dns_enabled: false, dns_sync_status: 'disabled' })
+  })
+
   it('queues a revisioned sync task and records its successful result', async () => {
     await app.db('vpn_nodes').where({ id: nodeId }).update({ managed_dns_enabled: true })
     const sync = await app.inject({

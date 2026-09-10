@@ -66,11 +66,12 @@ export async function enqueueNodeDnsSync(app: any, nodeId: string): Promise<stri
     //
     // Computed inside the transaction so two concurrent mutations cannot pick
     // the same revision.
-    const pendingRevision = await trx('node_dns_revisions')
-      .where({ node_id: nodeId, status: 'pending' })
-      .whereNotNull('task_id')
+    const pendingRevision = await trx('node_dns_revisions as r')
+      .join('tasks as t', 't.id', 'r.task_id')
+      .where({ 'r.node_id': nodeId, 'r.status': 'pending', 't.status': 'pending' })
+      .whereNotNull('r.task_id')
       .orderBy('revision', 'desc')
-      .first()
+      .first('r.*')
 
     // Coalesce rapid desired-state edits into the existing queue entry. This
     // avoids creating one revision per record form keystroke/import row while
