@@ -209,8 +209,8 @@ done
 
 CHANNEL="${CHANNEL:-latest}"
 case "$CHANNEL" in
-    latest) REPO_REF="main"; IMAGE_VERSION="latest" ;;
-    beta) REPO_REF="beta"; IMAGE_VERSION="beta" ;;
+    latest) IMAGE_VERSION="latest" ;;
+    beta) IMAGE_VERSION="beta" ;;
     *) error "CHANNEL must be latest or beta (received: $CHANNEL)"; exit 1 ;;
 esac
 
@@ -821,8 +821,8 @@ install_agent() {
         cp docker-compose.yml "$backup"
         info "Backed up existing docker-compose.yml to $backup"
     fi
-    info "Downloading docker-compose.yml from ${REPO_REF}..."
-    REPO_URL="https://raw.githubusercontent.com/adityadarma/vpn-manager/${REPO_REF}"
+    info "Downloading docker-compose.yml..."
+    REPO_URL="https://raw.githubusercontent.com/adityadarma/vpn-manager/main"
     if curl -fsSL "$REPO_URL/docker-compose.agent.yml" -o docker-compose.yml; then
         ok "Downloaded docker-compose.yml"
     else
