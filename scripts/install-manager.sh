@@ -106,7 +106,6 @@ if [ -f .env ]; then
         mysql) DATABASE_PROFILE="--profile mariadb" ;;
         *) DATABASE_PROFILE="" ;;
     esac
-    APP_URL="http://localhost:${APP_PORT}"
     if grep -q '^IMAGE_VERSION=' .env; then
         sed -i "s|^IMAGE_VERSION=.*|IMAGE_VERSION=${IMAGE_VERSION}|" .env
     else
@@ -120,9 +119,24 @@ else
     JWT_SECRET=$(openssl rand -base64 32)
     VPN_TOKEN=$(openssl rand -hex 32)
     NODE_REGISTRATION_KEY=$(openssl rand -hex 16)
-    ADMIN_PASSWORD=$(openssl rand -base64 18 | tr -dc 'A-Za-z0-9' | head -c 20)
     ok "Secrets generated"
     echo ""
+
+    if [ -z "${ADMIN_PASSWORD:-}" ]; then
+        read -rsp "Initial admin password (minimum 8 characters; press Enter to auto-generate): " ADMIN_PASSWORD < /dev/tty
+        echo ""
+    else
+        info "Using initial admin password provided through ADMIN_PASSWORD"
+    fi
+    if [ -n "$ADMIN_PASSWORD" ] && [ "${#ADMIN_PASSWORD}" -lt 8 ]; then
+        error "Initial admin password must be at least 8 characters"
+        exit 1
+    fi
+    if [ -z "$ADMIN_PASSWORD" ]; then
+        ADMIN_PASSWORD=$(openssl rand -base64 18 | tr -dc 'A-Za-z0-9' | head -c 20)
+        ADMIN_PASSWORD_GENERATED=true
+        info "A strong admin password will be generated and shown once after installation"
+    fi
 
     echo "Select database:"
     echo "1) SQLite (default, simple)"
@@ -156,19 +170,9 @@ else
         DATABASE_URL=""
     fi
 
-    SERVER_IP=$(curl -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
-    echo "Enter your reverse-proxy domain or Manager IP address."
-    echo "The Manager container itself serves HTTP; configure TLS at the reverse proxy."
-    read -p "Server domain/IP (default: $SERVER_IP): " SERVER_DOMAIN < /dev/tty
-    SERVER_DOMAIN=${SERVER_DOMAIN:-$SERVER_IP}
-    read -p "Public URL uses HTTPS through a reverse proxy? [Y/n] (default: Y): " USE_HTTPS < /dev/tty
-    USE_HTTPS=${USE_HTTPS:-Y}
-    if [[ "$USE_HTTPS" == "y" || "$USE_HTTPS" == "Y" ]]; then PROTOCOL="https"; else PROTOCOL="http"; fi
-    read -p "Port (default: 3000): " APP_PORT < /dev/tty
+    read -p "Manager HTTP port (default: 3000): " APP_PORT < /dev/tty
     APP_PORT=${APP_PORT:-3000}
-    if [[ "$PROTOCOL" = "https" && "$APP_PORT" = "443" ]]; then APP_URL="https://$SERVER_DOMAIN"
-    elif [[ "$PROTOCOL" = "http" && "$APP_PORT" = "80" ]]; then APP_URL="http://$SERVER_DOMAIN"
-    else APP_URL="$PROTOCOL://$SERVER_DOMAIN:$APP_PORT"; fi
+    SERVER_IP=$(curl -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
 
     info "Creating .env file..."
     cat > .env <<EOF
@@ -237,15 +241,20 @@ echo "============================================================${NC}"
 echo ""
 echo -e "${G}Access:${NC}"
 if [ "$EXISTING_INSTALL" = true ]; then
-    echo "  Existing endpoint unchanged (check your reverse proxy configuration)"
+    echo "  Existing installation preserved (check your reverse proxy configuration)"
 else
-    echo "  Web UI + API: $APP_URL"
+    echo "  Reverse proxy: point your domain to http://127.0.0.1:${APP_PORT} and terminate TLS there"
 fi
 echo ""
 if [ "$EXISTING_INSTALL" = false ]; then
     echo -e "${G}Default Credentials:${NC}"
     echo "  Username: admin"
-    echo "  Password: $ADMIN_PASSWORD"
+    if [ "$ADMIN_PASSWORD_GENERATED" = true ]; then
+        echo "  Password: $ADMIN_PASSWORD"
+        echo "  (Auto-generated because no initial password was entered)"
+    else
+        echo "  Password: set from your ADMIN_PASSWORD input"
+    fi
     echo "  ⚠ Change password after first login!"
     echo ""
     echo -e "${G}Node Registration Key (for VPN node install):${NC}"

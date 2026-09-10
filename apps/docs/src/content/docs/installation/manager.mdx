@@ -43,7 +43,9 @@ Choose one of these databases when prompted:
 | PostgreSQL | `postgres` | Production with the bundled database container or an external service |
 | MariaDB | `mysql` | Environments using MySQL/MariaDB compatibility |
 
-Store the credentials printed by the script: application URL, `admin` password, `NODE_REGISTRATION_KEY`, and `VPN_TOKEN`. The bootstrap password is displayed only for a new installation. Change the admin password immediately after logging in.
+On a new interactive install, the script asks for the initial `admin` password without echoing it on the terminal. Enter a password of at least eight characters, or press Enter to generate a strong random password. An auto-generated password is printed once in the final summary; a password you enter yourself is not printed again. Store the application URL, `NODE_REGISTRATION_KEY`, and `VPN_TOKEN`, then change the admin password after first login.
+
+The Manager serves the Web UI and API from one public origin, not separate URLs. For example, when the application URL is `https://vpn.example.com`, the dashboard is at `https://vpn.example.com` and the API is at `https://vpn.example.com/api/v1/...`. The installer only asks for the Manager HTTP port; domain, DNS, reverse-proxy, and TLS configuration remain under the administrator's control. Point a reverse proxy at `http://127.0.0.1:<PORT>` and terminate TLS there. Runtime deployment uses `PORT`; production is same-origin, so `WEB_URL` is not required for API/UI communication.
 
 ## Access and TLS
 
