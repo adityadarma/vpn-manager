@@ -209,8 +209,8 @@ done
 
 CHANNEL="${CHANNEL:-latest}"
 case "$CHANNEL" in
-    latest) IMAGE_VERSION="latest" ;;
-    beta) IMAGE_VERSION="beta" ;;
+    latest) REPO_REF="main"; IMAGE_VERSION="latest" ;;
+    beta) REPO_REF="beta"; IMAGE_VERSION="beta" ;;
     *) error "CHANNEL must be latest or beta (received: $CHANNEL)"; exit 1 ;;
 esac
 
@@ -360,6 +360,9 @@ export ENV_FIREWALL_ENGINE="$FIREWALL_ENGINE"
 # Ask for VPN_SUBNET before any install function runs so both install_wireguard()
 # and install_openvpn() (update_openvpn_config) can use the user-supplied value.
 # Only prompt when: fresh install mode, VPN_SUBNET not already provided via env.
+# Remember even an empty answer: it explicitly means "auto-assign" and must
+# not trigger the same question a second time during interactive registration.
+_vpn_subnet_prompted=false
 _needs_vpn_install=false
 if [ "$ENV_VPN_TYPE" = "wireguard" ] && [ "$WIREGUARD_INSTALLED" = false ] && [[ "$mode" == "1" || "$mode" == "2" ]]; then
     _needs_vpn_install=true
@@ -370,6 +373,7 @@ fi
 if [ "$_needs_vpn_install" = true ] && [ -z "$VPN_SUBNET" ]; then
     echo ""
     read -p "VPN Subnet CIDR (e.g. 10.8.1.0/24) [press Enter to auto-assign]: " _vpn_subnet_input </dev/tty
+    _vpn_subnet_prompted=true
     if [ -n "$_vpn_subnet_input" ]; then
         VPN_SUBNET="$_vpn_subnet_input"
         export VPN_SUBNET
@@ -817,8 +821,8 @@ install_agent() {
         cp docker-compose.yml "$backup"
         info "Backed up existing docker-compose.yml to $backup"
     fi
-    info "Downloading docker-compose.yml..."
-    REPO_URL="https://raw.githubusercontent.com/adityadarma/vpn-manager/main"
+    info "Downloading docker-compose.yml from ${REPO_REF}..."
+    REPO_URL="https://raw.githubusercontent.com/adityadarma/vpn-manager/${REPO_REF}"
     if curl -fsSL "$REPO_URL/docker-compose.agent.yml" -o docker-compose.yml; then
         ok "Downloaded docker-compose.yml"
     else
@@ -866,6 +870,11 @@ EOF
     # by an update run. Pull and restart its current configuration instead.
     if [ -f .env ] && grep -q '^AGENT_NODE_ID=.' .env && grep -q '^AGENT_SECRET_TOKEN=.' .env; then
         info "Existing registered agent found; preserving its configuration"
+        if grep -q '^IMAGE_VERSION=' .env; then
+            sed -i "s|^IMAGE_VERSION=.*|IMAGE_VERSION=${IMAGE_VERSION}|" .env
+        else
+            echo "IMAGE_VERSION=${IMAGE_VERSION}" >> .env
+        fi
         if grep -q '^IMAGE_VERSION=' .env; then
             sed -i "s|^IMAGE_VERSION=.*|IMAGE_VERSION=${IMAGE_VERSION}|" .env
         else
@@ -929,10 +938,15 @@ EOF
             read -p "Node registration key: " REG_KEY </dev/tty
             ENV_REG_KEY="$REG_KEY"
 
-            # Skip subnet prompt if already collected by the early section (fresh install mode)
-            if [ -n "$VPN_SUBNET" ]; then
+            # Skip this when the early VPN install prompt already collected an
+            # explicit subnet or an intentional empty "auto-assign" answer.
+            if [ -n "$VPN_SUBNET" ] || [ "$_vpn_subnet_prompted" = true ]; then
                 ENV_VPN_CIDR="$VPN_SUBNET"
-                info "Using VPN Subnet: ${ENV_VPN_CIDR}"
+                if [ -n "$ENV_VPN_CIDR" ]; then
+                    info "Using VPN Subnet: ${ENV_VPN_CIDR}"
+                else
+                    info "VPN Subnet will be auto-assigned by the Manager"
+                fi
             else
                 read -p "VPN Subnet CIDR (e.g. 10.8.1.0/24) [press Enter to auto-assign]: " VPN_CIDR_INPUT </dev/tty
                 ENV_VPN_CIDR="${VPN_CIDR_INPUT}"
@@ -1065,12 +1079,14 @@ EOF
                 ok "Node registered successfully: $NODE_ID"
             else
                 error "Failed to parse registration response"
-                warn "Please register manually and update .env file"
+                error "Agent was not started because registration credentials are missing"
+                return 1
             fi
         else
             error "Node registration failed (HTTP $HTTP_CODE)"
             warn "Response: $BODY"
-            warn "Please register manually and update .env file"
+            error "Agent was not started because node registration failed"
+            return 1
         fi
     else
         # Manual registration: use provided credentials
