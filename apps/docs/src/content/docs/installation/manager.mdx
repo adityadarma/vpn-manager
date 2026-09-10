@@ -75,3 +75,27 @@ pnpm dev
 ```
 
 The API is available at `http://localhost:3000`, the Vite dashboard at `http://localhost:5173`, and development Swagger at `http://localhost:3000/docs`. Set `ADMIN_PASSWORD` before `pnpm db:seed`, or save the random password printed by the seed process.
+
+## Uninstall
+
+Create a backup first if the data matters. Run this on the Manager host:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/uninstall-manager.sh | sudo bash
+```
+
+Or, if you already have the repository checked out:
+
+```bash
+sudo bash scripts/uninstall-manager.sh
+```
+
+The script prompts for:
+
+1. **Uninstall mode** — `Full remove` deletes containers, images, database volumes, and `/opt/vpn-manager`. `Keep data` deletes containers and images but keeps the database volumes (`manager_data`, and `postgres_data`/`mariadb_data` if used), so a later reinstall can restore the same data.
+2. **Backup before uninstalling** — if `/opt/vpn-manager/backup.sh` exists, offers to run it before anything is removed.
+3. **Remove Docker images** — deletes the local `ghcr.io/adityadarma/vpn-manager:latest` image.
+4. **Remove the installation directory** — deletes `/opt/vpn-manager` (skipped automatically in `Keep data` mode).
+5. **Remove cron jobs** — removes any crontab entries that reference `vpn` (for example, a scheduled backup job), after showing them for confirmation.
+
+The script does not remove your reverse proxy configuration or TLS certificates; clean those up manually if the domain is no longer in use. To reinstall afterwards, run `install-manager.sh` again — a `Keep data` uninstall followed by a fresh install using the same database settings restores the previous state.
