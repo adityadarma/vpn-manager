@@ -14,6 +14,7 @@ import { handleSyncCertificates } from './handlers/sync-certificates'
 import { handleSyncServerConfig } from './handlers/sync-server-config'
 import { startStatusMonitor } from './services/status-monitor'
 import { startEventMonitor } from './services/event-monitor'
+import { ensureCorefileBootstrap } from './services/managed-dns-bootstrap'
 
 /**
  * Create VPN driver based on configuration
@@ -104,6 +105,10 @@ async function main() {
   console.log(`   Poll:     every ${env.AGENT_POLL_INTERVAL_MS}ms`)
   console.log(`   Heartbeat: every ${env.AGENT_HEARTBEAT_INTERVAL_MS}ms`)
   console.log(`   Managed DNS: ${env.DNS_ENABLED ? 'enabled' : 'disabled'}`)
+
+  // Lets coredns start immediately on a fresh volume, before the first
+  // Managed DNS sync has run. No-op once a real Corefile exists.
+  await ensureCorefileBootstrap(env)
 
   // Initialize VPN driver (factory pattern)
   const driver = createVpnDriver(env)

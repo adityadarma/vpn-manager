@@ -161,7 +161,7 @@ export async function handleApplyNetworkPolicy(
   }
 
   // iptables — covers both 'iptables' and 'ufw' modes.
-  // UFW uses direct iptables rules for server-side routing (intentional, see install-node.sh).
+  // UFW uses direct iptables rules for server-side routing (intentional, see install-agent.sh).
   if (firewallEngine === 'ufw') {
     console.log('[firewall] UFW mode: applying policies via iptables (server-side routing, not ufw cli).')
   }

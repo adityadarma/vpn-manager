@@ -14,7 +14,7 @@ The script can install OpenVPN or WireGuard. Ensure UDP `1194` is reachable for 
 Get `NODE_REGISTRATION_KEY` and `VPN_TOKEN` from the Manager installation. Run this command on the node, replacing the URL with a Manager URL that the node can reach.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-node.sh | sudo bash -s -- \
+curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-agent.sh | sudo bash -s -- \
   MANAGER_URL=https://vpn.example.com \
   VPN_TOKEN=replace-with-vpn-token \
   REG_KEY=replace-with-registration-key \
@@ -69,13 +69,13 @@ OpenVPN uses the `/run/openvpn/server.sock` Unix socket, not a TCP management po
 Run this on the node host:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/uninstall-node.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/uninstall-agent.sh | sudo bash
 ```
 
 Or, if you already have the repository checked out:
 
 ```bash
-sudo bash scripts/uninstall-node.sh
+sudo bash scripts/uninstall-agent.sh
 ```
 
 The script reads `/opt/vpn-agent/.env` to detect which engine (`OpenVPN` or `WireGuard`) and firewall engine were configured at install time, then:

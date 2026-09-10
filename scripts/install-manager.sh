@@ -3,7 +3,7 @@
 # VPN Manager - Manager Installation
 # ============================================================
 # Installs the VPN Manager (API + Web UI) as a single container.
-# For VPN node installation, use install-node.sh
+# For VPN node installation, use install-agent.sh
 #
 # Usage:
 #   sudo bash scripts/install-manager.sh

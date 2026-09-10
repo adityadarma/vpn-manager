@@ -14,7 +14,7 @@
 #   docker compose -f docker-compose.beta-testing.yml up -d --build manager
 #
 # Usage — Manager + Agent on the same host (VPN engine already
-# installed on this host, e.g. via `scripts/install-node.sh` with the
+# installed on this host, e.g. via `scripts/install-agent.sh` with the
 # "OpenVPN only" / "WireGuard only" option):
 #   docker compose -f docker-compose.beta-testing.yml up -d --build manager agent
 #
@@ -72,7 +72,7 @@ services:
 
   # ── Node Agent, built from this checkout ──
   # Requires OpenVPN or WireGuard already installed and running on THIS host
-  # (e.g. `sudo bash scripts/install-node.sh` with the VPN-engine-only option).
+  # (e.g. `sudo bash scripts/install-agent.sh` with the VPN-engine-only option).
   agent:
     build:
       context: .
@@ -128,6 +128,9 @@ services:
     profiles: ["dns"]
     restart: unless-stopped
     network_mode: host
+    depends_on:
+      agent:
+        condition: service_started
     volumes:
       - managed-dns:/etc/coredns:ro
     command: -conf /etc/coredns/Corefile

@@ -37,7 +37,7 @@ Save the installation output, especially the `admin` password, `NODE_REGISTRATIO
 Run this on the OpenVPN or WireGuard host. Replace the placeholder values with the secrets printed by the Manager installer.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-node.sh | sudo bash -s -- \
+curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-agent.sh | sudo bash -s -- \
   MANAGER_URL=https://vpn.example.com \
   VPN_TOKEN=replace-with-vpn-token \
   REG_KEY=replace-with-registration-key \

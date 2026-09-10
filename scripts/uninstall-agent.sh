@@ -5,7 +5,7 @@
 # Removes OpenVPN, WireGuard + Agent completely
 #
 # Usage:
-#   sudo bash scripts/uninstall-node.sh
+#   sudo bash scripts/uninstall-agent.sh
 # ============================================================
 
 set -e

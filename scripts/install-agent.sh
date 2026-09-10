@@ -10,18 +10,18 @@
 #
 # Usage:
 #   Interactive mode:
-#     sudo bash scripts/install-node.sh
+#     sudo bash scripts/install-agent.sh
 #
 #   Non-interactive mode (pass as arguments):
-#     curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-node.sh | \
+#     curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-agent.sh | \
 #     sudo bash -s -- \
 #       MANAGER_URL=https://api-vpn.example.com \
 #       VPN_TOKEN=your-vpn-token \
 #       REG_KEY=your-registration-key
 #
 #   Or download first:
-#     curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-node.sh -o install-node.sh
-#     sudo bash install-node.sh \
+#     curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-agent.sh -o install-agent.sh
+#     sudo bash install-agent.sh \
 #       MANAGER_URL=https://api-vpn.example.com \
 #       VPN_TOKEN=your-vpn-token \
 #       REG_KEY=your-registration-key
@@ -30,7 +30,7 @@
 #     export MANAGER_URL=https://api-vpn.example.com
 #     export VPN_TOKEN=your-vpn-token
 #     export REG_KEY=your-registration-key
-#     sudo -E bash install-node.sh
+#     sudo -E bash install-agent.sh
 #
 # Environment Variables (Auto-registration):
 #   MANAGER_URL or AGENT_API_MANAGER_URL - Manager API URL
@@ -199,7 +199,7 @@ else
 fi
 
 # Preserve environment variables from command line arguments
-# This allows: sudo bash install-node.sh MANAGER_URL=... VPN_TOKEN=... REG_KEY=...
+# This allows: sudo bash install-agent.sh MANAGER_URL=... VPN_TOKEN=... REG_KEY=...
 for arg in "$@"; do
     if [[ "$arg" == *"="* ]]; then
         export "$arg"

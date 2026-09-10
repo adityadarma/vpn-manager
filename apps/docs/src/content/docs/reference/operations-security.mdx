@@ -35,4 +35,4 @@ Test restores in an isolated environment. Do not run `docker compose down -v` in
 
 ## Updates and uninstalling
 
-Before updating, create a backup, record the image version, and check node status. Update the Manager with `docker compose pull && docker compose up -d`; update a node through `install-node.sh` so registered Agent credentials are retained. Use `scripts/uninstall-manager.sh` or `scripts/uninstall-node.sh` only after verifying their impact and creating a backup.
+Before updating, create a backup, record the image version, and check node status. Update the Manager with `docker compose pull && docker compose up -d`; update a node through `install-agent.sh` so registered Agent credentials are retained. Use `scripts/uninstall-manager.sh` or `scripts/uninstall-agent.sh` only after verifying their impact and creating a backup.
