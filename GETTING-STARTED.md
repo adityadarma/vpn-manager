@@ -48,7 +48,7 @@ Use `VPN_TYPE=wireguard` to install WireGuard. Confirm the node appears as `onli
 
 ### Beta channel
 
-Both installers use the stable `latest` channel by default. Add `CHANNEL=beta` to test the moving beta images published from the `beta` branch:
+Both installers use the stable `latest` channel by default. Add `CHANNEL=beta` to test moving beta images published by prerelease tags:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-manager.sh | \

@@ -2,8 +2,6 @@ name: Release
 
 on:
   push:
-    branches:
-      - beta
     tags:
       - 'v*.*.*'
   workflow_dispatch:
@@ -144,11 +142,9 @@ jobs:
               MAJOR=$(echo "$VERSION" | cut -d. -f1)
               TAGS="$IMG:$VERSION,$IMG:$MAJOR_MINOR,$IMG:$MAJOR,$IMG:latest"
             fi
-          elif [ "${{ github.ref_name }}" = "beta" ]; then
-            # Manual workflow dispatch from branch beta publishes the moving
-            # channel alias without creating a release tag.
-            TAGS="$IMG:beta"
           elif [ "${{ github.ref_name }}" = "main" ]; then
+            # main remains the source for manual image rebuilds. Release tags
+            # determine whether the image is published as beta or latest.
             TAGS="$IMG:latest"
           fi
           echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
