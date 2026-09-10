@@ -64,7 +64,7 @@ services:
         max-file: "3"
 
   coredns:
-    image: coredns/coredns:1
+    image: coredns/coredns:1.14.7
     container_name: vpn-coredns
     profiles: ["dns"]
     restart: unless-stopped
