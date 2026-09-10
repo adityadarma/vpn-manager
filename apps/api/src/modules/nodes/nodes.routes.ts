@@ -402,7 +402,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
 
   // POST /api/v1/nodes/register  (called by agent or install script)
   // Requires either Admin JWT token OR Registration Key
-  app.post<{ Body: { hostname: string; ip: string; port?: number; region?: string; version?: string; registrationKey?: string; vpnType?: 'openvpn' | 'wireguard'; publicKey?: string; privateKey?: string; endpointPort?: number; config?: any } }>(
+  app.post<{ Body: { hostname: string; ip: string; port?: number; region?: string; version?: string; registrationKey?: string; vpnType?: 'openvpn' | 'wireguard'; publicKey?: string; privateKey?: string; endpointPort?: number; managedDnsEnabled?: boolean; config?: any } }>(
     '/nodes/register',
     {
       // NODE_REGISTRATION_KEY is a single static shared secret with no TTL or
@@ -414,7 +414,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       schema: { tags: ['nodes'], summary: 'Register a new VPN node (requires admin auth or registration key)' },
     },
     async (request, reply) => {
-      const { hostname, ip, port, region, version, registrationKey, vpnType, publicKey, privateKey, endpointPort, config } = request.body
+      const { hostname, ip, port, region, version, registrationKey, vpnType, publicKey, privateKey, endpointPort, managedDnsEnabled, config } = request.body
 
       // Check authentication: either JWT token (admin) or registration key
       let isAuthenticated = false
@@ -532,6 +532,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         public_key: publicKey ?? null,
         private_key: privateKey ?? null,
         endpoint_port: endpointPort ?? null,
+        managed_dns_enabled: managedDnsEnabled === true,
       }
 
       if (config) {

@@ -54,6 +54,26 @@ describe('Node Registration Security', () => {
     expect(res.statusCode).toBe(201)
   })
 
+  it('enables Managed DNS when an auto-registering Agent requested it', async () => {
+    process.env.NODE_REGISTRATION_KEY = 'correct-key-12345'
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/nodes/register',
+      payload: {
+        hostname: 'managed-dns-auto-register-node',
+        ip: '192.168.1.102',
+        registrationKey: 'correct-key-12345',
+        managedDnsEnabled: true,
+      },
+    })
+
+    expect(res.statusCode).toBe(201)
+    const node = await app.db('vpn_nodes').where({ id: res.json().id }).first()
+    expect(node.managed_dns_enabled).toBe(1)
+    expect(node.dns_sync_status).toBe('disabled')
+  })
+
   describe('admin JWT path honours the revocation list', () => {
     it('accepts a live admin token with no registration key', async () => {
       delete process.env.NODE_REGISTRATION_KEY

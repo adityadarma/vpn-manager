@@ -1069,7 +1069,7 @@ EOF
             wg_priv=$(cat /etc/wireguard/privatekey 2>/dev/null || echo "")
         fi
 
-        JSON_PAYLOAD="{\"hostname\":\"$HOSTNAME\",\"ip\":\"$SERVER_IP\",\"port\":$port,\"version\":\"auto\",\"registrationKey\":\"$ENV_REG_KEY\""
+        JSON_PAYLOAD="{\"hostname\":\"$HOSTNAME\",\"ip\":\"$SERVER_IP\",\"port\":$port,\"version\":\"auto\",\"registrationKey\":\"$ENV_REG_KEY\",\"managedDnsEnabled\":${ENV_DNS_ENABLED}"
         if [ "$ENV_VPN_TYPE" = "wireguard" ]; then
             JSON_PAYLOAD="$JSON_PAYLOAD, \"vpnType\":\"wireguard\", \"publicKey\":\"$wg_pub\", \"privateKey\":\"$wg_priv\""
         fi
