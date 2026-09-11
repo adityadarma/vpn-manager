@@ -138,7 +138,6 @@ describe('End-to-End Orchestration: Manager Node/User/Group/Network -> Agent Exe
       payload: {
         name: 'DevOps',
         description: 'Operations Team',
-        vpn_subnet: '10.8.20.0/24',
       },
     })
     expect(groupRes.statusCode).toBe(201)

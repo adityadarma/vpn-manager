@@ -360,10 +360,12 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
       // If user has a group, fetch netmask for restore
       let netmask = '255.255.255.0'
       if (credential?.group_id) {
-        const group = await app.db('groups').where({ id: credential.group_id }).first()
-        if (group && group.vpn_subnet) {
+        const allocation = await app.db('group_node_dns_settings')
+          .where({ group_id: credential.group_id, node_id: session.node_id })
+          .first('vpn_subnet')
+        if (allocation?.vpn_subnet) {
           const { getNetmask } = await import('../../services/ip-pool')
-          netmask = getNetmask(group.vpn_subnet)
+          netmask = getNetmask(allocation.vpn_subnet)
         }
       }
 

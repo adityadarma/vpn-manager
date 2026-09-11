@@ -1,19 +1,15 @@
 import { createFileRoute } from '@tanstack/react-router'
-
-export const Route = createFileRoute('/_layout/networks')({
-  component: NetworksPage,
-})
-
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { Plus, Trash2, Pencil, Globe, Users, Server, Check } from 'lucide-react'
+import { Plus, Trash2, Pencil, Globe, Users, Server, Check, Network as NetworkIcon, Layers } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Dialog,
   DialogContent,
@@ -29,6 +25,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+
+export const Route = createFileRoute('/_layout/networks')({
+  component: NetworksPage,
+})
 
 interface Network {
   id: string
@@ -51,16 +51,44 @@ interface VpnNode {
   hostname: string
   ip_address: string
   status: string
+  vpn_network?: string
+  vpn_netmask?: string
+}
+
+interface Group {
+  id: string
+  name: string
+  vpn_subnet?: string | null
+}
+
+interface GroupAllocation {
+  group_id: string
+  group_name: string
+  node_id: string
+  node_hostname: string
+  node_pool: string
+  vpn_subnet: string
+  managed_dns_enabled: boolean
+  listener_ip: string | null
+  created_at: string
+  updated_at: string
 }
 
 interface FormState { name: string; cidr: string; description: string; node_ids: string[] }
 
 function NetworksPage() {
   const qc = useQueryClient()
+  const [activeTab, setActiveTab] = useState<'routes' | 'allocations'>('routes')
+
+  // Target Networks state
   const [showCreate, setShowCreate] = useState(false)
   const [editNetwork, setEditNetwork] = useState<Network | null>(null)
   const [detailNetwork, setDetailNetwork] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>({ name: '', cidr: '', description: '', node_ids: [] })
+
+  // Group Allocations state
+  const [showAllocDialog, setShowAllocDialog] = useState(false)
+  const [allocForm, setAllocForm] = useState({ group_id: '', node_id: '', vpn_subnet: '' })
 
   const { data: networks = [], isLoading } = useQuery<Network[]>({
     queryKey: ['networks'],
@@ -76,6 +104,16 @@ function NetworksPage() {
   const { data: allNodes = [] } = useQuery<VpnNode[]>({
     queryKey: ['nodes'],
     queryFn: () => api.get('/api/v1/nodes'),
+  })
+
+  const { data: allGroups = [] } = useQuery<Group[]>({
+    queryKey: ['groups'],
+    queryFn: () => api.get('/api/v1/groups'),
+  })
+
+  const { data: allocations = [], isLoading: isAllocLoading } = useQuery<GroupAllocation[]>({
+    queryKey: ['group-allocations'],
+    queryFn: () => api.get('/api/v1/networks/group-allocations'),
   })
 
   const createMutation = useMutation({
@@ -110,10 +148,29 @@ function NetworksPage() {
     onError: (e: Error) => toast.error(e.message),
   })
 
-  const openEdit = (n: Network) => {
-    setEditNetwork(n)
-    setForm({ name: n.name, cidr: n.cidr, description: n.description ?? '', node_ids: n.node_ids ?? [] })
-  }
+  const saveAllocMutation = useMutation({
+    mutationFn: (data: { group_id: string; node_id: string; vpn_subnet: string }) =>
+      api.post('/api/v1/networks/group-allocations', data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['group-allocations'] })
+      qc.invalidateQueries({ queryKey: ['group-node-dns'] })
+      setShowAllocDialog(false)
+      setAllocForm({ group_id: '', node_id: '', vpn_subnet: '' })
+      toast.success('Group subnet allocated successfully')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const deleteAllocMutation = useMutation({
+    mutationFn: ({ groupId, nodeId }: { groupId: string; nodeId: string }) =>
+      api.delete(`/api/v1/networks/group-allocations/${groupId}/${nodeId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['group-allocations'] })
+      qc.invalidateQueries({ queryKey: ['group-node-dns'] })
+      toast.success('Group subnet allocation removed')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
 
   const toggleNode = (nodeId: string) => {
     setForm(f => ({
@@ -123,6 +180,17 @@ function NetworksPage() {
         : [...f.node_ids, nodeId],
     }))
   }
+
+  const handleGroupSelectForAlloc = (groupId: string) => {
+    const selectedGroup = allGroups.find(g => g.id === groupId)
+    setAllocForm(prev => ({
+      ...prev,
+      group_id: groupId,
+      vpn_subnet: prev.vpn_subnet || selectedGroup?.vpn_subnet || '',
+    }))
+  }
+
+  const selectedAllocNode = allNodes.find(n => n.id === allocForm.node_id)
 
   const NodeSelector = ({ selectedIds }: { selectedIds: string[] }) => (
     <div className="space-y-1.5">
@@ -161,81 +229,315 @@ function NetworksPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Networks</h1>
-          <p className="text-sm text-muted-foreground mt-1">{networks.length} network{networks.length !== 1 ? 's' : ''} defined</p>
+          <h1 className="text-2xl font-bold text-foreground">Networks & IP Management</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Manage target network routes and group VPN subnet allocations across node pools.
+          </p>
         </div>
-        <Button id="btn-create-network" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => { setShowCreate(true); setForm({ name: '', cidr: '', description: '', node_ids: [] }) }}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Network
-        </Button>
+        <div className="flex items-center gap-2">
+          {activeTab === 'routes' ? (
+            <Button
+              id="btn-create-network"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={() => {
+                setShowCreate(true)
+                setForm({ name: '', cidr: '', description: '', node_ids: [] })
+              }}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add Network
+            </Button>
+          ) : (
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={() => {
+                setShowAllocDialog(true)
+                setAllocForm({ group_id: '', node_id: '', vpn_subnet: '' })
+              }}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Allocate Subnet
+            </Button>
+          )}
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Networks table */}
-        <div className={detailNetwork ? 'lg:col-span-2' : 'lg:col-span-3'}>
-          <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm overflow-hidden">
-            <div className="p-5 border-b border-border/50">
-              <h2 className="font-semibold text-foreground">Network Segments</h2>
-              <p className="text-xs text-muted-foreground/70 mt-0.5">{networks.length} network{networks.length !== 1 ? 's' : ''} defined</p>
+      <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as 'routes' | 'allocations')} className="space-y-6">
+        <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="routes" className="gap-2">
+            <Globe className="size-4" />
+            Target Networks
+          </TabsTrigger>
+          <TabsTrigger value="allocations" className="gap-2">
+            <Layers className="size-4" />
+            Group Subnets per Node
+          </TabsTrigger>
+        </TabsList>
+
+        {/* ── TAB 1: TARGET NETWORKS ────────────────────────────────────── */}
+        <TabsContent value="routes" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className={detailNetwork ? 'lg:col-span-2' : 'lg:col-span-3'}>
+              <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm overflow-hidden">
+                <div className="p-5 border-b border-border/50">
+                  <h2 className="font-semibold text-foreground">Network Segments</h2>
+                  <p className="text-xs text-muted-foreground/70 mt-0.5">{networks.length} network{networks.length !== 1 ? 's' : ''} defined</p>
+                </div>
+                <div className="p-0">
+                  {isLoading ? (
+                    <div className="p-8 text-center text-sm text-muted-foreground">Loading...</div>
+                  ) : networks.length === 0 ? (
+                    <div className="p-8 text-center space-y-2">
+                      <Globe className="h-8 w-8 mx-auto text-muted-foreground/50" />
+                      <p className="text-sm text-muted-foreground">No networks defined yet.</p>
+                      <p className="text-xs text-muted-foreground">Add internal subnets (e.g. 10.0.1.0/24) that VPN users should be able to access.</p>
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Name</TableHead>
+                          <TableHead>CIDR</TableHead>
+                          <TableHead>Description</TableHead>
+                          <TableHead>Groups</TableHead>
+                          <TableHead>Nodes</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {networks.map(n => (
+                          <TableRow
+                            key={n.id}
+                            className={`cursor-pointer ${detailNetwork === n.id ? 'bg-muted/50' : ''}`}
+                            onClick={() => setDetailNetwork(detailNetwork === n.id ? null : n.id)}
+                          >
+                            <TableCell className="font-medium">{n.name}</TableCell>
+                            <TableCell>
+                              <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">{n.cidr}</code>
+                            </TableCell>
+                            <TableCell className="text-muted-foreground text-xs max-w-[200px] truncate">
+                              {n.description || '—'}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="secondary" className="gap-1 text-xs">
+                                <Users className="h-3 w-3" />
+                                {n.group_count}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              {n.node_count === 0 ? (
+                                <Badge variant="outline" className="text-xs text-muted-foreground">All Nodes</Badge>
+                              ) : (
+                                <Badge variant="secondary" className="gap-1 text-xs">
+                                  <Server className="h-3 w-3" />
+                                  {n.node_count} node{n.node_count !== 1 ? 's' : ''}
+                                </Badge>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                              <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                  onClick={() => {
+                                    setEditNetwork(n)
+                                    setForm({
+                                      name: n.name,
+                                      cidr: n.cidr,
+                                      description: n.description || '',
+                                      node_ids: n.node_ids ?? [],
+                                    })
+                                  }}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-8 w-8 text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
+                                  onClick={() => {
+                                    if (confirm(`Delete network "${n.name}"? This will remove access for all associated groups.`)) {
+                                      deleteMutation.mutate(n.id)
+                                    }
+                                  }}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </div>
+              </div>
             </div>
+
+            {/* Network detail sidebar */}
+            {detailNetwork && networkDetail && (
+              <div className="space-y-4">
+                <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold">{networkDetail.name}</h3>
+                    <code className="text-xs bg-muted px-2 py-0.5 rounded font-mono">{networkDetail.cidr}</code>
+                  </div>
+                  {networkDetail.description && (
+                    <p className="text-sm text-muted-foreground mb-4">{networkDetail.description}</p>
+                  )}
+
+                  <div className="space-y-4 pt-2 border-t border-border/50">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Target Nodes</span>
+                        <Badge className="text-xs" variant="outline">
+                          {networkDetail.nodes.length === 0 ? 'All Nodes (Global)' : `${networkDetail.nodes.length} node(s)`}
+                        </Badge>
+                      </div>
+                      {networkDetail.nodes.length === 0 ? (
+                        <p className="text-xs text-muted-foreground bg-muted/30 p-2.5 rounded-lg">
+                          This route is pushed to connected clients on <strong>all nodes</strong>.
+                        </p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {networkDetail.nodes.map(node => (
+                            <div key={node.id} className="flex items-center justify-between text-xs p-2 rounded-lg bg-muted/30">
+                              <span className="font-medium">{node.hostname}</span>
+                              <span className="font-mono text-muted-foreground">{node.ip_address}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Associated Groups</span>
+                        <Badge className="text-xs bg-emerald-100 text-emerald-700">{networkDetail.groups.length}</Badge>
+                      </div>
+                      {networkDetail.groups.length === 0 ? (
+                        <p className="text-xs text-muted-foreground bg-muted/30 p-2.5 rounded-lg">
+                          No groups assigned yet. Assign in Groups menu.
+                        </p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {networkDetail.groups.map(g => (
+                            <div key={g.id} className="flex items-center justify-between text-xs p-2 rounded-lg bg-muted/30">
+                              <span className="font-medium">{g.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </TabsContent>
+
+        {/* ── TAB 2: GROUP SUBNET ALLOCATIONS ───────────────────────────── */}
+        <TabsContent value="allocations" className="space-y-6">
+          <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm overflow-hidden">
+            <div className="p-5 border-b border-border/50 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="font-semibold text-foreground">Node Subnet Allocations</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Divide node IP pools into distinct subnets for each group. Members connecting to that node receive an IP from the allocated subnet.
+                </p>
+              </div>
+              <Badge variant="outline" className="text-xs self-start sm:self-auto font-mono">
+                {allocations.length} allocation{allocations.length !== 1 ? 's' : ''}
+              </Badge>
+            </div>
+
             <div className="p-0">
-              {isLoading ? (
-                <div className="p-8 text-center text-sm text-muted-foreground">Loading...</div>
-              ) : networks.length === 0 ? (
+              {isAllocLoading ? (
+                <div className="p-8 text-center text-sm text-muted-foreground">Loading allocations...</div>
+              ) : allocations.length === 0 ? (
                 <div className="p-8 text-center space-y-2">
-                  <Globe className="h-8 w-8 mx-auto text-muted-foreground/50" />
-                  <p className="text-sm text-muted-foreground">No networks defined yet.</p>
-                  <p className="text-xs text-muted-foreground">Add internal subnets (e.g. 10.0.1.0/24) that VPN users should be able to access.</p>
+                  <Layers className="h-8 w-8 mx-auto text-muted-foreground/50" />
+                  <p className="text-sm text-muted-foreground">No group subnets allocated yet.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Click "Allocate Subnet" to map a group to a dedicated subnet within a node's IP pool.
+                  </p>
                 </div>
               ) : (
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>CIDR</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead className="text-center">Groups</TableHead>
-                      <TableHead className="text-center">Nodes</TableHead>
+                      <TableHead>Group</TableHead>
+                      <TableHead>Target Node</TableHead>
+                      <TableHead>Node Pool</TableHead>
+                      <TableHead>Allocated Group Subnet</TableHead>
+                      <TableHead>Managed DNS</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {networks.map((n) => (
-                      <TableRow
-                        key={n.id}
-                        className={`cursor-pointer hover:bg-muted/50 ${detailNetwork === n.id ? 'bg-muted' : ''}`}
-                        onClick={() => setDetailNetwork(detailNetwork === n.id ? null : n.id)}
-                      >
-                        <TableCell className="font-medium">{n.name}</TableCell>
+                    {allocations.map(a => (
+                      <TableRow key={`${a.group_id}-${a.node_id}`}>
+                        <TableCell className="font-semibold text-sm">
+                          {a.group_name}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          <div className="flex items-center gap-1.5 font-medium">
+                            <Server className="size-3.5 text-muted-foreground" />
+                            {a.node_hostname}
+                          </div>
+                        </TableCell>
                         <TableCell>
-                          <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">{n.cidr}</code>
+                          <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono text-muted-foreground">
+                            {a.node_pool}
+                          </code>
                         </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">{n.description ?? '—'}</TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant="secondary">{n.group_count}</Badge>
+                        <TableCell>
+                          <code className="text-xs bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded font-mono font-medium">
+                            {a.vpn_subnet}
+                          </code>
                         </TableCell>
-                        <TableCell className="text-center">
-                          {n.node_count > 0 ? (
-                            <Badge className="bg-sky-100 text-sky-700 border-sky-200">{n.node_count} node{n.node_count !== 1 ? 's' : ''}</Badge>
+                        <TableCell>
+                          {a.managed_dns_enabled ? (
+                            <Badge variant="outline" className="text-[11px] bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
+                              Enabled ({a.listener_ip || 'No IP'})
+                            </Badge>
                           ) : (
-                            <Badge variant="outline" className="text-xs text-muted-foreground">Global</Badge>
+                            <Badge variant="outline" className="text-[11px] text-muted-foreground">
+                              Off
+                            </Badge>
                           )}
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                            <Button variant="ghost" size="icon" id={`btn-edit-network-${n.id}`} onClick={() => openEdit(n)}>
-                              <Pencil className="h-3.5 w-3.5" />
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                              onClick={() => {
+                                setAllocForm({
+                                  group_id: a.group_id,
+                                  node_id: a.node_id,
+                                  vpn_subnet: a.vpn_subnet,
+                                })
+                                setShowAllocDialog(true)
+                              }}
+                            >
+                              <Pencil className="h-4 w-4" />
                             </Button>
                             <Button
-                              variant="ghost"
                               size="icon"
-                              id={`btn-delete-network-${n.id}`}
-                              className="text-red-500 hover:text-red-600 hover:bg-red-50"
-                              onClick={() => deleteMutation.mutate(n.id)}
+                              variant="ghost"
+                              className="h-8 w-8 text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
+                              onClick={() => {
+                                if (confirm(`Remove subnet allocation for group "${a.group_name}" on node "${a.node_hostname}"?`)) {
+                                  deleteAllocMutation.mutate({ groupId: a.group_id, nodeId: a.node_id })
+                                }
+                              }}
                             >
-                              <Trash2 className="h-3.5 w-3.5" />
+                              <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
                         </TableCell>
@@ -246,85 +548,82 @@ function NetworksPage() {
               )}
             </div>
           </div>
-        </div>
+        </TabsContent>
+      </Tabs>
 
-        {/* Detail panel */}
-        {detailNetwork && networkDetail && (
-          <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm overflow-hidden">
-            <div className="p-5 border-b border-border/50 flex items-start justify-between gap-2">
-              <div>
-                <div className="font-semibold text-foreground flex items-center gap-2">
-                  <Globe className="h-4 w-4 text-emerald-500" />
-                  {networkDetail.name}
-                </div>
-                <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono text-muted-foreground mt-1 block w-fit">{networkDetail.cidr}</code>
-              </div>
-              <button
-                onClick={() => setDetailNetwork(null)}
-                className="p-1 text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted rounded-md transition-colors shrink-0"
+      {/* Allocate Subnet Dialog */}
+      <Dialog open={showAllocDialog} onOpenChange={setShowAllocDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Allocate Group Subnet on Node</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="alloc-dlg-group">Target Group</Label>
+              <select
+                id="alloc-dlg-group"
+                className="h-10 w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                value={allocForm.group_id}
+                onChange={(e) => handleGroupSelectForAlloc(e.target.value)}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-              </button>
+                <option value="">Select a group...</option>
+                {allGroups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name} {g.vpn_subnet ? `(Default: ${g.vpn_subnet})` : ''}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            {/* Assigned Nodes */}
-            <div className="p-4 border-b border-border/50">
-              <div className="flex items-center gap-2 mb-3">
-                <Server className="h-3.5 w-3.5 text-sky-500" />
-                <span className="text-sm font-medium">Nodes</span>
-                <Badge className="ml-auto bg-sky-100 text-sky-700 border-sky-200 text-xs">
-                  {networkDetail.nodes?.length > 0 ? networkDetail.nodes.length : 'Global'}
-                </Badge>
-              </div>
-              {!networkDetail.nodes || networkDetail.nodes.length === 0 ? (
-                <p className="text-xs text-muted-foreground">Applied to all nodes (global network).</p>
-              ) : (
-                <div className="space-y-1">
-                  {networkDetail.nodes.map(node => (
-                    <div key={node.id} className="flex items-center gap-2 text-sm">
-                      <span className={`w-1.5 h-1.5 rounded-full ${node.status === 'online' ? 'bg-emerald-500' : 'bg-gray-400'}`} />
-                      <span className="font-medium">{node.hostname}</span>
-                      <span className="text-xs text-muted-foreground ml-auto">{node.ip_address}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
+            <div className="space-y-1.5">
+              <Label htmlFor="alloc-dlg-node">Target Node</Label>
+              <select
+                id="alloc-dlg-node"
+                className="h-10 w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                value={allocForm.node_id}
+                onChange={(e) => setAllocForm({ ...allocForm, node_id: e.target.value })}
+              >
+                <option value="">Select a node...</option>
+                {allNodes.map((n) => (
+                  <option key={n.id} value={n.id}>
+                    {n.hostname} ({n.ip_address})
+                  </option>
+                ))}
+              </select>
             </div>
 
-            {/* Assigned Groups */}
-            <div className="p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Users className="h-3.5 w-3.5 text-emerald-500" />
-                <span className="text-sm font-medium">Groups</span>
-                <Badge className="ml-auto bg-emerald-100 text-emerald-700 text-xs">{networkDetail.groups.length}</Badge>
-              </div>
-              {networkDetail.groups.length === 0 ? (
-                <p className="text-xs text-muted-foreground">Not assigned to any group yet.</p>
-              ) : (
-                <div className="space-y-1">
-                  {networkDetail.groups.map(g => (
-                    <div key={g.id} className="flex items-center gap-2 text-sm">
-                      <div className="h-6 w-6 rounded bg-emerald-100 flex items-center justify-center shrink-0">
-                        <Users className="h-3 w-3 text-emerald-700" />
-                      </div>
-                      <div>
-                        <p className="font-medium leading-none">{g.name}</p>
-                        {g.description && <p className="text-xs text-muted-foreground">{g.description}</p>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+            <div className="space-y-1.5">
+              <Label htmlFor="alloc-dlg-subnet">Group VPN Subnet</Label>
+              <Input
+                id="alloc-dlg-subnet"
+                placeholder="e.g. 10.8.10.0/24"
+                value={allocForm.vpn_subnet}
+                onChange={(e) => setAllocForm({ ...allocForm, vpn_subnet: e.target.value })}
+                className="font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                Must be an available subnet contained inside the target node's VPN network pool.
+              </p>
             </div>
           </div>
-        )}
-      </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAllocDialog(false)}>Cancel</Button>
+            <Button
+              disabled={!allocForm.group_id || !allocForm.node_id || !allocForm.vpn_subnet.trim() || saveAllocMutation.isPending}
+              onClick={() => saveAllocMutation.mutate(allocForm)}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              {saveAllocMutation.isPending ? 'Saving...' : 'Save Allocation'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      {/* Create Dialog */}
+      {/* Create Target Network Dialog */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Add Network</DialogTitle>
+            <DialogTitle>Add Network Route</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
@@ -365,6 +664,7 @@ function NetworksPage() {
               id="btn-create-network-submit"
               disabled={!form.name.trim() || !form.cidr.trim() || createMutation.isPending}
               onClick={() => createMutation.mutate(form)}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
             >
               {createMutation.isPending ? 'Adding...' : 'Add Network'}
             </Button>
@@ -372,11 +672,11 @@ function NetworksPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Edit Dialog */}
+      {/* Edit Target Network Dialog */}
       <Dialog open={!!editNetwork} onOpenChange={() => setEditNetwork(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Edit Network</DialogTitle>
+            <DialogTitle>Edit Network Route</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
@@ -413,6 +713,7 @@ function NetworksPage() {
               id="btn-edit-network-submit"
               disabled={!form.name.trim() || !form.cidr.trim() || updateMutation.isPending}
               onClick={() => editNetwork && updateMutation.mutate({ id: editNetwork.id, data: form })}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
             >
               {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
             </Button>

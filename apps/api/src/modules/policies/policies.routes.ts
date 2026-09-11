@@ -120,7 +120,6 @@ const policyRoutes: FastifyPluginAsync = async (app) => {
 export async function enqueueApplyPolicies(app: any, affectedNodeId?: string | null) {
   // VPN IPs belong to credentials, so user policies are expanded per target node.
   const policies = await app.db('vpn_policies as p')
-    .leftJoin('groups as g', 'p.group_id', 'g.id')
     .select(
       'p.id',
       'p.action',
@@ -130,8 +129,7 @@ export async function enqueueApplyPolicies(app: any, affectedNodeId?: string | n
       'p.priority',
       'p.user_id',
       'p.group_id',
-      'p.node_id',
-      'g.vpn_subnet as group_subnet'
+      'p.node_id'
     )
     .orderBy('p.priority', 'asc')
 
@@ -162,17 +160,27 @@ export async function enqueueApplyPolicies(app: any, affectedNodeId?: string | n
     // Filter policies for this specific node (include globals where node_id is null)
     const nodePolicies = []
     for (const policy of policies.filter((p: any) => p.node_id === null || p.node_id === node.id)) {
-      if (!policy.user_id) {
-        nodePolicies.push(policy)
+      if (policy.user_id) {
+        const credentials = await app.db('user_node_certificates')
+          .where({ user_id: policy.user_id, node_id: node.id, is_revoked: false })
+          .whereNotNull('vpn_ip')
+          .select('vpn_ip')
+        for (const credential of credentials) {
+          nodePolicies.push({ ...policy, user_ip: credential.vpn_ip })
+        }
         continue
       }
-      const credentials = await app.db('user_node_certificates')
-        .where({ user_id: policy.user_id, node_id: node.id, is_revoked: false })
-        .whereNotNull('vpn_ip')
-        .select('vpn_ip')
-      for (const credential of credentials) {
-        nodePolicies.push({ ...policy, user_ip: credential.vpn_ip })
+      if (policy.group_id) {
+        // Resolve group subnet specifically for this node
+        const allocation = await app.db('group_node_dns_settings')
+          .where({ group_id: policy.group_id, node_id: node.id })
+          .first('vpn_subnet')
+        if (allocation?.vpn_subnet) {
+          nodePolicies.push({ ...policy, group_subnet: allocation.vpn_subnet })
+        }
+        continue
       }
+      nodePolicies.push(policy)
     }
 
     tasks.push({

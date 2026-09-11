@@ -229,7 +229,7 @@ function NodesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground">VPN Nodes</h1>
           <p className="text-sm text-muted-foreground mt-1">
@@ -237,7 +237,7 @@ function NodesPage() {
             {selectedNodes.size > 0 && ` • ${selectedNodes.size} selected`}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {selectedNodes.size > 0 && (
             <Button
               variant="outline"
@@ -283,102 +283,123 @@ function NodesPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {nodes.map((node) => (
-              <div key={node.id} className="bg-card text-card-foreground rounded-xl border border-border shadow-sm p-5 relative">
-                {/* Checkbox */}
-                <div className="absolute top-3 left-3">
-                  <input
-                    type="checkbox"
-                    checked={selectedNodes.has(node.id)}
-                    onChange={() => toggleNode(node.id)}
-                    className="rounded border-input text-emerald-600 focus:ring-emerald-500"
-                  />
-                </div>
-
-                {/* Status & Hostname */}
-                <div className="flex items-start justify-between mb-4 ml-7">
-                  <div className="flex items-center gap-2.5">
-                    <div className={`w-2.5 h-2.5 rounded-full mt-0.5 ${node.status === 'online' ? 'bg-emerald-500 shadow-sm shadow-emerald-200' : 'bg-gray-300'
-                      }`} />
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-semibold text-foreground">{node.hostname}</p>
-                        <span className={`px-1.5 py-0.5 text-[0.65rem] font-bold rounded ring-1 ring-inset ${
-                          node.vpn_type === 'wireguard' 
-                            ? 'bg-amber-50 text-amber-700 ring-amber-600/20' 
-                            : 'bg-orange-50 text-orange-700 ring-orange-600/20'
-                        }`}>
-                          {node.vpn_type === 'wireguard' ? 'WG' : 'OVPN'}
-                        </span>
+              <div
+                key={node.id}
+                className="bg-card text-card-foreground rounded-xl border border-border shadow-sm p-4 sm:p-5 flex flex-col justify-between transition-all hover:border-border/80"
+              >
+                <div>
+                  {/* Status & Hostname Header */}
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                      <input
+                        type="checkbox"
+                        checked={selectedNodes.has(node.id)}
+                        onChange={() => toggleNode(node.id)}
+                        className="rounded border-input text-emerald-600 focus:ring-emerald-500 mt-1 size-4 shrink-0 cursor-pointer"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={`w-2 h-2 rounded-full shrink-0 ${
+                              node.status === 'online'
+                                ? 'bg-emerald-500 shadow-sm shadow-emerald-200'
+                                : 'bg-gray-400 dark:bg-gray-600'
+                            }`}
+                          />
+                          <p className="font-semibold text-foreground text-sm sm:text-base truncate" title={node.hostname}>
+                            {node.hostname}
+                          </p>
+                        </div>
+                        <p className="text-xs font-mono text-muted-foreground/80 mt-0.5 pl-4 truncate">
+                          {node.ip_address}
+                        </p>
                       </div>
-                      <p className="text-xs font-mono text-muted-foreground/70 mt-0.5">{node.ip_address}</p>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span
+                        className={`px-1.5 py-0.5 text-[0.65rem] font-bold rounded ring-1 ring-inset uppercase ${
+                          node.vpn_type === 'wireguard'
+                            ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 ring-amber-500/20'
+                            : 'bg-orange-500/10 text-orange-600 dark:text-orange-400 ring-orange-500/20'
+                        }`}
+                      >
+                        {node.vpn_type === 'wireguard' ? 'WG' : 'OVPN'}
+                      </span>
+                      <span
+                        className={`px-2 py-0.5 text-xs font-medium rounded-full capitalize ${
+                          node.status === 'online'
+                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                            : node.status === 'offline'
+                              ? 'bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20'
+                              : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                        }`}
+                      >
+                        {node.status}
+                      </span>
                     </div>
                   </div>
-                  <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${node.status === 'online'
-                      ? 'bg-emerald-50 text-emerald-700'
-                      : node.status === 'offline'
-                        ? 'bg-red-50 text-red-600'
-                        : 'bg-amber-50 text-amber-600'
-                    }`}>
-                    {node.status}
-                  </span>
-                </div>
 
-                {/* Details */}
-                <div className="space-y-1.5 text-xs text-muted-foreground ml-7">
-                  {node.region && (
+                  {/* Details */}
+                  <div className="space-y-1.5 text-xs text-muted-foreground pt-2 border-t border-border/40">
+                    {node.region && (
+                      <div className="flex items-center gap-2">
+                        <MapPin className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
+                        <span className="truncate">{node.region}</span>
+                      </div>
+                    )}
+                    {node.version && (
+                      <div className="flex items-center gap-2">
+                        <Server className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
+                        <span className="truncate">{node.version}</span>
+                      </div>
+                    )}
+                    {node.created_at && (
+                      <div className="flex items-center gap-2">
+                        <CalendarDays className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
+                        <span className="truncate">Created {formatBrowserDateTime(node.created_at)}</span>
+                      </div>
+                    )}
+                    {node.last_seen && (
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
+                        <span className="truncate">Last seen {formatBrowserDateTime(node.last_seen)}</span>
+                      </div>
+                    )}
                     <div className="flex items-center gap-2">
-                      <MapPin className="h-3.5 w-3.5 text-gray-300" /> {node.region}
+                      <Activity className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
+                      <span>{node.active_sessions ?? 0} active sessions</span>
                     </div>
-                  )}
-                  {node.version && (
-                    <div className="flex items-center gap-2">
-                      <Server className="h-3.5 w-3.5 text-gray-300" /> {node.version}
-                    </div>
-                  )}
-                  {node.created_at && (
-                    <div className="flex items-center gap-2">
-                      <CalendarDays className="h-3.5 w-3.5 text-gray-300" />
-                      Created {formatBrowserDateTime(node.created_at)}
-                    </div>
-                  )}
-                  {node.last_seen && (
-                    <div className="flex items-center gap-2" >
-                      <Clock className="h-3.5 w-3.5 text-gray-300" />
-                      Last seen {formatBrowserDateTime(node.last_seen)}
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <Activity className="h-3.5 w-3.5 text-gray-300" /> {node.active_sessions ?? 0} active sessions
                   </div>
                 </div>
 
                 {/* Actions */}
-                <div className="mt-4 pt-4 border-t border-border/50 flex justify-end gap-2 ml-7">
+                <div className="mt-4 pt-3 border-t border-border/50 flex items-center justify-end gap-1">
                   <button
                     onClick={() => syncCertsMutation.mutate(node.id)}
                     disabled={syncCertsMutation.isPending || node.status === 'offline'}
-                    className="p-2 text-muted-foreground/70 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     title={node.status === 'offline' ? 'Node must be online' : 'Sync Certificates'}
                   >
                     <RefreshCw className={`h-4 w-4 ${syncCertsMutation.isPending ? 'animate-spin' : ''}`} />
                   </button>
                   <button
                     onClick={() => openEditModal(node)}
-                    className="p-2 text-muted-foreground/70 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                    className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
                     title="Edit Node"
                   >
                     <Edit className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => openConfigModal(node.id)}
-                    className="p-2 text-muted-foreground/70 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                    className="p-2 text-muted-foreground hover:text-emerald-600 hover:bg-emerald-500/10 rounded-lg transition-colors"
                     title="Configure"
                   >
                     <Settings className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => setViewFirewallNode(node)}
-                    className="p-2 text-muted-foreground/70 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                    className="p-2 text-muted-foreground hover:text-indigo-600 hover:bg-indigo-500/10 rounded-lg transition-colors"
                     title="View Server Firewall Rules"
                   >
                     <Shield className="h-4 w-4" />
@@ -390,7 +411,7 @@ function NodesPage() {
                       }
                     }}
                     disabled={deleteMutation.isPending}
-                    className="p-2 text-muted-foreground/70 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="p-2 text-muted-foreground hover:text-red-600 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     title="Delete Node"
                   >
                     <Trash2 className="h-4 w-4" />

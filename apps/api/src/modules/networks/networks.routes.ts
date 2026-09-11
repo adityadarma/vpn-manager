@@ -1,6 +1,9 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { v7 as uuidv7 } from 'uuid'
-import { cidrsToPushRoutes, getNetmask } from '../../services/ip-pool'
+import { cidrsToPushRoutes, getNetmask, parseCidr, cidrWithin, cidrsOverlap, nodePoolCidr } from '../../services/ip-pool'
+import { logAudit, getClientIp } from '../../utils/audit'
+import { enqueueApplyPolicies } from '../policies/policies.routes'
+import { enqueueNodeDnsSync } from '../../services/managed-dns'
 
 interface Network {
   id: string
@@ -188,6 +191,159 @@ const networkRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(204).send()
     },
   )
+
+  // GET /api/v1/networks/group-allocations — list all group subnet allocations across nodes
+  app.get(
+    '/networks/group-allocations',
+    { onRequest: [app.authenticateAdmin], schema: { tags: ['networks'], summary: 'List group subnet allocations across nodes', security: [{ bearerAuth: [] }] } },
+    async () => {
+      const allocations = await app.db('group_node_dns_settings as a')
+        .join('groups as g', 'a.group_id', 'g.id')
+        .join('vpn_nodes as n', 'a.node_id', 'n.id')
+        .select(
+          'a.group_id',
+          'g.name as group_name',
+          'a.node_id',
+          'n.hostname as node_hostname',
+          'n.vpn_network',
+          'n.vpn_netmask',
+          'a.vpn_subnet',
+          'a.enabled as managed_dns_enabled',
+          'a.listener_ip',
+          'a.created_at',
+          'a.updated_at'
+        )
+        .orderBy('g.name')
+        .orderBy('n.hostname')
+
+      return allocations.map((a: any) => ({
+        ...a,
+        node_pool: nodePoolCidr(a.vpn_network, a.vpn_netmask),
+        managed_dns_enabled: Boolean(a.managed_dns_enabled),
+      }))
+    },
+  )
+
+  // POST /api/v1/networks/group-allocations — allocate or update group subnet on a node
+  app.post<{ Body: { group_id: string; node_id: string; vpn_subnet: string } }>(
+    '/networks/group-allocations',
+    { onRequest: [app.authenticateAdmin], schema: { tags: ['networks'], summary: 'Allocate subnet to group on a node', security: [{ bearerAuth: [] }] } },
+    async (request, reply) => {
+      const { group_id, node_id, vpn_subnet } = request.body
+      if (!group_id?.trim() || !node_id?.trim() || !vpn_subnet?.trim()) {
+        return reply.status(400).send({ error: 'group_id, node_id, and vpn_subnet are required' })
+      }
+
+      const group = await app.db('groups').where({ id: group_id }).first()
+      if (!group) return reply.status(404).send({ error: 'Group not found' })
+
+      const node = await app.db('vpn_nodes').where({ id: node_id }).first()
+      if (!node) return reply.status(404).send({ error: 'Node not found' })
+
+      const subnet = vpn_subnet.trim()
+      let parentPool: string
+      try {
+        parseCidr(subnet)
+        parentPool = nodePoolCidr(node.vpn_network, node.vpn_netmask)
+      } catch (error) {
+        return reply.status(400).send({ error: `Invalid VPN subnet or node pool: ${(error as Error).message}` })
+      }
+      if (!cidrWithin(subnet, parentPool)) {
+        return reply.status(400).send({ error: `vpn_subnet must be inside node pool ${parentPool}` })
+      }
+
+      const existing = await app.db('group_node_dns_settings')
+        .where({ node_id: node.id })
+        .whereNot({ group_id: group.id })
+        .select('group_id', 'vpn_subnet')
+      const overlap = existing.find((setting: any) => cidrsOverlap(subnet, setting.vpn_subnet))
+      if (overlap) {
+        return reply.status(409).send({ error: `vpn_subnet overlaps allocation for group ${overlap.group_id}` })
+      }
+
+      const current = await app.db('group_node_dns_settings')
+        .where({ group_id: group.id, node_id: node.id })
+        .first()
+
+      const record = {
+        group_id: group.id,
+        node_id: node.id,
+        vpn_subnet: subnet,
+        enabled: current?.enabled ?? false,
+        listener_ip: current?.listener_ip ?? null,
+        listener_port: current?.listener_port ?? 53,
+        public_default_action: current?.public_default_action ?? 'allow',
+        upstreams: current?.upstreams ?? JSON.stringify(['1.1.1.1', '8.8.8.8']),
+        updated_at: new Date(),
+      }
+
+      await app.db('group_node_dns_settings')
+        .insert({ ...record, created_at: new Date() })
+        .onConflict(['group_id', 'node_id'])
+        .merge(record)
+
+      await triggerNodeConfigUpdate(app, node.id)
+      await enqueueApplyPolicies(app, node.id)
+      if (node.managed_dns_enabled && record.enabled) {
+        await enqueueNodeDnsSync(app, node.id)
+      }
+
+      const userObj = request.user as { id: string; username: string }
+      await logAudit(app, {
+        userId: userObj.id,
+        username: userObj.username,
+        action: 'group_node_subnet_allocate',
+        resourceType: 'group_node_allocation',
+        resourceId: `${group.id}:${node.id}`,
+        ipAddress: getClientIp(request),
+        metadata: { group_id: group.id, node_id: node.id, vpn_subnet: subnet },
+      })
+
+      return reply.status(200).send({
+        group_id: group.id,
+        group_name: group.name,
+        node_id: node.id,
+        node_hostname: node.hostname,
+        vpn_subnet: subnet,
+        node_pool: parentPool,
+        managed_dns_enabled: Boolean(record.enabled),
+      })
+    },
+  )
+
+  // DELETE /api/v1/networks/group-allocations/:groupId/:nodeId
+  app.delete<{ Params: { groupId: string; nodeId: string } }>(
+    '/networks/group-allocations/:groupId/:nodeId',
+    { onRequest: [app.authenticateAdmin], schema: { tags: ['networks'], summary: 'Remove group subnet allocation from node', security: [{ bearerAuth: [] }] } },
+    async (request, reply) => {
+      const { groupId, nodeId } = request.params
+      const deletedCount = await app.db('group_node_dns_settings')
+        .where({ group_id: groupId, node_id: nodeId })
+        .delete()
+
+      if (deletedCount > 0) {
+        await triggerNodeConfigUpdate(app, nodeId)
+        await enqueueApplyPolicies(app, nodeId)
+        const node = await app.db('vpn_nodes').where({ id: nodeId }).first()
+        if (node?.managed_dns_enabled) {
+          await enqueueNodeDnsSync(app, nodeId)
+        }
+
+        const userObj = request.user as { id: string; username: string }
+        await logAudit(app, {
+          userId: userObj.id,
+          username: userObj.username,
+          action: 'group_node_subnet_deallocate',
+          resourceType: 'group_node_allocation',
+          resourceId: `${groupId}:${nodeId}`,
+          ipAddress: getClientIp(request),
+          metadata: { group_id: groupId, node_id: nodeId },
+        })
+      }
+
+      return reply.status(204).send()
+    },
+  )
 }
 
 /**
@@ -223,11 +379,15 @@ async function reenqueueNetworkCcdTasks(app: any, networkId: string): Promise<vo
       .where({ user_id: member.user_id })
       .pluck('group_id') as string[]
 
-    // Get netmask from primary group
+    // Get netmask from primary group allocation on this node
     let netmask = '255.255.255.0'
     if (member.group_id) {
-      const primaryGroup = await app.db('groups').where({ id: member.group_id }).first()
-      if (primaryGroup?.vpn_subnet) netmask = getNetmask(primaryGroup.vpn_subnet)
+      const allocation = await app.db('group_node_dns_settings')
+        .where({ group_id: member.group_id, node_id: member.node_id })
+        .first('vpn_subnet')
+      if (allocation?.vpn_subnet) {
+        netmask = getNetmask(allocation.vpn_subnet)
+      }
     }
 
     const node = await app.db('vpn_nodes').where({ id: member.node_id, status: 'online' }).first()
@@ -281,9 +441,11 @@ async function triggerNodeConfigUpdate(app: any, nodeId: string): Promise<void> 
   const node = await app.db('vpn_nodes').where({ id: nodeId }).first()
   if (!node) return
 
-  // Get group subnets (existing behaviour)
-  const allGroups = await app.db('groups').whereNotNull('vpn_subnet').select('vpn_subnet')
-  const groupSubnets = allGroups.map((g: any) => g.vpn_subnet).filter(Boolean)
+  // Get group subnets allocated for this node
+  const groupSubnets = await app.db('group_node_dns_settings')
+    .where({ node_id: nodeId })
+    .whereNotNull('vpn_subnet')
+    .pluck('vpn_subnet') as string[]
 
   // Get node-specific network CIDRs assigned to this node
   const nodeNetworkCidrs = await app.db('node_networks as nn')

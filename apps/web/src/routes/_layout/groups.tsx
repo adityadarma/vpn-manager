@@ -76,19 +76,20 @@ interface NetworkItem {
   description: string | null
 }
 
-interface FormState { name: string; description: string; vpn_subnet: string }
+interface FormState { name: string; description: string }
 
 function GroupsPage() {
   const qc = useQueryClient()
   const [showCreate, setShowCreate] = useState(false)
   const [editGroup, setEditGroup] = useState<Group | null>(null)
   const [detailGroup, setDetailGroup] = useState<string | null>(null)
-  const [form, setForm] = useState<FormState>({ name: '', description: '', vpn_subnet: '' })
+  const [form, setForm] = useState<FormState>({ name: '', description: '' })
   const [showAddMember, setShowAddMember] = useState(false)
   const [showAddNetwork, setShowAddNetwork] = useState(false)
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set())
   const [selectedNetworkIds, setSelectedNetworkIds] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
+  const [groupFilterQuery, setGroupFilterQuery] = useState('')
   const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set())
 
   const { data: groups = [], isLoading } = useQuery<Group[]>({
@@ -117,7 +118,7 @@ function GroupsPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['groups'] })
       setShowCreate(false)
-      setForm({ name: '', description: '', vpn_subnet: '' })
+      setForm({ name: '', description: '' })
       toast.success('Group created successfully')
     },
     onError: (e: Error) => toast.error(e.message),
@@ -231,7 +232,7 @@ function GroupsPage() {
 
   const openEdit = (g: Group) => {
     setEditGroup(g)
-    setForm({ name: g.name, description: g.description ?? '', vpn_subnet: g.vpn_subnet ?? '' })
+    setForm({ name: g.name, description: g.description ?? '' })
   }
 
   // Filter users that are not already in the group and match search
@@ -288,7 +289,7 @@ function GroupsPage() {
               Delete ({selectedGroups.size})
             </Button>
           )}
-          <Button id="btn-create-group" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => { setShowCreate(true); setForm({ name: '', description: '', vpn_subnet: '' }) }}>
+          <Button id="btn-create-group" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => { setShowCreate(true); setForm({ name: '', description: '' }) }}>
             <Plus className="mr-2 h-4 w-4" />
             Add Group
           </Button>
@@ -300,9 +301,19 @@ function GroupsPage() {
         {/* Groups table */}
         <div className={detailGroup ? 'lg:col-span-2' : 'lg:col-span-3'}>
           <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm overflow-hidden">
-            <div className="p-5 border-b border-border/50">
-              <h2 className="font-semibold text-foreground">All Groups</h2>
-              <p className="text-xs text-muted-foreground/70 mt-0.5">{groups.length} group{groups.length !== 1 ? 's' : ''}</p>
+            <div className="p-4 sm:p-5 border-b border-border/50 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="font-semibold text-foreground">All Groups</h2>
+                <p className="text-xs text-muted-foreground/70 mt-0.5">{groups.length} group{groups.length !== 1 ? 's' : ''}</p>
+              </div>
+              <div className="w-full sm:w-64">
+                <Input
+                  placeholder="Search groups..."
+                  value={groupFilterQuery}
+                  onChange={e => setGroupFilterQuery(e.target.value)}
+                  className="h-8 text-xs"
+                />
+              </div>
             </div>
             <div className="p-0">
               {isLoading ? (
@@ -323,8 +334,7 @@ function GroupsPage() {
                           className="rounded border-input text-emerald-600 focus:ring-emerald-500"
                         />
                       </TableHead>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Subnet / IP Pool</TableHead>
+                      <TableHead>Group Name</TableHead>
                       <TableHead>Description</TableHead>
                       <TableHead className="text-center">Members</TableHead>
                       <TableHead className="text-center">Networks</TableHead>
@@ -332,62 +342,73 @@ function GroupsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {groups.map((g) => (
-                      <TableRow
-                        key={g.id}
-                        className={`hover:bg-muted/50 ${detailGroup === g.id ? 'bg-muted' : ''}`}
-                      >
-                        <TableCell>
-                          <input
-                            type="checkbox"
-                            checked={selectedGroups.has(g.id)}
-                            onChange={() => toggleGroup(g.id)}
-                            className="rounded border-input text-emerald-600 focus:ring-emerald-500"
-                          />
-                        </TableCell>
-                        <TableCell className="font-medium">{g.name}</TableCell>
-                        <TableCell>
-                          {g.vpn_subnet
-                            ? <code className="text-xs bg-blue-50 text-blue-700 border border-blue-100 px-1.5 py-0.5 rounded">{g.vpn_subnet}</code>
-                            : <span className="text-muted-foreground text-xs">—</span>}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">{g.description ?? '—'}</TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant="secondary">{g.member_count}</Badge>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant="outline">{g.network_count}</Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              id={`btn-edit-group-${g.id}`} 
-                              onClick={(e) => { e.stopPropagation(); openEdit(g); }}
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              id={`btn-delete-group-${g.id}`}
-                              className="text-red-500 hover:text-red-600 hover:bg-red-50"
-                              onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(g.id); }}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => setDetailGroup(detailGroup === g.id ? null : g.id)}
-                            >
-                              <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${detailGroup === g.id ? 'rotate-90' : ''}`} />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {groups
+                      .filter(g =>
+                        g.name.toLowerCase().includes(groupFilterQuery.toLowerCase()) ||
+                        (g.description && g.description.toLowerCase().includes(groupFilterQuery.toLowerCase()))
+                      )
+                      .map((g) => {
+                        return (
+                          <TableRow
+                            key={g.id}
+                            className={`hover:bg-muted/50 cursor-pointer ${detailGroup === g.id ? 'bg-muted/60' : ''}`}
+                            onClick={() => setDetailGroup(detailGroup === g.id ? null : g.id)}
+                          >
+                            <TableCell onClick={e => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={selectedGroups.has(g.id)}
+                                onChange={() => toggleGroup(g.id)}
+                                className="rounded border-input text-emerald-600 focus:ring-emerald-500"
+                              />
+                            </TableCell>
+                            <TableCell className="font-semibold text-foreground">{g.name}</TableCell>
+                            <TableCell className="text-muted-foreground text-xs max-w-[240px] truncate">
+                              {g.description ?? '—'}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge variant="secondary" className="text-xs font-mono">{g.member_count}</Badge>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge variant="outline" className="text-xs font-mono">{g.network_count}</Badge>
+                            </TableCell>
+                            <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                              <div className="flex items-center justify-end gap-1">
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                  id={`btn-edit-group-${g.id}`} 
+                                  onClick={() => openEdit(g)}
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost" 
+                                  size="icon" 
+                                  id={`btn-delete-group-${g.id}`}
+                                  className="h-8 w-8 text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
+                                  onClick={() => {
+                                    if (confirm(`Delete group "${g.name}"?`)) {
+                                      deleteMutation.mutate(g.id)
+                                    }
+                                  }}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-muted-foreground"
+                                  onClick={() => setDetailGroup(detailGroup === g.id ? null : g.id)}
+                                >
+                                  <ChevronRight className={`h-4 w-4 transition-transform ${detailGroup === g.id ? 'rotate-90' : ''}`} />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
                   </TableBody>
                 </Table>
               )}
@@ -509,7 +530,7 @@ function GroupsPage() {
 
       {/* Create Dialog */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Add Group</DialogTitle>
           </DialogHeader>
@@ -518,21 +539,10 @@ function GroupsPage() {
               <Label htmlFor="group-name">Name</Label>
               <Input
                 id="group-name"
-                placeholder="e.g. IT Department"
+                placeholder="e.g. IT Department, Developers, Sales"
                 value={form.name}
                 onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
               />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="group-subnet">VPN Subnet <span className="text-red-500">*</span></Label>
-              <Input
-                id="group-subnet"
-                placeholder="e.g. 10.8.1.0/24"
-                value={form.vpn_subnet}
-                onChange={e => setForm(f => ({ ...f, vpn_subnet: e.target.value }))}
-                className="font-mono"
-              />
-              <p className="text-xs text-muted-foreground">Users in this group will be auto-assigned an IP from this subnet.</p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="group-desc">Description</Label>
@@ -544,13 +554,17 @@ function GroupsPage() {
                 onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
               />
             </div>
+            <div className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground">Node Subnet Allocations:</span> Subnets can be allocated per node under the <strong>Networks</strong> menu.
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
             <Button
               id="btn-create-group-submit"
-              disabled={!form.name.trim() || !form.vpn_subnet.trim() || createMutation.isPending}
-              onClick={() => createMutation.mutate({ name: form.name, description: form.description, vpn_subnet: form.vpn_subnet || '' })}
+              disabled={!form.name.trim() || createMutation.isPending}
+              onClick={() => createMutation.mutate({ name: form.name, description: form.description })}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
             >
               {createMutation.isPending ? 'Adding...' : 'Add Group'}
             </Button>
@@ -560,7 +574,7 @@ function GroupsPage() {
 
       {/* Edit Dialog */}
       <Dialog open={!!editGroup} onOpenChange={() => setEditGroup(null)}>
-        <DialogContent>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Edit Group</DialogTitle>
           </DialogHeader>
@@ -574,17 +588,6 @@ function GroupsPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="edit-group-subnet">VPN Subnet <span className="text-red-500">*</span></Label>
-              <Input
-                id="edit-group-subnet"
-                placeholder="e.g. 10.8.1.0/24"
-                value={form.vpn_subnet}
-                onChange={e => setForm(f => ({ ...f, vpn_subnet: e.target.value }))}
-                className="font-mono"
-              />
-              <p className="text-xs text-muted-foreground">Changing the subnet does not reassign existing user IPs.</p>
-            </div>
-            <div className="space-y-1.5">
               <Label htmlFor="edit-group-desc">Description</Label>
               <Textarea
                 id="edit-group-desc"
@@ -593,13 +596,17 @@ function GroupsPage() {
                 onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
               />
             </div>
+            <div className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground">Node Subnet Allocations:</span> Subnets are configured per node under the <strong>Networks</strong> menu.
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditGroup(null)}>Cancel</Button>
             <Button
               id="btn-edit-group-submit"
-              disabled={!form.name.trim() || !form.vpn_subnet.trim() || updateMutation.isPending}
-              onClick={() => editGroup && updateMutation.mutate({ id: editGroup.id, data: { name: form.name, description: form.description, vpn_subnet: form.vpn_subnet || '' } })}
+              disabled={!form.name.trim() || updateMutation.isPending}
+              onClick={() => editGroup && updateMutation.mutate({ id: editGroup.id, data: { name: form.name, description: form.description } })}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
             >
               {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
             </Button>

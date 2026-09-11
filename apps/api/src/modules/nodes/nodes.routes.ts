@@ -284,11 +284,11 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       const node = await app.db('vpn_nodes').where({ id: request.params.id }).first()
       if (!node) return reply.status(404).send({ error: 'Not Found', message: 'Node not found' })
 
-      // Collect all group subnets so the agent can generate route directives
-      const allGroups = await app.db('groups').whereNotNull('vpn_subnet').select('name', 'vpn_subnet')
-      const groupSubnets = allGroups
-        .map((g: { name: string; vpn_subnet: string }) => g.vpn_subnet)
-        .filter(Boolean)
+      // Collect group subnets allocated for this node
+      const groupSubnets = await app.db('group_node_dns_settings')
+        .where({ node_id: node.id })
+        .whereNotNull('vpn_subnet')
+        .pluck('vpn_subnet') as string[]
 
       // This body is written straight into the node's server.conf by the agent,
       // on a server running with `script-security 2`, so directives like `up`

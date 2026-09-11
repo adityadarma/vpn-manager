@@ -31,7 +31,6 @@ describe('VPN IP Uniqueness', () => {
     await app.db('groups').insert({
       id: groupId,
       name: 'ip-unique-test-group',
-      vpn_subnet: '10.8.1.0/24',
     })
 
     const res1 = await app.inject({

@@ -280,17 +280,21 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       } catch (error) {
         return reply.status(400).send({ error: 'Bad Request', message: `Node VPN pool is invalid: ${(error as Error).message}` })
       }
+      const reservedIps: string[] = []
       if (membership?.group_id) {
         const allocation = await app.db('group_node_dns_settings')
           .where({ group_id: membership.group_id, node_id: nodeId })
-          .first('vpn_subnet')
-        if (allocation) pool = allocation.vpn_subnet
+          .first('vpn_subnet', 'listener_ip')
+        if (allocation) {
+          pool = allocation.vpn_subnet
+          if (allocation.listener_ip) reservedIps.push(allocation.listener_ip)
+        }
       }
       const usedIps = await app.db('user_node_certificates')
         .where({ node_id: nodeId })
         .whereNotNull('vpn_ip')
         .pluck('vpn_ip') as string[]
-      const vpnIp = nextAvailableIp(pool, usedIps)
+      const vpnIp = nextAvailableIp(pool, [...usedIps, ...reservedIps])
       if (!vpnIp) return reply.status(422).send({ error: 'Subnet full', message: `No available IPs in ${pool}` })
 
       const credentialId = uuidv7()
@@ -447,17 +451,21 @@ const userRoutes: FastifyPluginAsync = async (app) => {
             results.failed.push({ userId, error: `Node VPN pool is invalid: ${(error as Error).message}` })
             continue
           }
+          const bulkReservedIps: string[] = []
           if (membership?.group_id) {
             const allocation = await app.db('group_node_dns_settings')
               .where({ group_id: membership.group_id, node_id: nodeId })
-              .first('vpn_subnet')
-            if (allocation) pool = allocation.vpn_subnet
+              .first('vpn_subnet', 'listener_ip')
+            if (allocation) {
+              pool = allocation.vpn_subnet
+              if (allocation.listener_ip) bulkReservedIps.push(allocation.listener_ip)
+            }
           }
           const usedIps = await app.db('user_node_certificates')
             .where({ node_id: nodeId })
             .whereNotNull('vpn_ip')
             .pluck('vpn_ip') as string[]
-          const vpnIp = nextAvailableIp(pool, usedIps)
+          const vpnIp = nextAvailableIp(pool, [...usedIps, ...bulkReservedIps])
           if (!vpnIp) {
             results.failed.push({ userId, error: `No available IPs in ${pool}` })
             continue
@@ -887,17 +895,16 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       let hasGroupSubnet = false
 
       if (userGroupIds.length > 0) {
-        // 1. Add Group VPN Subnets
-        const groupSubnets = await app.db('groups')
-          .whereIn('id', userGroupIds)
+        // 1. Add Group VPN Subnets allocated for this node
+        const nodeGroupSubnets = await app.db('group_node_dns_settings')
+          .whereIn('group_id', userGroupIds)
+          .where({ node_id: node.id })
           .whereNotNull('vpn_subnet')
-          .select('vpn_subnet')
-        
-        for (const grp of groupSubnets) {
-          if (grp.vpn_subnet) {
-            splitCidrs.push(grp.vpn_subnet)
-            hasGroupSubnet = true
-          }
+          .pluck('vpn_subnet') as string[]
+
+        for (const s of nodeGroupSubnets) {
+          splitCidrs.push(s)
+          hasGroupSubnet = true
         }
 
         // 2. Add explicit target Networks (Filtered by Node Assignment)
