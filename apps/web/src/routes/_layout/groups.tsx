@@ -14,13 +14,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog'
+import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal'
 import {
   Table,
   TableBody,
@@ -269,7 +263,7 @@ function GroupsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Groups</h1>
           <p className="text-sm text-muted-foreground mt-1">
@@ -277,7 +271,7 @@ function GroupsPage() {
             {selectedGroups.size > 0 && ` • ${selectedGroups.size} selected`}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {selectedGroups.size > 0 && (
             <Button
               variant="outline"
@@ -528,235 +522,233 @@ function GroupsPage() {
         )}
       </div>
 
-      {/* Create Dialog */}
-      <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add Group</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="group-name">Name</Label>
-              <Input
-                id="group-name"
-                placeholder="e.g. IT Department, Developers, Sales"
-                value={form.name}
-                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="group-desc">Description</Label>
-              <Textarea
-                id="group-desc"
-                placeholder="Optional description"
-                rows={3}
-                value={form.description}
-                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-              />
-            </div>
-            <div className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
-              <span className="font-semibold text-foreground">Node Subnet Allocations:</span> Subnets can be allocated per node under the <strong>Networks</strong> menu.
-            </div>
+      {/* Create Modal */}
+      <Modal open={showCreate} onClose={() => setShowCreate(false)}>
+        <ModalHeader title="Add Group" onClose={() => setShowCreate(false)} />
+        <ModalBody>
+          <div className="space-y-1.5">
+            <Label htmlFor="group-name">Name</Label>
+            <Input
+              id="group-name"
+              placeholder="e.g. IT Department, Developers, Sales"
+              value={form.name}
+              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+            />
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
-            <Button
-              id="btn-create-group-submit"
-              disabled={!form.name.trim() || createMutation.isPending}
-              onClick={() => createMutation.mutate({ name: form.name, description: form.description })}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
-            >
-              {createMutation.isPending ? 'Adding...' : 'Add Group'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Dialog */}
-      <Dialog open={!!editGroup} onOpenChange={() => setEditGroup(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Edit Group</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="edit-group-name">Name</Label>
-              <Input
-                id="edit-group-name"
-                value={form.name}
-                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="edit-group-desc">Description</Label>
-              <Textarea
-                id="edit-group-desc"
-                rows={3}
-                value={form.description}
-                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-              />
-            </div>
-            <div className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
-              <span className="font-semibold text-foreground">Node Subnet Allocations:</span> Subnets are configured per node under the <strong>Networks</strong> menu.
-            </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="group-desc">Description</Label>
+            <Textarea
+              id="group-desc"
+              placeholder="Optional description"
+              rows={3}
+              value={form.description}
+              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+            />
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditGroup(null)}>Cancel</Button>
-            <Button
-              id="btn-edit-group-submit"
-              disabled={!form.name.trim() || updateMutation.isPending}
-              onClick={() => editGroup && updateMutation.mutate({ id: editGroup.id, data: { name: form.name, description: form.description } })}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
-            >
-              {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          <div className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground">Node Subnet Allocations:</span> Subnets can be allocated per node under the <strong>Networks</strong> menu.
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
+          <Button
+            id="btn-create-group-submit"
+            disabled={!form.name.trim() || createMutation.isPending}
+            onClick={() => createMutation.mutate({ name: form.name, description: form.description })}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            {createMutation.isPending ? 'Adding...' : 'Add Group'}
+          </Button>
+        </ModalFooter>
+      </Modal>
 
-      {/* Add Member Dialog (Multi-Select) */}
-      <Dialog open={showAddMember} onOpenChange={setShowAddMember}>
-        <DialogContent className="sm:max-w-[450px]">
-          <DialogHeader>
-            <DialogTitle>Add Members to {groupDetail?.name}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            {usersBeingMoved.length > 0 && (
-              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 px-3 py-2.5 text-sm text-amber-800 dark:text-amber-300">
-                <span className="mt-0.5 shrink-0">⚠️</span>
-                <span>
-                  <strong>{usersBeingMoved.map(u => u.username).join(', ')}</strong> will be moved from their current group and assigned a new IP.
-                </span>
-              </div>
-            )}
-            <div className="space-y-3">
-              <Input
-                placeholder="Search by username or email..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                autoFocus
-              />
-              <div className="max-h-60 overflow-y-auto space-y-1 pr-1">
-                {availableUsers.length === 0 ? (
-                   <div className="p-4 text-center text-sm text-muted-foreground border rounded-lg border-dashed">
-                     No users found to add.
-                   </div>
-                ) : (
-                  availableUsers.map(u => (
-                    <div 
-                      key={u.id} 
-                      className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer select-none transition-colors hover:bg-muted/50 ${selectedUserIds.has(u.id) ? 'border-primary bg-primary/5 ring-1 ring-primary/20' : 'border-border'}`}
-                      onClick={() => toggleUserId(u.id)}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedUserIds.has(u.id)}
-                        onChange={() => {}} // handled by parent div click
-                        className="rounded border-input text-emerald-600 focus:ring-emerald-500 h-4 w-4 shrink-0 transition-opacity"
-                      />
-                      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary shrink-0">
-                        {u.username[0]?.toUpperCase()}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{u.username}</p>
-                        {u.email && <p className="text-xs text-muted-foreground truncate">{u.email}</p>}
-                        {u.vpn_group_name && (
-                          <p className="text-xs text-amber-600 dark:text-amber-400 truncate">in group: {u.vpn_group_name}</p>
-                        )}
-                      </div>
-                      <Badge variant="outline" className="text-[10px] uppercase font-semibold text-muted-foreground">
-                        {u.role}
-                      </Badge>
+      {/* Edit Modal */}
+      <Modal open={!!editGroup} onClose={() => setEditGroup(null)}>
+        <ModalHeader title="Edit Group" onClose={() => setEditGroup(null)} />
+        <ModalBody>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-group-name">Name</Label>
+            <Input
+              id="edit-group-name"
+              value={form.name}
+              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-group-desc">Description</Label>
+            <Textarea
+              id="edit-group-desc"
+              rows={3}
+              value={form.description}
+              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+            />
+          </div>
+          <div className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground">Node Subnet Allocations:</span> Subnets are configured per node under the <strong>Networks</strong> menu.
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="outline" onClick={() => setEditGroup(null)}>Cancel</Button>
+          <Button
+            id="btn-edit-group-submit"
+            disabled={!form.name.trim() || updateMutation.isPending}
+            onClick={() => editGroup && updateMutation.mutate({ id: editGroup.id, data: { name: form.name, description: form.description } })}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Add Member Modal (Multi-Select) */}
+      <Modal
+        open={showAddMember}
+        onClose={() => { setShowAddMember(false); setSelectedUserIds(new Set()) }}
+        className="max-w-[450px]"
+      >
+        <ModalHeader
+          title={`Add Members to ${groupDetail?.name ?? ''}`}
+          onClose={() => { setShowAddMember(false); setSelectedUserIds(new Set()) }}
+        />
+        <ModalBody>
+          {usersBeingMoved.length > 0 && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 px-3 py-2.5 text-sm text-amber-800 dark:text-amber-300">
+              <span className="mt-0.5 shrink-0">⚠️</span>
+              <span>
+                <strong>{usersBeingMoved.map(u => u.username).join(', ')}</strong> will be moved from their current group and assigned a new IP.
+              </span>
+            </div>
+          )}
+          <div className="space-y-3">
+            <Input
+              placeholder="Search by username or email..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              autoFocus
+            />
+            <div className="max-h-60 overflow-y-auto space-y-1 pr-1">
+              {availableUsers.length === 0 ? (
+                 <div className="p-4 text-center text-sm text-muted-foreground border rounded-lg border-dashed">
+                   No users found to add.
+                 </div>
+              ) : (
+                availableUsers.map(u => (
+                  <div 
+                    key={u.id} 
+                    className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer select-none transition-colors hover:bg-muted/50 ${selectedUserIds.has(u.id) ? 'border-primary bg-primary/5 ring-1 ring-primary/20' : 'border-border'}`}
+                    onClick={() => toggleUserId(u.id)}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedUserIds.has(u.id)}
+                      onChange={() => {}} // handled by parent div click
+                      className="rounded border-input text-emerald-600 focus:ring-emerald-500 h-4 w-4 shrink-0 transition-opacity"
+                    />
+                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary shrink-0">
+                      {u.username[0]?.toUpperCase()}
                     </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-          <DialogFooter className="flex items-center sm:justify-between w-full">
-             <div className="text-sm text-muted-foreground hidden sm:block">
-               {selectedUserIds.size} user(s) selected
-             </div>
-             <div className="flex gap-2">
-               <Button variant="outline" onClick={() => { setShowAddMember(false); setSelectedUserIds(new Set()) }}>
-                 Cancel
-               </Button>
-               <Button
-                 disabled={selectedUserIds.size === 0 || addMemberMutation.isPending}
-                 onClick={() => detailGroup && addMemberMutation.mutate({ groupId: detailGroup, userIds: Array.from(selectedUserIds) })}
-                 className={selectedUserIds.size > 0 ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}
-               >
-                 {addMemberMutation.isPending ? 'Adding...' : `Add ${selectedUserIds.size || ''} Member(s)`}
-               </Button>
-             </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add Network Dialog (Multi-Select) */}
-      <Dialog open={showAddNetwork} onOpenChange={setShowAddNetwork}>
-        <DialogContent className="sm:max-w-[450px]">
-          <DialogHeader>
-            <DialogTitle>Assign Networks to {groupDetail?.name}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-3">
-              <Input
-                placeholder="Search network name or CIDR..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                autoFocus
-              />
-              <div className="max-h-60 overflow-y-auto space-y-1 pr-1">
-                {availableNetworks.length === 0 ? (
-                   <div className="p-4 text-center text-sm text-muted-foreground border rounded-lg border-dashed">
-                     No networks found to assign.
-                   </div>
-                ) : (
-                  availableNetworks.map(n => (
-                    <div 
-                      key={n.id} 
-                      className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer select-none transition-colors hover:bg-muted/50 ${selectedNetworkIds.has(n.id) ? 'border-primary bg-primary/5 ring-1 ring-primary/20' : 'border-border'}`}
-                      onClick={() => toggleNetworkId(n.id)}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedNetworkIds.has(n.id)}
-                        onChange={() => {}} // handled by parent div click
-                        className="rounded border-input text-emerald-600 focus:ring-emerald-500 h-4 w-4 shrink-0 transition-opacity"
-                      />
-                      <div className="h-8 w-8 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
-                        <NetworkIcon className="h-4 w-4 text-emerald-600" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{n.name}</p>
-                        <p className="text-xs font-mono text-muted-foreground truncate">{n.cidr}</p>
-                      </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{u.username}</p>
+                      {u.email && <p className="text-xs text-muted-foreground truncate">{u.email}</p>}
+                      {u.vpn_group_name && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 truncate">in group: {u.vpn_group_name}</p>
+                      )}
                     </div>
-                  ))
-                )}
-              </div>
+                    <Badge variant="outline" className="text-[10px] uppercase font-semibold text-muted-foreground">
+                      {u.role}
+                    </Badge>
+                  </div>
+                ))
+              )}
             </div>
           </div>
-          <DialogFooter className="flex items-center sm:justify-between w-full">
-             <div className="text-sm text-muted-foreground hidden sm:block">
-               {selectedNetworkIds.size} network(s) selected
-             </div>
-             <div className="flex gap-2">
-               <Button variant="outline" onClick={() => { setShowAddNetwork(false); setSelectedNetworkIds(new Set()) }}>
-                 Cancel
-               </Button>
-               <Button
-                 disabled={selectedNetworkIds.size === 0 || addNetworkMutation.isPending}
-                 onClick={() => detailGroup && addNetworkMutation.mutate({ groupId: detailGroup, networkIds: Array.from(selectedNetworkIds) })}
-                 className={selectedNetworkIds.size > 0 ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}
-               >
-                 {addNetworkMutation.isPending ? 'Assigning...' : `Assign ${selectedNetworkIds.size || ''} Network(s)`}
-               </Button>
-             </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </ModalBody>
+        <ModalFooter className="sm:justify-between">
+           <div className="text-sm text-muted-foreground hidden sm:block">
+             {selectedUserIds.size} user(s) selected
+           </div>
+           <div className="flex gap-2">
+             <Button variant="outline" onClick={() => { setShowAddMember(false); setSelectedUserIds(new Set()) }}>
+               Cancel
+             </Button>
+             <Button
+               disabled={selectedUserIds.size === 0 || addMemberMutation.isPending}
+               onClick={() => detailGroup && addMemberMutation.mutate({ groupId: detailGroup, userIds: Array.from(selectedUserIds) })}
+               className={selectedUserIds.size > 0 ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}
+             >
+               {addMemberMutation.isPending ? 'Adding...' : `Add ${selectedUserIds.size || ''} Member(s)`}
+             </Button>
+           </div>
+        </ModalFooter>
+      </Modal>
+
+      {/* Add Network Modal (Multi-Select) */}
+      <Modal
+        open={showAddNetwork}
+        onClose={() => { setShowAddNetwork(false); setSelectedNetworkIds(new Set()) }}
+        className="max-w-[450px]"
+      >
+        <ModalHeader
+          title={`Assign Networks to ${groupDetail?.name ?? ''}`}
+          onClose={() => { setShowAddNetwork(false); setSelectedNetworkIds(new Set()) }}
+        />
+        <ModalBody>
+          <div className="space-y-3">
+            <Input
+              placeholder="Search network name or CIDR..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              autoFocus
+            />
+            <div className="max-h-60 overflow-y-auto space-y-1 pr-1">
+              {availableNetworks.length === 0 ? (
+                 <div className="p-4 text-center text-sm text-muted-foreground border rounded-lg border-dashed">
+                   No networks found to assign.
+                 </div>
+              ) : (
+                availableNetworks.map(n => (
+                  <div 
+                    key={n.id} 
+                    className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer select-none transition-colors hover:bg-muted/50 ${selectedNetworkIds.has(n.id) ? 'border-primary bg-primary/5 ring-1 ring-primary/20' : 'border-border'}`}
+                    onClick={() => toggleNetworkId(n.id)}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedNetworkIds.has(n.id)}
+                      onChange={() => {}} // handled by parent div click
+                      className="rounded border-input text-emerald-600 focus:ring-emerald-500 h-4 w-4 shrink-0 transition-opacity"
+                    />
+                    <div className="h-8 w-8 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
+                      <NetworkIcon className="h-4 w-4 text-emerald-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{n.name}</p>
+                      <p className="text-xs font-mono text-muted-foreground truncate">{n.cidr}</p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </ModalBody>
+        <ModalFooter className="sm:justify-between">
+           <div className="text-sm text-muted-foreground hidden sm:block">
+             {selectedNetworkIds.size} network(s) selected
+           </div>
+           <div className="flex gap-2">
+             <Button variant="outline" onClick={() => { setShowAddNetwork(false); setSelectedNetworkIds(new Set()) }}>
+               Cancel
+             </Button>
+             <Button
+               disabled={selectedNetworkIds.size === 0 || addNetworkMutation.isPending}
+               onClick={() => detailGroup && addNetworkMutation.mutate({ groupId: detailGroup, networkIds: Array.from(selectedNetworkIds) })}
+               className={selectedNetworkIds.size > 0 ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}
+             >
+               {addNetworkMutation.isPending ? 'Assigning...' : `Assign ${selectedNetworkIds.size || ''} Network(s)`}
+             </Button>
+           </div>
+        </ModalFooter>
+      </Modal>
     </div>
   )
 }

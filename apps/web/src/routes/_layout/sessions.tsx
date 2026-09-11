@@ -11,6 +11,7 @@ import { toast } from 'sonner'
 import {
   Activity, ArrowUp, ArrowDown, History, ChevronLeft, ChevronRight,
   Monitor, MapPin, UserX, ShieldOff, ShieldCheck, ChevronDown,
+  Clock, Globe, Server, Loader2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -85,40 +86,49 @@ function KickDropdown({ sessionId, username, onKick, isPending }: KickDropdownPr
   function openMenu() {
     if (triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect()
-      setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
+      setMenuPos({ top: rect.bottom + 6, right: window.innerWidth - rect.right })
     }
-    setOpen(true)
+    setOpen((prev) => !prev)
   }
 
   useEffect(() => {
     if (!open) return
     function close() { setOpen(false) }
-    document.addEventListener('mousedown', (e) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) close()
-    })
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        close()
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
     window.addEventListener('scroll', close, true)
     window.addEventListener('resize', close)
     return () => {
-      document.removeEventListener('mousedown', close)
+      document.removeEventListener('mousedown', handleClickOutside)
       window.removeEventListener('scroll', close, true)
       window.removeEventListener('resize', close)
     }
   }, [open])
 
   return (
-    <div className="relative" ref={ref}>
-      <div className="flex items-center">
+    <div className="relative inline-flex" ref={ref}>
+      <div className="inline-flex items-stretch rounded-lg shadow-sm border border-red-500/30 bg-red-500/10 transition-all hover:border-red-500/50 hover:bg-red-500/15">
         {/* Main kick button */}
         <button
           onClick={() => {
-            if (confirm(`Disconnect ${username}?`)) onKick(sessionId, false)
+            if (confirm(`Disconnect ${username}?\n\nUser will be able to reconnect after.`)) {
+              onKick(sessionId, false)
+            }
           }}
           disabled={isPending}
-          title="Kick session"
-          className="h-8 px-2.5 flex items-center gap-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-l-md border border-border text-xs font-medium transition-colors disabled:opacity-50"
+          title="Disconnect session"
+          className="h-8 px-2.5 flex items-center gap-1.5 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-xs font-medium transition-colors disabled:opacity-50"
         >
-          <UserX className="h-3.5 w-3.5" />
-          Kick
+          {isPending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <UserX className="h-3.5 w-3.5" />
+          )}
+          <span>Kick</span>
         </button>
 
         {/* Dropdown trigger */}
@@ -126,9 +136,10 @@ function KickDropdown({ sessionId, username, onKick, isPending }: KickDropdownPr
           ref={triggerRef}
           onClick={openMenu}
           disabled={isPending}
-          className="h-8 px-1.5 flex items-center text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-r-md border border-l-0 border-border transition-colors disabled:opacity-50"
+          title="More options"
+          className={`h-8 px-1.5 flex items-center text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 border-l border-red-500/20 hover:bg-red-500/20 transition-colors disabled:opacity-50 ${open ? 'bg-red-500/25' : ''}`}
         >
-          <ChevronDown className="h-3 w-3" />
+          <ChevronDown className={`h-3 w-3 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
         </button>
       </div>
 
@@ -136,10 +147,10 @@ function KickDropdown({ sessionId, username, onKick, isPending }: KickDropdownPr
       {open && (
         <div
           style={{ position: 'fixed', top: menuPos.top, right: menuPos.right, zIndex: 9999 }}
-          className="w-52 bg-card text-card-foreground rounded-lg shadow-xl border border-border py-1.5 text-sm"
+          className="w-56 bg-card text-card-foreground rounded-xl shadow-2xl border border-border/80 p-1.5 text-sm animate-in fade-in zoom-in-95 duration-100"
         >
           <button
-            className="w-full text-left px-3 py-2 hover:bg-muted/50 flex items-center gap-3 text-foreground transition-colors"
+            className="w-full text-left p-2 rounded-lg hover:bg-muted/70 flex items-center gap-3 text-foreground transition-colors group"
             onClick={() => {
               setOpen(false)
               if (confirm(`Disconnect ${username}?\n\nUser will be able to reconnect after.`)) {
@@ -147,15 +158,19 @@ function KickDropdown({ sessionId, username, onKick, isPending }: KickDropdownPr
               }
             }}
           >
-            <UserX className="h-4 w-4 text-muted-foreground" />
+            <div className="h-8 w-8 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0 group-hover:bg-red-500/20 transition-colors">
+              <UserX className="h-4 w-4" />
+            </div>
             <div>
-              <div className="font-medium">Kick</div>
-              <div className="text-xs text-muted-foreground/70">Disconnect, allow reconnect</div>
+              <div className="font-medium text-xs text-foreground">Kick (Temporary)</div>
+              <div className="text-[11px] text-muted-foreground/80">Disconnect, allow reconnect</div>
             </div>
           </button>
-          <div className="my-1.5 border-t border-border/50" />
+
+          <div className="my-1 border-t border-border/60" />
+
           <button
-            className="w-full text-left px-3 py-2 hover:bg-red-500/10 flex items-center gap-3 text-red-500/90 transition-colors"
+            className="w-full text-left p-2 rounded-lg hover:bg-red-500/10 flex items-center gap-3 text-red-600 dark:text-red-400 transition-colors group"
             onClick={() => {
               setOpen(false)
               if (confirm(`Permanently block ${username}?\n\nUser will NOT be able to reconnect until an admin unkicks them.`)) {
@@ -163,10 +178,12 @@ function KickDropdown({ sessionId, username, onKick, isPending }: KickDropdownPr
               }
             }}
           >
-            <ShieldOff className="h-4 w-4" />
+            <div className="h-8 w-8 rounded-lg bg-red-500/20 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0 group-hover:bg-red-500/30 transition-colors">
+              <ShieldOff className="h-4 w-4" />
+            </div>
             <div>
-              <div className="font-medium text-red-500">Kick & Block</div>
-              <div className="text-xs text-red-500/60">Disconnect + block reconnect</div>
+              <div className="font-semibold text-xs text-red-600 dark:text-red-400">Kick & Block</div>
+              <div className="text-[11px] text-red-500/70">Disconnect + block reconnect</div>
             </div>
           </button>
         </div>
@@ -280,86 +297,118 @@ function SessionsPage() {
             </div>
           ) : (
             <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-muted/50 border-b border-border">
-                    <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">User</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Device</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Location</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Node</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">VPN IP</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Duration</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Traffic</th>
-                    <th className="text-right px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Actions</th>
+                  <tr className="bg-muted/40 border-b border-border text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    <th className="text-left px-5 py-3.5">User</th>
+                    <th className="text-left px-5 py-3.5">Device</th>
+                    <th className="text-left px-5 py-3.5">Location</th>
+                    <th className="text-left px-5 py-3.5">Node</th>
+                    <th className="text-left px-5 py-3.5">VPN IP</th>
+                    <th className="text-left px-5 py-3.5">Duration</th>
+                    <th className="text-left px-5 py-3.5">Traffic</th>
+                    <th className="text-center px-4 py-3.5">Status</th>
+                    <th className="text-right px-5 py-3.5">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-border/60">
                   {sessions.map((s) => (
-                    <tr key={s.id} className="hover:bg-muted/50 transition-colors">
+                    <tr key={s.id} className="hover:bg-muted/40 transition-colors">
                       <td className="px-5 py-4">
-                        <div>
-                          <div className="font-medium text-foreground">{s.username}</div>
-                          {s.real_ip && <div className="text-xs text-muted-foreground/70 font-mono">{s.real_ip}</div>}
-                        </div>
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="flex items-start gap-2">
-                          <Monitor className="h-4 w-4 text-muted-foreground/70 mt-0.5" />
+                        <div className="flex items-center gap-3">
+                          <div className="h-8 w-8 rounded-full bg-primary/10 text-primary font-semibold flex items-center justify-center text-xs shrink-0 border border-primary/20">
+                            {s.username.slice(0, 2).toUpperCase()}
+                          </div>
                           <div>
-                            <div className="text-foreground text-xs">{s.device_name || 'Unknown'}</div>
-                            {s.client_version && <div className="text-xs text-muted-foreground/70">{s.client_version}</div>}
+                            <div className="font-semibold text-foreground text-sm tracking-tight">{s.username}</div>
+                            {s.real_ip && (
+                              <div className="text-[11px] text-muted-foreground font-mono tracking-tight flex items-center gap-1 mt-0.5">
+                                <Globe className="h-3 w-3 opacity-60 shrink-0" />
+                                {s.real_ip}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>
                       <td className="px-5 py-4">
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-1.5 rounded-lg bg-muted/60 text-muted-foreground shrink-0 border border-border/40">
+                            <Monitor className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <div className="text-foreground text-xs font-medium">{s.device_name || 'Unknown'}</div>
+                            {s.client_version && (
+                              <div className="text-[10px] font-mono text-muted-foreground mt-0.5">{s.client_version}</div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 whitespace-nowrap">
                         {s.geo_city || s.geo_country ? (
-                          <div className="flex items-center gap-1.5 text-muted-foreground">
-                            <MapPin className="h-3.5 w-3.5 text-muted-foreground/70" />
-                            <span className="text-xs">
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-muted/40 border border-border/50 text-foreground text-xs font-medium">
+                            <MapPin className="h-3.5 w-3.5 text-primary/70 shrink-0" />
+                            <span>
                               {s.geo_city && s.geo_country ? `${s.geo_city}, ${s.geo_country}` : s.geo_country || s.geo_city}
                             </span>
                           </div>
                         ) : (
-                          <span className="text-xs text-muted-foreground/70">-</span>
+                          <span className="text-xs text-muted-foreground/60">-</span>
                         )}
                       </td>
                       <td className="px-5 py-4">
-                        <div>
-                          <div className="text-foreground">{s.node_hostname}</div>
-                          {s.node_region && <div className="text-xs text-muted-foreground/70">{s.node_region}</div>}
+                        <div className="flex items-center gap-2">
+                          <Server className="h-4 w-4 text-muted-foreground/70 shrink-0" />
+                          <div>
+                            <div className="text-foreground text-xs font-medium">{s.node_hostname}</div>
+                            {s.node_region && <div className="text-[10px] text-muted-foreground">{s.node_region}</div>}
+                          </div>
                         </div>
                       </td>
-                      <td className="px-5 py-4 font-mono text-muted-foreground text-xs">{s.vpn_ip}</td>
-                      <td className="px-5 py-4 text-muted-foreground">{formatDuration(s.connected_at, null, s.duration_seconds)}</td>
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-2 text-xs">
-                          <span className="flex items-center gap-1 text-blue-500">
+                      <td className="px-5 py-4 whitespace-nowrap">
+                        <span className="font-mono text-xs px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 font-medium">
+                          {s.vpn_ip}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 whitespace-nowrap text-muted-foreground text-xs">
+                        <div className="inline-flex items-center gap-1.5">
+                          <Clock className="h-3.5 w-3.5 opacity-60 shrink-0" />
+                          <span>{formatDuration(s.connected_at, null, s.duration_seconds)}</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 whitespace-nowrap">
+                        <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-muted/40 border border-border/40 text-xs font-mono">
+                          <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400 font-medium">
                             <ArrowUp className="h-3 w-3" /> {formatBytes(s.bytes_sent)}
                           </span>
-                          <span className="text-gray-300">/</span>
-                          <span className="flex items-center gap-1 text-emerald-500">
+                          <span className="text-border">/</span>
+                          <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
                             <ArrowDown className="h-3 w-3" /> {formatBytes(s.bytes_received)}
                           </span>
                         </div>
                       </td>
-                      <td className="px-5 py-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">
-                            <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-                            Connected
+                      <td className="px-4 py-4 text-center whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shadow-sm">
+                          <span className="relative flex h-2 w-2">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                           </span>
-                          <KickDropdown
-                            sessionId={s.id}
-                            username={s.username}
-                            onKick={handleKick}
-                            isPending={kickMutation.isPending}
-                          />
-                        </div>
+                          Connected
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 text-right whitespace-nowrap">
+                        <KickDropdown
+                          sessionId={s.id}
+                          username={s.username}
+                          onKick={handleKick}
+                          isPending={kickMutation.isPending}
+                        />
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
         </TabsContent>
@@ -377,55 +426,84 @@ function SessionsPage() {
           ) : (
             <>
               <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="bg-muted/50 border-b border-border">
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">User</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Device</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Node</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">VPN IP</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Connected</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Duration</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Traffic</th>
-                      <th className="text-right px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
+                    <tr className="bg-muted/40 border-b border-border text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      <th className="text-left px-5 py-3.5">User</th>
+                      <th className="text-left px-5 py-3.5">Device</th>
+                      <th className="text-left px-5 py-3.5">Node</th>
+                      <th className="text-left px-5 py-3.5">VPN IP</th>
+                      <th className="text-left px-5 py-3.5 whitespace-nowrap">Connected</th>
+                      <th className="text-left px-5 py-3.5 whitespace-nowrap">Duration</th>
+                      <th className="text-left px-5 py-3.5">Traffic</th>
+                      <th className="text-right px-5 py-3.5">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-border/60">
                     {history.map((s) => (
-                      <tr key={s.id} className="hover:bg-muted/50 transition-colors">
+                      <tr key={s.id} className="hover:bg-muted/40 transition-colors">
                         <td className="px-5 py-4">
-                          <div>
-                            <div className="font-medium text-foreground">{s.username}</div>
-                            {s.real_ip && <div className="text-xs text-muted-foreground/70 font-mono">{s.real_ip}</div>}
-                          </div>
-                        </td>
-                        <td className="px-5 py-4">
-                          <div className="flex items-start gap-2">
-                            <Monitor className="h-4 w-4 text-muted-foreground/70 mt-0.5" />
+                          <div className="flex items-center gap-3">
+                            <div className="h-8 w-8 rounded-full bg-primary/10 text-primary font-semibold flex items-center justify-center text-xs shrink-0 border border-primary/20">
+                              {s.username.slice(0, 2).toUpperCase()}
+                            </div>
                             <div>
-                              <div className="text-foreground text-xs">{s.device_name || 'Unknown'}</div>
-                              {s.client_version && <div className="text-xs text-muted-foreground/70">{s.client_version}</div>}
+                              <div className="font-semibold text-foreground text-sm tracking-tight">{s.username}</div>
+                              {s.real_ip && (
+                                <div className="text-[11px] text-muted-foreground font-mono tracking-tight flex items-center gap-1 mt-0.5">
+                                  <Globe className="h-3 w-3 opacity-60 shrink-0" />
+                                  {s.real_ip}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </td>
-                        <td className="px-5 py-4 text-muted-foreground">{s.node_hostname}</td>
-                        <td className="px-5 py-4 font-mono text-muted-foreground text-xs">{s.vpn_ip}</td>
-                         <td className="px-5 py-4 text-muted-foreground text-xs">{formatBrowserDateTime(s.connected_at)}</td>
-                        <td className="px-5 py-4 text-muted-foreground">
-                          {formatDuration(s.connected_at, s.disconnected_at, s.connection_duration_seconds)}
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-2.5">
+                            <div className="p-1.5 rounded-lg bg-muted/60 text-muted-foreground shrink-0 border border-border/40">
+                              <Monitor className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <div className="text-foreground text-xs font-medium">{s.device_name || 'Unknown'}</div>
+                              {s.client_version && (
+                                <div className="text-[10px] font-mono text-muted-foreground mt-0.5">{s.client_version}</div>
+                              )}
+                            </div>
+                          </div>
                         </td>
                         <td className="px-5 py-4">
-                          <div className="flex items-center gap-2 text-xs">
-                            <span className="flex items-center gap-1 text-blue-500">
+                          <div className="flex items-center gap-2">
+                            <Server className="h-4 w-4 text-muted-foreground/70 shrink-0" />
+                            <span className="text-foreground text-xs font-medium">{s.node_hostname}</span>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 whitespace-nowrap">
+                          <span className="font-mono text-xs px-2.5 py-1 rounded-md bg-muted/60 text-foreground border border-border/40 font-medium">
+                            {s.vpn_ip}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-muted-foreground text-xs whitespace-nowrap tabular-nums min-w-[140px]">
+                          {formatBrowserDateTime(s.connected_at)}
+                        </td>
+                        <td className="px-5 py-4 text-muted-foreground text-xs whitespace-nowrap">
+                          <div className="inline-flex items-center gap-1.5">
+                            <Clock className="h-3.5 w-3.5 opacity-60 shrink-0" />
+                            <span>{formatDuration(s.connected_at, s.disconnected_at, s.connection_duration_seconds)}</span>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 whitespace-nowrap">
+                          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-muted/40 border border-border/40 text-xs font-mono">
+                            <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400 font-medium">
                               <ArrowUp className="h-3 w-3" /> {formatBytes(s.bytes_sent)}
                             </span>
-                            <span className="text-gray-300">/</span>
-                            <span className="flex items-center gap-1 text-emerald-500">
+                            <span className="text-border">/</span>
+                            <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
                               <ArrowDown className="h-3 w-3" /> {formatBytes(s.bytes_received)}
                             </span>
                           </div>
                         </td>
-                        <td className="px-5 py-4 text-right">
+                        <td className="px-5 py-4 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end gap-2">
                             <DisconnectReasonBadge reason={s.disconnect_reason} />
                             {/* Unkick button — only shown for permanently blocked sessions */}
@@ -438,9 +516,9 @@ function SessionsPage() {
                                 }}
                                 disabled={unkickMutation.isPending}
                                 title="Restore reconnect access"
-                                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-full border border-emerald-200 transition-colors disabled:opacity-50"
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 rounded-lg border border-emerald-500/30 transition-all shadow-sm disabled:opacity-50"
                               >
-                                <ShieldCheck className="h-3 w-3" />
+                                <ShieldCheck className="h-3.5 w-3.5" />
                                 Unkick
                               </button>
                             )}
@@ -450,10 +528,11 @@ function SessionsPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
 
               {/* Pagination */}
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm text-muted-foreground">
                   {pagination ? (
                     <>Page {pagination.page} of {pagination.pages} • {pagination.total} total sessions</>

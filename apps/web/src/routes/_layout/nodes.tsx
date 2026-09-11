@@ -565,7 +565,7 @@ function NodesPage() {
               }}
               className="p-5 space-y-4 max-h-[70vh] overflow-y-auto"
             >
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1.5">Port</label>
                   <input
@@ -615,7 +615,7 @@ function NodesPage() {
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1.5">VPN Network</label>
                   <input
@@ -685,7 +685,7 @@ route 172.31.0.0 255.255.0.0`}</pre>
                 <p className="text-xs text-muted-foreground/70 mt-1">Comma-separated routes (for split tunnel)</p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1.5">Cipher</label>
                   <select
@@ -726,7 +726,7 @@ route 172.31.0.0 255.255.0.0`}</pre>
                 </select>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1.5">Keepalive Ping</label>
                   <input

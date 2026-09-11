@@ -350,7 +350,7 @@ function UsersPage() {
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">VPN Users</h1>
           <p className="text-sm text-muted-foreground mt-1">
@@ -358,7 +358,7 @@ function UsersPage() {
             {selectedUsers.size > 0 && ` • ${selectedUsers.size} selected`}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {selectedUsers.size > 0 && (
             <>
               <Button
@@ -421,6 +421,7 @@ function UsersPage() {
 
       {/* Table */}
       <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-muted/50 border-b border-border">
@@ -531,6 +532,7 @@ function UsersPage() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Add User Modal */}
@@ -1006,74 +1008,72 @@ function UsersPage() {
                   {userCertificates.map((cert: any) => (
                     <div
                       key={cert.id}
-                      className={`relative border rounded-xl p-5 overflow-hidden transition-all duration-200 hover:shadow-md ${!!cert.is_revoked
+                      className={`relative border rounded-xl p-4 sm:p-5 overflow-hidden transition-all duration-200 hover:shadow-md ${!!cert.is_revoked
                         ? 'border-red-500/20 bg-red-500/5'
                         : cert.node_status === 'online'
                           ? 'border-emerald-500/30 bg-emerald-500/[0.03]'
                           : 'border-border/60 bg-muted/20'
                         }`}
                     >
-                      <div className="flex items-start justify-between gap-6">
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 sm:gap-6">
                         <div className="flex-1 min-w-0">
                           {/* Header section with badges */}
-                          <div className="flex flex-wrap items-center gap-3 mb-4">
-                            <h3 className="text-lg font-bold text-foreground">
+                          <div className="flex flex-wrap items-center gap-2 mb-4">
+                            <h3 className="text-lg font-bold text-foreground truncate max-w-full">
                               {cert.credential_name || 'default'}
                             </h3>
 
-                            <div className="flex items-center gap-2">
-                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider ${cert.node_status === 'online'
-                                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                                : 'bg-muted text-muted-foreground border border-border'
-                                }`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${cert.node_status === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
-                                {cert.node_status}
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider shrink-0 ${cert.node_status === 'online'
+                              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                              : 'bg-muted text-muted-foreground border border-border'
+                              }`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${cert.node_status === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
+                              {cert.node_status}
+                            </span>
+
+                            {!!cert.is_revoked && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 shrink-0">
+                                <X className="h-3 w-3" />
+                                Revoked
                               </span>
+                            )}
 
-                              {!!cert.is_revoked && (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20">
-                                  <X className="h-3 w-3" />
-                                  Revoked
-                                </span>
-                              )}
-
-                              {!!cert.password_protected && (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20" title="Password protected">
-                                  <Lock className="h-3 w-3" />
-                                  Protected
-                                </span>
-                              )}
-                            </div>
+                            {!!cert.password_protected && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 shrink-0" title="Password protected">
+                                <Lock className="h-3 w-3" />
+                                Protected
+                              </span>
+                            )}
                           </div>
 
                           {/* Data Grid */}
-                          <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
-                            <div className="flex flex-col">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 sm:gap-x-6 gap-y-3 text-sm">
+                            <div className="flex flex-col min-w-0">
                               <span className="text-xs font-semibold text-muted-foreground/70 uppercase tracking-widest mb-0.5">VPN IP</span>
-                              <span className="font-mono font-medium text-emerald-600 dark:text-emerald-400">{cert.vpn_ip || 'N/A'}</span>
+                              <span className="font-mono font-medium text-emerald-600 dark:text-emerald-400 truncate">{cert.vpn_ip || 'N/A'}</span>
                             </div>
-                            <div className="flex flex-col">
+                            <div className="flex flex-col min-w-0">
                               <span className="text-xs font-semibold text-muted-foreground/70 uppercase tracking-widest mb-0.5">Node</span>
-                              <span className="font-medium text-foreground">{cert.node_hostname}</span>
+                              <span className="font-medium text-foreground truncate">{cert.node_hostname}</span>
                             </div>
-                            <div className="flex flex-col">
+                            <div className="flex flex-col min-w-0">
                               <span className="text-xs font-semibold text-muted-foreground/70 uppercase tracking-widest mb-0.5">Server IP</span>
-                              <span className="font-mono text-foreground">{cert.node_ip || 'N/A'}</span>
+                              <span className="font-mono text-foreground truncate">{cert.node_ip || 'N/A'}</span>
                             </div>
-                            <div className="flex flex-col">
+                            <div className="flex flex-col min-w-0">
                               <span className="text-xs font-semibold text-muted-foreground/70 uppercase tracking-widest mb-0.5">Downloads</span>
                               <span className="text-foreground font-medium">{cert.download_count} times</span>
                             </div>
-                            <div className="flex flex-col">
+                            <div className="flex flex-col min-w-0">
                               <span className="text-xs font-semibold text-muted-foreground/70 uppercase tracking-widest mb-0.5">Generated</span>
-                              <span className="text-foreground">
+                              <span className="text-foreground truncate">
                                 {cert.generated_at ? formatBrowserDateTime(cert.generated_at) : 'N/A'}
                               </span>
                             </div>
-                            <div className="flex flex-col">
+                            <div className="flex flex-col min-w-0">
                               <span className="text-xs font-semibold text-muted-foreground/70 uppercase tracking-widest mb-0.5">Expires</span>
                               {cert.expires_at ? (
-                                <span className="text-foreground">
+                                <span className="text-foreground truncate">
                                   {formatBrowserDateTime(cert.expires_at)}
                                   {(() => {
                                     const days = getDaysUntilExpiry(cert.expires_at)
@@ -1098,14 +1098,14 @@ function UsersPage() {
                         </div>
 
                         {/* Actions Sidebar */}
-                        <div className="flex flex-col gap-2 shrink-0 border-l border-border/50 pl-6 my-2">
+                        <div className="flex flex-row sm:flex-col gap-2 shrink-0 sm:border-l sm:border-border/50 pt-3 sm:pt-0 sm:pl-6 border-t sm:border-t-0 border-border/50 sm:my-2">
                           {!cert.is_revoked ? (
                             <>
                               <Button
                                 size="sm"
                                 onClick={() => handleDownloadConfig(selectedUserForCertList, cert.id)}
                                 disabled={isDownloading === cert.id}
-                                className="w-32 justify-start shadow-sm"
+                                className="flex-1 sm:flex-initial sm:w-32 justify-center sm:justify-start shadow-sm"
                               >
                                 <Download className={`mr-2 h-4 w-4 ${isDownloading === cert.id ? 'animate-bounce' : ''}`} />
                                 Download
@@ -1114,7 +1114,7 @@ function UsersPage() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => setRevokingCertId(cert.id)}
-                                className="w-32 justify-start border-red-500/30 hover:bg-red-500/10 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:border-red-500/50"
+                                className="flex-1 sm:flex-initial sm:w-32 justify-center sm:justify-start border-red-500/30 hover:bg-red-500/10 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:border-red-500/50"
                               >
                                 <Trash2 className="mr-2 h-4 w-4" />
                                 Revoke
@@ -1129,7 +1129,7 @@ function UsersPage() {
                                 handleOpenCertModal(selectedUserForCertList)
                                 setCertForm(prev => ({ ...prev, nodeId: cert.node_id, credentialName: cert.credential_name || '' }))
                               }}
-                              className="w-32 justify-start shadow-sm"
+                              className="flex-1 sm:flex-initial sm:w-32 justify-center sm:justify-start shadow-sm"
                             >
                               <RefreshCw className="mr-2 h-4 w-4" />
                               Regenerate

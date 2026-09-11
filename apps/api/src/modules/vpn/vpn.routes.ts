@@ -70,7 +70,7 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
         credential = await app.db('user_node_certificates as c')
           .join('users as u', 'c.user_id', 'u.id')
           .where({ 'c.node_id': node_id, 'c.common_name': request.body.username, 'c.is_revoked': false })
-          .select('c.id as credential_id', 'c.vpn_ip as credential_vpn_ip', 'u.*')
+          .select('c.id as credential_id', 'c.vpn_ip as credential_vpn_ip', 'c.credential_name as credential_name', 'u.*')
           .first()
       }
       // Existing deployments issued OpenVPN certificates with users.username as
@@ -86,7 +86,7 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
           .where('c.node_id', node_id)
           .where('c.is_revoked', false)
           .whereRaw(`substr(c.client_cert, 1, 16) = ?`, [keyPrefix])
-          .select('c.id as credential_id', 'c.vpn_ip as credential_vpn_ip', 'u.*')
+          .select('c.id as credential_id', 'c.vpn_ip as credential_vpn_ip', 'c.credential_name as credential_name', 'u.*')
           .first()
       }
       const user = credential
@@ -168,6 +168,10 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
         }
       }
 
+      // Fall back to the credential's device/label name (set when the
+      // certificate was issued) when the Agent has no OS/device info to report.
+      const resolvedDeviceName = device_name ?? credential.credential_name ?? null
+
       await app.db.transaction(async (trx) => {
         // A user may own multiple credentials. Only reconnects of this
         // credential replace its previous session; other devices stay online.
@@ -203,7 +207,7 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
           vpn_ip,
           real_ip: clientIp,
           client_version: client_version ?? null,
-          device_name: device_name ?? null,
+          device_name: resolvedDeviceName,
           bytes_sent: 0,
           bytes_received: 0,
           connected_at: connectedAtOverride ?? new Date(),
@@ -216,7 +220,7 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
         await trx('users').where({ id: user.id }).update({ last_vpn_connect: new Date() })
       })
 
-      app.log.info(`[vpn/connect] ${user.username} connected — session ${sessionId}, IP ${vpn_ip}, device: ${device_name ?? 'unknown'}`)
+      app.log.info(`[vpn/connect] ${user.username} connected — session ${sessionId}, IP ${vpn_ip}, device: ${resolvedDeviceName ?? 'unknown'}`)
 
       // Log successful connection audit
       await logAudit(app, {
@@ -230,7 +234,7 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
           vpn_ip,
           node_hostname: node.hostname,
           client_version,
-          device_name,
+          device_name: resolvedDeviceName,
           session_id: sessionId
         }
       })

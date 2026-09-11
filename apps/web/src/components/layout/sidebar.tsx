@@ -28,6 +28,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from '@/components/ui/sidebar'
 import {
   DropdownMenu,
@@ -54,8 +55,14 @@ export function AppSidebar() {
   const location = useRouterState({ select: (s) => s.location })
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
+  const { isMobile, setOpenMobile } = useSidebar()
 
   const pathname = location.pathname
+
+  const navigateAndClose = (href: string) => {
+    navigate({ to: href })
+    if (isMobile) setOpenMobile(false)
+  }
 
   const handleLogout = async () => {
     try {
@@ -103,7 +110,7 @@ export function AppSidebar() {
                       id={`nav-link-${href.replace(/[^a-z0-9]/g, '-')}`}
                       isActive={active}
                       tooltip={label}
-                      onClick={() => navigate({ to: href })}
+                      onClick={() => navigateAndClose(href)}
                       className={cn(
                         "relative transition-all duration-150 font-medium",
                         active
@@ -151,7 +158,7 @@ export function AppSidebar() {
                 align="end"
                 sideOffset={4}
               >
-                <DropdownMenuItem onClick={() => navigate({ to: '/profile' })} className="cursor-pointer">
+                <DropdownMenuItem onClick={() => navigateAndClose('/profile')} className="cursor-pointer">
                   <UserCircle className="mr-2 h-4 w-4" />
                   Profile
                 </DropdownMenuItem>

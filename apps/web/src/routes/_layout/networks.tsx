@@ -10,13 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog'
+import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal'
 import {
   Table,
   TableBody,
@@ -551,175 +545,163 @@ function NetworksPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Allocate Subnet Dialog */}
-      <Dialog open={showAllocDialog} onOpenChange={setShowAllocDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Allocate Group Subnet on Node</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="alloc-dlg-group">Target Group</Label>
-              <select
-                id="alloc-dlg-group"
-                className="h-10 w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                value={allocForm.group_id}
-                onChange={(e) => handleGroupSelectForAlloc(e.target.value)}
-              >
-                <option value="">Select a group...</option>
-                {allGroups.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name} {g.vpn_subnet ? `(Default: ${g.vpn_subnet})` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="alloc-dlg-node">Target Node</Label>
-              <select
-                id="alloc-dlg-node"
-                className="h-10 w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                value={allocForm.node_id}
-                onChange={(e) => setAllocForm({ ...allocForm, node_id: e.target.value })}
-              >
-                <option value="">Select a node...</option>
-                {allNodes.map((n) => (
-                  <option key={n.id} value={n.id}>
-                    {n.hostname} ({n.ip_address})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="alloc-dlg-subnet">Group VPN Subnet</Label>
-              <Input
-                id="alloc-dlg-subnet"
-                placeholder="e.g. 10.8.10.0/24"
-                value={allocForm.vpn_subnet}
-                onChange={(e) => setAllocForm({ ...allocForm, vpn_subnet: e.target.value })}
-                className="font-mono text-sm"
-              />
-              <p className="text-xs text-muted-foreground">
-                Must be an available subnet contained inside the target node's VPN network pool.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAllocDialog(false)}>Cancel</Button>
-            <Button
-              disabled={!allocForm.group_id || !allocForm.node_id || !allocForm.vpn_subnet.trim() || saveAllocMutation.isPending}
-              onClick={() => saveAllocMutation.mutate(allocForm)}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+      {/* Allocate Subnet Modal */}
+      <Modal open={showAllocDialog} onClose={() => setShowAllocDialog(false)}>
+        <ModalHeader title="Allocate Group Subnet on Node" onClose={() => setShowAllocDialog(false)} />
+        <ModalBody>
+          <div className="space-y-1.5">
+            <Label htmlFor="alloc-dlg-group">Target Group</Label>
+            <select
+              id="alloc-dlg-group"
+              className="h-10 w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              value={allocForm.group_id}
+              onChange={(e) => handleGroupSelectForAlloc(e.target.value)}
             >
-              {saveAllocMutation.isPending ? 'Saving...' : 'Save Allocation'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Create Target Network Dialog */}
-      <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add Network Route</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="net-name">Name</Label>
-              <Input
-                id="net-name"
-                placeholder="e.g. Office LAN"
-                value={form.name}
-                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="net-cidr">CIDR</Label>
-              <Input
-                id="net-cidr"
-                placeholder="e.g. 10.0.1.0/24"
-                value={form.cidr}
-                onChange={e => setForm(f => ({ ...f, cidr: e.target.value }))}
-                className="font-mono"
-              />
-              <p className="text-xs text-muted-foreground">IPv4 CIDR notation (e.g. 192.168.1.0/24)</p>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="net-desc">Description</Label>
-              <Textarea
-                id="net-desc"
-                placeholder="Optional description"
-                rows={2}
-                value={form.description}
-                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-              />
-            </div>
-            <NodeSelector selectedIds={form.node_ids} />
+              <option value="">Select a group...</option>
+              {allGroups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name} {g.vpn_subnet ? `(Default: ${g.vpn_subnet})` : ''}
+                </option>
+              ))}
+            </select>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
-            <Button
-              id="btn-create-network-submit"
-              disabled={!form.name.trim() || !form.cidr.trim() || createMutation.isPending}
-              onClick={() => createMutation.mutate(form)}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
-            >
-              {createMutation.isPending ? 'Adding...' : 'Add Network'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
-      {/* Edit Target Network Dialog */}
-      <Dialog open={!!editNetwork} onOpenChange={() => setEditNetwork(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Edit Network Route</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="edit-net-name">Name</Label>
-              <Input
-                id="edit-net-name"
-                value={form.name}
-                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="edit-net-cidr">CIDR</Label>
-              <Input
-                id="edit-net-cidr"
-                value={form.cidr}
-                onChange={e => setForm(f => ({ ...f, cidr: e.target.value }))}
-                className="font-mono"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="edit-net-desc">Description</Label>
-              <Textarea
-                id="edit-net-desc"
-                rows={2}
-                value={form.description}
-                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-              />
-            </div>
-            <NodeSelector selectedIds={form.node_ids} />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditNetwork(null)}>Cancel</Button>
-            <Button
-              id="btn-edit-network-submit"
-              disabled={!form.name.trim() || !form.cidr.trim() || updateMutation.isPending}
-              onClick={() => editNetwork && updateMutation.mutate({ id: editNetwork.id, data: form })}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+          <div className="space-y-1.5">
+            <Label htmlFor="alloc-dlg-node">Target Node</Label>
+            <select
+              id="alloc-dlg-node"
+              className="h-10 w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              value={allocForm.node_id}
+              onChange={(e) => setAllocForm({ ...allocForm, node_id: e.target.value })}
             >
-              {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              <option value="">Select a node...</option>
+              {allNodes.map((n) => (
+                <option key={n.id} value={n.id}>
+                  {n.hostname} ({n.ip_address})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="alloc-dlg-subnet">Group VPN Subnet</Label>
+            <Input
+              id="alloc-dlg-subnet"
+              placeholder="e.g. 10.8.10.0/24"
+              value={allocForm.vpn_subnet}
+              onChange={(e) => setAllocForm({ ...allocForm, vpn_subnet: e.target.value })}
+              className="font-mono text-sm"
+            />
+            <p className="text-xs text-muted-foreground">
+              Must be an available subnet contained inside the target node's VPN network pool.
+            </p>
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="outline" onClick={() => setShowAllocDialog(false)}>Cancel</Button>
+          <Button
+            disabled={!allocForm.group_id || !allocForm.node_id || !allocForm.vpn_subnet.trim() || saveAllocMutation.isPending}
+            onClick={() => saveAllocMutation.mutate(allocForm)}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            {saveAllocMutation.isPending ? 'Saving...' : 'Save Allocation'}
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Create Target Network Modal */}
+      <Modal open={showCreate} onClose={() => setShowCreate(false)}>
+        <ModalHeader title="Add Network Route" onClose={() => setShowCreate(false)} />
+        <ModalBody>
+          <div className="space-y-1.5">
+            <Label htmlFor="net-name">Name</Label>
+            <Input
+              id="net-name"
+              placeholder="e.g. Office LAN"
+              value={form.name}
+              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="net-cidr">CIDR</Label>
+            <Input
+              id="net-cidr"
+              placeholder="e.g. 10.0.1.0/24"
+              value={form.cidr}
+              onChange={e => setForm(f => ({ ...f, cidr: e.target.value }))}
+              className="font-mono"
+            />
+            <p className="text-xs text-muted-foreground">IPv4 CIDR notation (e.g. 192.168.1.0/24)</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="net-desc">Description</Label>
+            <Textarea
+              id="net-desc"
+              placeholder="Optional description"
+              rows={2}
+              value={form.description}
+              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+            />
+          </div>
+          <NodeSelector selectedIds={form.node_ids} />
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
+          <Button
+            id="btn-create-network-submit"
+            disabled={!form.name.trim() || !form.cidr.trim() || createMutation.isPending}
+            onClick={() => createMutation.mutate(form)}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            {createMutation.isPending ? 'Adding...' : 'Add Network'}
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Edit Target Network Modal */}
+      <Modal open={!!editNetwork} onClose={() => setEditNetwork(null)}>
+        <ModalHeader title="Edit Network Route" onClose={() => setEditNetwork(null)} />
+        <ModalBody>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-net-name">Name</Label>
+            <Input
+              id="edit-net-name"
+              value={form.name}
+              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-net-cidr">CIDR</Label>
+            <Input
+              id="edit-net-cidr"
+              value={form.cidr}
+              onChange={e => setForm(f => ({ ...f, cidr: e.target.value }))}
+              className="font-mono"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-net-desc">Description</Label>
+            <Textarea
+              id="edit-net-desc"
+              rows={2}
+              value={form.description}
+              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+            />
+          </div>
+          <NodeSelector selectedIds={form.node_ids} />
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="outline" onClick={() => setEditNetwork(null)}>Cancel</Button>
+          <Button
+            id="btn-edit-network-submit"
+            disabled={!form.name.trim() || !form.cidr.trim() || updateMutation.isPending}
+            onClick={() => editNetwork && updateMutation.mutate({ id: editNetwork.id, data: form })}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
+          </Button>
+        </ModalFooter>
+      </Modal>
     </div>
   )
 }

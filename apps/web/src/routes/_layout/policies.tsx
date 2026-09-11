@@ -189,6 +189,7 @@ function PoliciesPage() {
             </p>
           </div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-muted/50 border-b border-border">
@@ -265,6 +266,7 @@ function PoliciesPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     )
@@ -273,7 +275,7 @@ function PoliciesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Network Policies</h1>
           <p className="text-sm text-muted-foreground mt-1">
@@ -281,7 +283,7 @@ function PoliciesPage() {
             {selectedPolicies.size > 0 && ` • ${selectedPolicies.size} selected`}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {selectedPolicies.size > 0 && (
             <Button
               variant="outline"
@@ -319,20 +321,22 @@ function PoliciesPage() {
         <div className="py-12 text-center text-muted-foreground">Loading policies...</div>
       ) : (
         <Tabs defaultValue="user" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="group" className="gap-2">
-              <UsersRound className="h-4 w-4" />
-              Group Policies ({groupPolicies.length})
-            </TabsTrigger>
-            <TabsTrigger value="user" className="gap-2">
-              <Users className="h-4 w-4" />
-              User Policies ({userPolicies.length})
-            </TabsTrigger>
-            <TabsTrigger value="global" className="gap-2">
-              <Shield className="h-4 w-4" />
-              Global Policies ({globalPolicies.length})
-            </TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto -mx-1 px-1">
+            <TabsList className="w-max">
+              <TabsTrigger value="group" className="gap-2">
+                <UsersRound className="h-4 w-4" />
+                Group Policies ({groupPolicies.length})
+              </TabsTrigger>
+              <TabsTrigger value="user" className="gap-2">
+                <Users className="h-4 w-4" />
+                User Policies ({userPolicies.length})
+              </TabsTrigger>
+              <TabsTrigger value="global" className="gap-2">
+                <Shield className="h-4 w-4" />
+                Global Policies ({globalPolicies.length})
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="group">
             <PolicyTable policies={filteredGroupPolicies} type="group" />
@@ -421,7 +425,7 @@ function PoliciesPage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="col-span-2">
                   <Label className="block text-sm font-medium mb-1.5">Target Network IP / CIDR <span className="text-red-500">*</span></Label>
                   <Input
@@ -461,7 +465,7 @@ function PoliciesPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label className="block text-sm font-medium mb-1.5">Action</Label>
                   <select

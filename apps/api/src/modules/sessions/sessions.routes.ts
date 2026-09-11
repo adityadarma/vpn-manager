@@ -18,6 +18,7 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
       return app.db('vpn_sessions as s')
         .join('users as u', 's.user_id', 'u.id')
         .join('vpn_nodes as n', 's.node_id', 'n.id')
+        .leftJoin('user_node_certificates as c', 's.credential_id', 'c.id')
         .whereNull('s.disconnected_at')
         .select(
           's.id',
@@ -30,7 +31,9 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
           's.vpn_ip',
           's.real_ip',
           's.client_version',
-          's.device_name',
+          // Fall back to the credential's device/label name (set when the
+          // certificate was issued) when the Agent never reported a device name.
+          app.db.raw('COALESCE(s.device_name, c.credential_name) as device_name'),
           's.geo_country',
           's.geo_city',
           's.bytes_sent',
@@ -93,6 +96,7 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
       let queryBuilder = app.db('vpn_sessions as s')
         .join('users as u', 's.user_id', 'u.id')
         .join('vpn_nodes as n', 's.node_id', 'n.id')
+        .leftJoin('user_node_certificates as c', 's.credential_id', 'c.id')
         .whereNotNull('s.disconnected_at')
 
       // Filter by user_id if provided
@@ -114,7 +118,9 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
           's.vpn_ip',
           's.real_ip',
           's.client_version',
-          's.device_name',
+          // Fall back to the credential's device/label name (set when the
+          // certificate was issued) when the Agent never reported a device name.
+          app.db.raw('COALESCE(s.device_name, c.credential_name) as device_name'),
           's.bytes_sent',
           's.bytes_received',
           's.connected_at',

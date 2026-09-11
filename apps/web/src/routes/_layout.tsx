@@ -32,7 +32,7 @@ function AuthenticatedLayout() {
         </header>
 
         {/* Page content wrapper like sidebar-08 */}
-        <div className="flex flex-1 flex-col gap-4 p-4">
+        <div className="flex flex-1 flex-col gap-4 p-4 min-w-0 overflow-x-hidden">
           <Outlet />
         </div>
       </SidebarInset>
