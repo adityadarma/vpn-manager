@@ -35,6 +35,15 @@ Default public upstreams are:
 
 A client receives its group DNS listener only after the node reports a healthy DNS revision. Until then, OpenVPN and WireGuard client configurations use the node's existing `dns_servers` value.
 
+### Group Requirement for Managed DNS
+
+Managed DNS is **group-scoped**:
+
+- CoreDNS assigns a dedicated virtual listener IP (`listener_ip`) inside each group's allocated subnet on the node.
+- Local DNS zones (e.g. `*.internal`) and domain policies (block/sinkhole) are mapped to specific groups.
+- **Clients without a group**: If a user is not assigned to any group, their client profile `.ovpn` or `.conf` automatically falls back to standard public DNS (`node.dns_servers`). They cannot resolve managed internal domains or receive group DNS policies.
+- To use Managed DNS, create at least one group with a node allocation and assign users to that group.
+
 ## Policies
 
 Supported CoreDNS standard-image policies:

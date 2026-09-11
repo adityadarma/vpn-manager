@@ -15,6 +15,20 @@ Create groups for teams such as `engineering` or `support`, then add users. Crea
 
 Avoid overlapping CIDRs. Overlap between the LAN, VPN pool, and Docker routes can send traffic through the wrong path or prevent return traffic from reaching clients.
 
+## Operating with or without groups
+
+Using groups in VPN Manager is optional for basic operations, but required for advanced routing and security features:
+
+### What works without groups
+- **Basic VPN Tunneling**: Users can connect through OpenVPN or WireGuard in full-tunnel or split-tunnel mode (defaulting to the node's main VPN pool).
+- **Public / Standard DNS**: Clients automatically receive the node's configured upstream DNS servers (`node.dns_servers`, such as `1.1.1.1` or `8.8.8.8`).
+- **Global Policies**: Firewall policies without a group target apply across all users.
+
+### What requires groups
+- **Managed DNS (Internal CoreDNS)**: CoreDNS listeners, private DNS zones (e.g. `*.internal`), and domain sinkhole/block policies are scoped to groups. Users without a group will fall back to public DNS and cannot resolve internal managed zones.
+- **Granular Network Routing**: Pushing specific internal subnet routes (CIDRs) to client routing tables is managed through Group-to-Network assignments. Without a group, users do not receive team-specific pushed routes.
+- **Team-based Access Isolation**: Segmenting subnets and enforcing firewall allow/deny rules per team requires users to belong to groups.
+
 ## Policies
 
 A Policy creates an allow or deny decision for a subject and network combination. Write policies explicitly, document their business purpose, and test deny rules in a safe environment first. When rules conflict, inspect the policy order or evaluation shown by the dashboard and API for your application version.
