@@ -2,7 +2,7 @@ import Fastify from 'fastify'
 import { createDb } from '@vpn/db'
 import type { Env } from './config/env'
 import { NodeStatusChecker } from './services/node-status-checker'
-import { startCertRenewalScheduler } from './services/cert-renewal'
+import { startCertExpiryWatcher } from './services/cert-expiry'
 import { TokenRevocationSweeper } from './services/token-revocation'
 import { pruneNodeDnsRevisions } from './services/managed-dns'
 
@@ -80,6 +80,7 @@ export async function buildApp(env: Env) {
   const shouldStartSchedulers = env.NODE_ENV !== 'test'
   let nodeStatusChecker: NodeStatusChecker | null = null
   let tokenRevocationSweeper: TokenRevocationSweeper | null = null
+  let certExpiryWatcher: { stop: () => void } | null = null
   let dnsRevisionPruner: ReturnType<typeof setInterval> | null = null
 
   if (shouldStartSchedulers) {
@@ -89,7 +90,7 @@ export async function buildApp(env: Env) {
       120000  // Mark offline after 2 minutes without heartbeat
     )
     nodeStatusChecker.start()
-    startCertRenewalScheduler(db)
+    certExpiryWatcher = startCertExpiryWatcher(db)
 
     // Prune revoked-token rows once they can no longer affect verification.
     tokenRevocationSweeper = new TokenRevocationSweeper(db, 60 * 60 * 1000) // hourly
@@ -102,6 +103,7 @@ export async function buildApp(env: Env) {
   // Cleanup on shutdown
   app.addHook('onClose', async () => {
     nodeStatusChecker?.stop()
+    certExpiryWatcher?.stop()
     tokenRevocationSweeper?.stop()
     if (dnsRevisionPruner) clearInterval(dnsRevisionPruner)
   })
