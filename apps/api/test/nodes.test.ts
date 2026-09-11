@@ -101,6 +101,57 @@ describe('Nodes API', () => {
     expect(res.body).not.toContain(nodeToken)
   })
 
+  it('respects operator manual override when Managed DNS is disabled from UI', async () => {
+    // Admin manually unchecks Managed DNS in UI
+    const disable = await app.inject({
+      method: 'PUT',
+      url: `/api/v1/nodes/${nodeId}`,
+      headers: { Cookie: adminCookie },
+      payload: { managed_dns_enabled: false },
+    })
+    expect(disable.statusCode).toBe(200)
+
+    // Agent sends heartbeat reporting CoreDNS healthy
+    const hb = await app.inject({
+      method: 'POST',
+      url: '/api/v1/nodes/heartbeat',
+      headers: { Authorization: `Bearer ${nodeToken}` },
+      payload: {
+        nodeId,
+        dns: { enabled: true, capable: true, status: 'healthy', lastError: null },
+      },
+    })
+    expect(hb.statusCode).toBe(200)
+
+    // Node should stay disabled due to operator override
+    const node = await app.db('vpn_nodes').where({ id: nodeId }).first()
+    expect(node.managed_dns_enabled).toBe(0)
+    expect(node.dns_sync_status).toBe('disabled')
+
+    // But when admin re-enables it
+    const reEnable = await app.inject({
+      method: 'PUT',
+      url: `/api/v1/nodes/${nodeId}`,
+      headers: { Cookie: adminCookie },
+      payload: { managed_dns_enabled: true },
+    })
+    expect(reEnable.statusCode).toBe(200)
+
+    // Next heartbeat maintains healthy status
+    await app.inject({
+      method: 'POST',
+      url: '/api/v1/nodes/heartbeat',
+      headers: { Authorization: `Bearer ${nodeToken}` },
+      payload: {
+        nodeId,
+        dns: { enabled: true, capable: true, status: 'healthy', lastError: null },
+      },
+    })
+    const reEnabledNode = await app.db('vpn_nodes').where({ id: nodeId }).first()
+    expect(reEnabledNode.managed_dns_enabled).toBe(1)
+    expect(reEnabledNode.dns_sync_status).toBe('healthy')
+  })
+
   it('queues a policy sync when an agent starts', async () => {
     const res = await app.inject({
       method: 'POST',

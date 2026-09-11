@@ -1,6 +1,7 @@
 import { useRouterState, useNavigate } from '@tanstack/react-router'
 import { useAuthStore } from '@/store/auth.store'
 import { API_URL } from '@/lib/api'
+import { cn } from '@/lib/utils'
 import packageJson from '../../../../../package.json'
 import {
   LayoutDashboard,
@@ -39,13 +40,13 @@ import {
 const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/users', label: 'Users', icon: Users },
+  { href: '/nodes', label: 'Nodes', icon: Server },
   { href: '/groups', label: 'Groups', icon: UsersRound },
   { href: '/networks', label: 'Networks', icon: Network },
-  { href: '/nodes', label: 'Nodes', icon: Server },
-  { href: '/sessions', label: 'Sessions', icon: Activity },
   { href: '/policies', label: 'Policies', icon: Shield },
   { href: '/dns', label: 'Managed DNS', icon: NetworkIcon },
   { href: '/tasks', label: 'Tasks', icon: ListTodo },
+  { href: '/sessions', label: 'Sessions', icon: Activity },
   { href: '/audit', label: 'Audit Logs', icon: FileText, adminOnly: true },
 ] as const
 
@@ -103,9 +104,18 @@ export function AppSidebar() {
                       isActive={active}
                       tooltip={label}
                       onClick={() => navigate({ to: href })}
+                      className={cn(
+                        "relative transition-all duration-150 font-medium",
+                        active
+                          ? "!bg-emerald-500/15 !text-emerald-600 dark:!bg-emerald-500/20 dark:!text-emerald-400 font-semibold shadow-xs"
+                          : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+                      )}
                     >
-                      <Icon />
-                      <span>{label}</span>
+                      <Icon className={cn("size-4 shrink-0 transition-colors", active ? "!text-emerald-600 dark:!text-emerald-400" : "text-muted-foreground")} />
+                      <span className="flex-1 truncate">{label}</span>
+                      {active && (
+                        <span className="size-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400 group-data-[collapsible=icon]:hidden" />
+                      )}
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 )

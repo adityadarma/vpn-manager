@@ -56,6 +56,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       // Add active_sessions to each node
       return nodes.map(node => ({
         ...node,
+        dns_last_sync_error: node.dns_last_sync_error === 'MANUAL_OVERRIDE_DISABLED' ? null : node.dns_last_sync_error,
         active_sessions: sessionCountMap.get(node.id) || 0
       }))
     },
@@ -140,7 +141,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         status: node.dns_sync_status,
         revision: node.dns_config_revision,
         config_hash: node.dns_config_hash,
-        last_error: node.dns_last_sync_error,
+        last_error: node.dns_last_sync_error === 'MANUAL_OVERRIDE_DISABLED' ? null : node.dns_last_sync_error,
         last_synced_at: node.dns_last_synced_at,
         listeners,
         revisions,
@@ -217,6 +218,8 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         if (!request.body.managed_dns_enabled) {
           updates.managed_dns_capable = false
           updates.dns_sync_status = 'disabled'
+          updates.dns_last_sync_error = 'MANUAL_OVERRIDE_DISABLED'
+        } else {
           updates.dns_last_sync_error = null
         }
       }
@@ -601,18 +604,31 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       if (taKey) updates.ta_key = taKey
       if (firewallRules !== undefined) updates.firewall_rules_dump = firewallRules
       if (firewallEngine) updates.firewall_engine = firewallEngine
-      if (currentNode?.managed_dns_enabled) {
+      updates.managed_dns_capable = Boolean(dns?.capable)
+
+      const isManualOverrideDisabled = !currentNode?.managed_dns_enabled && currentNode?.dns_last_sync_error === 'MANUAL_OVERRIDE_DISABLED'
+
+      if (isManualOverrideDisabled) {
+        updates.managed_dns_enabled = false
+        updates.dns_sync_status = 'disabled'
+      } else if (dns?.enabled && dns?.capable && dns?.status === 'healthy') {
+        updates.managed_dns_enabled = true
+        updates.dns_sync_status = 'healthy'
+        updates.dns_last_sync_error = null
+        if (!currentNode?.managed_dns_enabled) {
+          enqueueNodeDnsSync(app, nodeId).catch((err: any) => {
+            app.log.warn(`[heartbeat] Failed to enqueue initial DNS sync for auto-enabled node ${nodeId}: ${err.message}`)
+          })
+        }
+      } else if (currentNode?.managed_dns_enabled) {
         if (dns) {
-          updates.managed_dns_capable = dns.capable
           updates.dns_sync_status = dns.status
           updates.dns_last_sync_error = dns.lastError ?? null
         } else {
-          updates.managed_dns_capable = false
           updates.dns_sync_status = 'degraded'
           updates.dns_last_sync_error = 'Agent did not report Managed DNS status'
         }
       } else {
-        updates.managed_dns_capable = false
         updates.dns_sync_status = 'disabled'
         updates.dns_last_sync_error = null
       }

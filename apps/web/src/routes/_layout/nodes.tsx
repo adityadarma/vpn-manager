@@ -47,7 +47,6 @@ function NodesPage() {
   const [form, setForm] = useState<NodeForm>({ hostname: '', ipAddress: '', region: '' })
   const [registeredNode, setRegisteredNode] = useState<{ id: string; token: string } | null>(null)
   const [copied, setCopied] = useState(false)
-  const [selectedNodes, setSelectedNodes] = useState<Set<string>>(new Set())
   const [configNode, setConfigNode] = useState<string | null>(null)
   const [editNode, setEditNode] = useState<VpnNode | null>(null)
   const [viewFirewallNode, setViewFirewallNode] = useState<VpnNode | null>(null)
@@ -120,18 +119,6 @@ function NodesPage() {
     onError: (e: Error) => toast.error(e.message),
   })
 
-  const bulkDeleteMutation = useMutation({
-    mutationFn: async (ids: string[]) => {
-      await Promise.all(ids.map(id => api.delete(`/api/v1/nodes/${id}`)))
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['nodes'] })
-      setSelectedNodes(new Set())
-      toast.success('Nodes deleted successfully')
-    },
-    onError: (e: Error) => toast.error(e.message),
-  })
-
   const openConfigModal = async (nodeId: string) => {
     try {
       const config = await api.get<NodeConfig>(`/api/v1/nodes/${nodeId}/config`)
@@ -200,30 +187,6 @@ function NodesPage() {
     })
   }
 
-  const toggleNode = (nodeId: string) => {
-    const newSelected = new Set(selectedNodes)
-    if (newSelected.has(nodeId)) {
-      newSelected.delete(nodeId)
-    } else {
-      newSelected.add(nodeId)
-    }
-    setSelectedNodes(newSelected)
-  }
-
-  const toggleAll = () => {
-    if (selectedNodes.size === nodes.length) {
-      setSelectedNodes(new Set())
-    } else {
-      setSelectedNodes(new Set(nodes.map(n => n.id)))
-    }
-  }
-
-  const handleBulkDelete = () => {
-    if (confirm(`Delete ${selectedNodes.size} node(s)?`)) {
-      bulkDeleteMutation.mutate(Array.from(selectedNodes))
-    }
-  }
-
   const onlineCount = nodes.filter(n => n.status === 'online').length
 
   return (
@@ -234,21 +197,9 @@ function NodesPage() {
           <h1 className="text-2xl font-bold text-foreground">VPN Nodes</h1>
           <p className="text-sm text-muted-foreground mt-1">
             {onlineCount}/{nodes.length} nodes online
-            {selectedNodes.size > 0 && ` • ${selectedNodes.size} selected`}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {selectedNodes.size > 0 && (
-            <Button
-              variant="outline"
-              className="text-red-600 hover:text-red-700 hover:bg-red-50"
-              onClick={handleBulkDelete}
-              disabled={bulkDeleteMutation.isPending}
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete ({selectedNodes.size})
-            </Button>
-          )}
           <Button
             id="btn-add-node"
             className="bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -269,54 +220,34 @@ function NodesPage() {
           <p className="text-sm text-muted-foreground/70 mt-1">Add your first VPN node to get started</p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {/* Select All Checkbox */}
-          <div className="flex items-center gap-2 px-1">
-            <input
-              type="checkbox"
-              checked={nodes.length > 0 && selectedNodes.size === nodes.length}
-              onChange={toggleAll}
-              className="rounded border-input text-emerald-600 focus:ring-emerald-500"
-            />
-            <span className="text-sm text-muted-foreground">Select all</span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {nodes.map((node) => (
-              <div
-                key={node.id}
-                className="bg-card text-card-foreground rounded-xl border border-border shadow-sm p-4 sm:p-5 flex flex-col justify-between transition-all hover:border-border/80"
-              >
-                <div>
-                  {/* Status & Hostname Header */}
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <div className="flex items-start gap-2.5 min-w-0 flex-1">
-                      <input
-                        type="checkbox"
-                        checked={selectedNodes.has(node.id)}
-                        onChange={() => toggleNode(node.id)}
-                        className="rounded border-input text-emerald-600 focus:ring-emerald-500 mt-1 size-4 shrink-0 cursor-pointer"
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {nodes.map((node) => (
+            <div
+              key={node.id}
+              className="bg-card text-card-foreground rounded-xl border border-border shadow-sm p-4 sm:p-5 flex flex-col justify-between transition-all hover:border-border/80"
+            >
+              <div>
+                {/* Status & Hostname Header */}
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <div
+                        className={`w-2 h-2 rounded-full shrink-0 ${
+                          node.status === 'online'
+                            ? 'bg-emerald-500 shadow-sm shadow-emerald-200'
+                            : 'bg-gray-400 dark:bg-gray-600'
+                        }`}
                       />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <div
-                            className={`w-2 h-2 rounded-full shrink-0 ${
-                              node.status === 'online'
-                                ? 'bg-emerald-500 shadow-sm shadow-emerald-200'
-                                : 'bg-gray-400 dark:bg-gray-600'
-                            }`}
-                          />
-                          <p className="font-semibold text-foreground text-sm sm:text-base truncate" title={node.hostname}>
-                            {node.hostname}
-                          </p>
-                        </div>
-                        <p className="text-xs font-mono text-muted-foreground/80 mt-0.5 pl-4 truncate">
-                          {node.ip_address}
-                        </p>
-                      </div>
+                      <p className="font-semibold text-foreground text-sm sm:text-base truncate" title={node.hostname}>
+                        {node.hostname}
+                      </p>
                     </div>
+                    <p className="text-xs font-mono text-muted-foreground/80 mt-0.5 pl-4 truncate">
+                      {node.ip_address}
+                    </p>
+                  </div>
 
-                    <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0">
                       <span
                         className={`px-1.5 py-0.5 text-[0.65rem] font-bold rounded ring-1 ring-inset uppercase ${
                           node.vpn_type === 'wireguard'
@@ -420,7 +351,6 @@ function NodesPage() {
               </div>
             ))}
           </div>
-        </div>
       )}
 
       {/* Add Node Modal */}
@@ -590,7 +520,7 @@ function NodesPage() {
                 />
                 <span>
                   <span className="block text-sm font-medium">Enable Managed DNS</span>
-                  <span className="block text-xs text-muted-foreground mt-0.5">Allows this node to receive CoreDNS sync tasks. Start the DNS Compose profile on the node before enabling it.</span>
+                  <span className="block text-xs text-muted-foreground mt-0.5">Allows this node to receive CoreDNS sync tasks. Automatically enabled when the Agent reports healthy CoreDNS, or uncheck to disable manually for this node.</span>
                 </span>
               </label>
               <div className="flex gap-3 pt-2">

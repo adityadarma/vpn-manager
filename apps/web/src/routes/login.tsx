@@ -65,7 +65,7 @@ function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 dark:bg-slate-950">
+    <div className="min-h-screen bg-background flex items-center justify-center p-4 text-foreground">
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center mb-8">
           <div className="flex items-center justify-center w-12 h-12 bg-emerald-600 rounded-xl mb-4 shadow-sm">
@@ -73,7 +73,7 @@ function LoginPage() {
           </div>
         </div>
 
-        <Card className="shadow-lg border-slate-200 dark:border-slate-800">
+        <Card className="shadow-lg border-border">
           <CardHeader className="space-y-1 text-center">
             <CardTitle className="text-2xl font-bold tracking-tight">Welcome back</CardTitle>
             <CardDescription>
