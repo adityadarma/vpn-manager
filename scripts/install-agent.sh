@@ -39,6 +39,7 @@
 #   REG_KEY or NODE_REGISTRATION_KEY - Registration key
 #   VPN_SUBNET - VPN network CIDR (e.g. 10.8.0.0/16, default: auto-assigned by manager)
 #   VPN_TYPE - VPN engine: openvpn (default) or wireguard
+#   TUNNEL_MODE - Client traffic routing: full (default) or split
 #   FIREWALL_ENGINE - Firewall: iptables (default), nftables, ufw, firewalld, none
 #   DNS_ENABLED - Enable Managed DNS (CoreDNS) on this node: true or false (default)
 #   DNS_BLOCK_DOT - Block DNS-over-TLS (port 853) to force clients through Managed DNS: true or false (default)
@@ -264,6 +265,37 @@ fi
 export ENV_VPN_TYPE="$VPN_TYPE"
 
 echo ""
+
+# Keep the local server configuration and the Manager node record in sync from
+# the first registration, rather than requiring a configuration update later.
+if [ -z "$TUNNEL_MODE" ]; then
+    if [ -n "${MANAGER_URL:-${AGENT_API_MANAGER_URL}}" ] || [ -n "$VPN_TOKEN" ]; then
+        TUNNEL_MODE="full"
+        info "TUNNEL_MODE not set; using full tunnel for non-interactive installation"
+    else
+        echo "Client Tunnel Mode:"
+        echo "1) Full tunnel (all client traffic through VPN)"
+        echo "2) Split tunnel (only VPN routes through VPN)"
+        read -p "Choice [1-2] (default 1): " tunnel_choice </dev/tty
+        case "$tunnel_choice" in
+            2) TUNNEL_MODE="split" ;;
+            *) TUNNEL_MODE="full" ;;
+        esac
+    fi
+else
+    case "$TUNNEL_MODE" in
+        full|split) ;;
+        *) error "TUNNEL_MODE must be 'full' or 'split' (received: $TUNNEL_MODE)"; exit 1 ;;
+    esac
+fi
+export ENV_TUNNEL_MODE="$TUNNEL_MODE"
+info "Client tunnel mode: ${ENV_TUNNEL_MODE}"
+
+# Split-tunnel routing is managed by the Manager after registration. Add routes
+# in the node configuration there before issuing client profiles.
+if [ "$ENV_TUNNEL_MODE" = "split" ]; then
+    info "Configure split-tunnel routes in the Manager before generating client profiles"
+fi
 
 # Installation mode
 if [ "$ENV_VPN_TYPE" = "wireguard" ]; then
@@ -670,7 +702,7 @@ client-config-dir /etc/openvpn/ccd
 
 push "dhcp-option DNS 8.8.8.8"
 push "dhcp-option DNS 1.1.1.1"
-push "redirect-gateway def1 bypass-dhcp"
+$(if [ "$ENV_TUNNEL_MODE" = "full" ]; then printf '%s' 'push "redirect-gateway def1 bypass-dhcp"'; fi)
 
 keepalive 10 60
 explicit-exit-notify 1
@@ -1077,9 +1109,9 @@ EOF
         # Construct config object — cipher/auth_digest must match server.conf template
         # Only include vpn_network if explicitly set; otherwise let the manager assign nextNetwork
         if [ -n "$VPN_NETWORK" ]; then
-            JSON_PAYLOAD="$JSON_PAYLOAD, \"config\":{\"vpn_network\":\"$VPN_NETWORK\", \"vpn_netmask\":\"$VPN_NETMASK\", \"cipher\":\"AES-256-GCM\", \"auth_digest\":\"SHA256\""
+            JSON_PAYLOAD="$JSON_PAYLOAD, \"config\":{\"vpn_network\":\"$VPN_NETWORK\", \"vpn_netmask\":\"$VPN_NETMASK\", \"tunnel_mode\":\"$ENV_TUNNEL_MODE\", \"cipher\":\"AES-256-GCM\", \"auth_digest\":\"SHA256\""
         else
-            JSON_PAYLOAD="$JSON_PAYLOAD, \"config\":{\"cipher\":\"AES-256-GCM\", \"auth_digest\":\"SHA256\""
+            JSON_PAYLOAD="$JSON_PAYLOAD, \"config\":{\"tunnel_mode\":\"$ENV_TUNNEL_MODE\", \"cipher\":\"AES-256-GCM\", \"auth_digest\":\"SHA256\""
         fi
         if [ -n "$ENV_FIREWALL_ENGINE" ]; then
             JSON_PAYLOAD="$JSON_PAYLOAD, \"firewall_engine\":\"$ENV_FIREWALL_ENGINE\""

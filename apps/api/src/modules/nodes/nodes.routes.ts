@@ -1,7 +1,7 @@
 import { v7 as uuidv7 } from 'uuid'
 import type { FastifyPluginAsync } from 'fastify'
 import crypto from 'node:crypto'
-import { HeartbeatSchema, validateTaskPayload } from '@vpn/shared'
+import { HeartbeatSchema, TunnelModeSchema, validateTaskPayload } from '@vpn/shared'
 import { logAudit, getClientIp } from '../../utils/audit'
 import { secretsMatchTrimmed } from '../../utils/secret-compare'
 import geoip from 'geoip-lite'
@@ -483,6 +483,13 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(400).send({
           error: 'Bad Request',
           message: 'hostname and ip are required',
+        })
+      }
+
+      if (config?.tunnel_mode !== undefined && !TunnelModeSchema.safeParse(config.tunnel_mode).success) {
+        return reply.status(400).send({
+          error: 'Bad Request',
+          message: 'config.tunnel_mode must be full or split',
         })
       }
 

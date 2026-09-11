@@ -74,6 +74,42 @@ describe('Node Registration Security', () => {
     expect(node.dns_sync_status).toBe('disabled')
   })
 
+  it('stores the tunnel mode selected by an auto-registering Agent', async () => {
+    process.env.NODE_REGISTRATION_KEY = 'correct-key-12345'
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/nodes/register',
+      payload: {
+        hostname: 'split-tunnel-auto-register-node',
+        ip: '192.168.1.103',
+        registrationKey: 'correct-key-12345',
+        config: { tunnel_mode: 'split' },
+      },
+    })
+
+    expect(res.statusCode).toBe(201)
+    const node = await app.db('vpn_nodes').where({ id: res.json().id }).first()
+    expect(node.tunnel_mode).toBe('split')
+  })
+
+  it('rejects an invalid tunnel mode during auto-registration', async () => {
+    process.env.NODE_REGISTRATION_KEY = 'correct-key-12345'
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/nodes/register',
+      payload: {
+        hostname: 'invalid-tunnel-auto-register-node',
+        ip: '192.168.1.104',
+        registrationKey: 'correct-key-12345',
+        config: { tunnel_mode: 'invalid' },
+      },
+    })
+
+    expect(res.statusCode).toBe(400)
+  })
+
   describe('admin JWT path honours the revocation list', () => {
     it('accepts a live admin token with no registration key', async () => {
       delete process.env.NODE_REGISTRATION_KEY
