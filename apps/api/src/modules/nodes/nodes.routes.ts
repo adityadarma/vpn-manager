@@ -613,8 +613,10 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         updates.dns_sync_status = 'disabled'
       } else if (dns?.enabled && dns?.capable && dns?.status === 'healthy') {
         updates.managed_dns_enabled = true
-        updates.dns_sync_status = 'healthy'
-        updates.dns_last_sync_error = null
+        if (currentNode?.dns_sync_status !== 'pending' && currentNode?.dns_sync_status !== 'syncing') {
+          updates.dns_sync_status = 'healthy'
+          updates.dns_last_sync_error = null
+        }
         if (!currentNode?.managed_dns_enabled) {
           enqueueNodeDnsSync(app, nodeId).catch((err: any) => {
             app.log.warn(`[heartbeat] Failed to enqueue initial DNS sync for auto-enabled node ${nodeId}: ${err.message}`)
@@ -622,8 +624,10 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         }
       } else if (currentNode?.managed_dns_enabled) {
         if (dns) {
-          updates.dns_sync_status = dns.status
-          updates.dns_last_sync_error = dns.lastError ?? null
+          if (currentNode?.dns_sync_status !== 'pending' && currentNode?.dns_sync_status !== 'syncing') {
+            updates.dns_sync_status = dns.status
+            updates.dns_last_sync_error = dns.lastError ?? null
+          }
         } else {
           updates.dns_sync_status = 'degraded'
           updates.dns_last_sync_error = 'Agent did not report Managed DNS status'

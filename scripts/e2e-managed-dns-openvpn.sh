@@ -65,8 +65,13 @@ task_state() {
   python3 - "$1" "$2" <<'PY'
 import json, sys
 tasks = [t for t in json.loads(sys.argv[1]) if t.get('action') == sys.argv[2]]
-tasks.sort(key=lambda t: t.get('created_at') or '', reverse=True)
-print(tasks[0].get('status') or '' if tasks else '')
+if any(t.get('status') in ('pending', 'processing') for t in tasks):
+    print('pending')
+elif tasks:
+    tasks.sort(key=lambda t: (t.get('created_at') or '', t.get('id') or ''), reverse=True)
+    print(tasks[0].get('status') or '')
+else:
+    print('')
 PY
 }
 api() { curl -fsS -b "$COOKIE_JAR" -H 'Content-Type: application/json' "$@"; }
@@ -211,10 +216,23 @@ echo "  ok   desired state configured"
 echo "==> Agent applies the DNS revision from a real task"
 api -X POST "http://127.0.0.1:$PORT/api/v1/nodes/$NODE_ID/dns/sync" -d '{}' >/dev/null
 STATE=""
+APPLIED=0
+LATEST=1
 for _ in $(seq 1 80); do
   TASKS=$(api "http://127.0.0.1:$PORT/api/v1/tasks?nodeId=$NODE_ID")
   STATE=$(task_state "$TASKS" sync_group_dns)
-  [ "$STATE" = done ] || [ "$STATE" = failed ] && break
+  DNS_STATUS=$(api "http://127.0.0.1:$PORT/api/v1/nodes/$NODE_ID/dns/status")
+  APPLIED=$(json "$DNS_STATUS" '.revision')
+  LATEST=$(python3 - "$DNS_STATUS" <<'PY'
+import json, sys
+revisions = json.loads(sys.argv[1]).get('revisions') or []
+print(max((r.get('revision') or 0) for r in revisions) if revisions else 0)
+PY
+)
+  if [ "$STATE" = done ] && [ -n "$APPLIED" ] && [ -n "$LATEST" ] && [ "$APPLIED" -gt 0 ] && [ "$APPLIED" = "$LATEST" ]; then
+    break
+  fi
+  [ "$STATE" = failed ] && break
   sleep 0.5
 done
 check "sync_group_dns task completed" "done" "$STATE"
@@ -222,6 +240,16 @@ check "sync_group_dns task completed" "done" "$STATE"
 
 DNS_STATUS=$(api "http://127.0.0.1:$PORT/api/v1/nodes/$NODE_ID/dns/status")
 check "node reports healthy DNS" "healthy" "$(json "$DNS_STATUS" '.status')"
+APPLIED=$(json "$DNS_STATUS" '.revision')
+LATEST=$(python3 - "$DNS_STATUS" <<'PY'
+import json, sys
+revisions = json.loads(sys.argv[1]).get('revisions') or []
+print(max((r.get('revision') or 0) for r in revisions) if revisions else 0)
+PY
+)
+check "applied revision is the newest" "$LATEST" "$APPLIED"
+[ "${APPLIED:-0}" -gt 0 ] && echo "  ok   applied revision is non-zero ($APPLIED)" \
+  || { echo "  FAIL applied revision is zero"; FAILURES=$((FAILURES + 1)); }
 check "listener IP on vpn-dns0"  "1" \
   "$(docker exec "$AGENT" sh -c "ip -4 -oneline addr show dev vpn-dns0 2>/dev/null | grep -c $LISTENER" || echo 0)"
 # The OpenVPN path must produce tun* rules, not the wg* form. Matched with -F
