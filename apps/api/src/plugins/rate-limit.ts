@@ -46,12 +46,19 @@ export default fp(async (app, options: RateLimitPluginOptions) => {
       ? 10_000
       : SENSITIVE_MAX
 
+  const overrideGlobal = Number(process.env['RATE_LIMIT_MAX'])
+  const globalMax = Number.isInteger(overrideGlobal) && overrideGlobal > 0
+    ? overrideGlobal
+    : isTest
+      ? 10_000
+      : GLOBAL_MAX
+
   app.decorate('rateLimits', {
     sensitive: { max: sensitiveMax, timeWindow: '1 minute' },
   })
 
   await app.register(rateLimit, {
-    max: isTest ? 10_000 : GLOBAL_MAX,
+    max: globalMax,
     timeWindow: '1 minute',
     errorResponseBuilder: () => ({
       statusCode: 429,

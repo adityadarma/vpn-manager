@@ -93,6 +93,7 @@ docker run -d --name "$MANAGER" --network "$NETWORK" --network-alias manager -p 
   -e NODE_ENV=production -e PORT=3000 -e HOST=0.0.0.0 \
   -e JWT_SECRET="$JWT_SECRET" -e ADMIN_PASSWORD="$ADMIN_PASSWORD" \
   -e DATABASE_TYPE=sqlite -e DATABASE_SQLITE_PATH=/data/e2e.sqlite \
+  -e RATE_LIMIT_MAX=10000 \
   mdns-manager:local >/dev/null
 PORT=$(docker port "$MANAGER" 3000/tcp | head -1 | cut -d: -f2)
 
