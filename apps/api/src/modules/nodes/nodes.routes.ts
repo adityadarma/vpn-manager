@@ -733,8 +733,12 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
                 geo_country: geoCountry,
               })
               
-              // Update user's last_vpn_connect time to reflect VPN usage
-              await app.db('users').where({ id: userId }).update({ last_vpn_connect: new Date() })
+               // This fallback discovers an already-connected peer through the
+               // heartbeat. Preserve its actual connection time rather than the
+               // later heartbeat time so "Last Connect (VPN)" remains accurate.
+               await app.db('users').where({ id: userId }).update({
+                 last_vpn_connect: new Date(client.connectedSince),
+               })
 
               // Get username for audit
               const userObj = await app.db('users').where('id', userId).first()

@@ -80,6 +80,8 @@ function GroupsPage() {
   const [form, setForm] = useState<FormState>({ name: '', description: '' })
   const [showAddMember, setShowAddMember] = useState(false)
   const [showAddNetwork, setShowAddNetwork] = useState(false)
+  const [showAllMembers, setShowAllMembers] = useState(false)
+  const [showAllNetworks, setShowAllNetworks] = useState(false)
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set())
   const [selectedNetworkIds, setSelectedNetworkIds] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
@@ -423,28 +425,35 @@ function GroupsPage() {
             </div>
 
             <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm overflow-hidden">
-              <div className="p-4 border-b border-border/50 flex flex-row items-center justify-between">
+              <div className="p-4 border-b border-border/50 flex flex-row items-center justify-between gap-2">
                 <div className="font-semibold text-foreground flex items-center gap-2">
                   <Network className="h-4 w-4 text-emerald-500" />
                   Networks
                   <Badge className="ml-2 bg-emerald-500 hover:bg-emerald-600 border-0 text-white">{groupDetail.networks.length}</Badge>
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7"
-                  onClick={() => { setShowAddNetwork(true); setSearchQuery('') }}
-                >
-                  <NetworkIcon className="h-3.5 w-3.5 mr-1" />
-                  Add
-                </Button>
+                <div className="flex items-center gap-1 shrink-0">
+                  {groupDetail.networks.length > 5 && (
+                    <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setShowAllNetworks(true)}>
+                      View all
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7"
+                    onClick={() => { setShowAddNetwork(true); setSearchQuery('') }}
+                  >
+                    <NetworkIcon className="h-3.5 w-3.5 mr-1" />
+                    Add
+                  </Button>
+                </div>
               </div>
               <div className="p-0">
                 {groupDetail.networks.length === 0 ? (
                   <p className="p-4 text-sm text-muted-foreground">No networks assigned.</p>
                 ) : (
-                  <div className="divide-y max-h-[400px] overflow-y-auto">
-                    {groupDetail.networks.map(n => (
+                  <div className="divide-y">
+                    {groupDetail.networks.slice(0, 5).map(n => (
                       <div key={n.id} className="flex items-center gap-3 px-4 py-2.5">
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium">{n.name}</p>
@@ -460,34 +469,46 @@ function GroupsPage() {
                         </Button>
                       </div>
                     ))}
+                    {groupDetail.networks.length > 5 && (
+                      <button className="w-full px-4 py-2.5 text-left text-xs font-medium text-primary hover:bg-muted/40" onClick={() => setShowAllNetworks(true)}>
+                        View all {groupDetail.networks.length} networks
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
             </div>
 
             <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm overflow-hidden">
-              <div className="p-4 border-b border-border/50 flex flex-row items-center justify-between">
+              <div className="p-4 border-b border-border/50 flex flex-row items-center justify-between gap-2">
                 <div className="font-semibold text-foreground flex items-center gap-2">
                   <Users className="h-4 w-4 text-emerald-500" />
                   Members
                   <Badge className="ml-2 bg-emerald-500 hover:bg-emerald-600 border-0 text-white">{groupDetail.members.length}</Badge>
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7"
-                  onClick={() => { setShowAddMember(true); setSearchQuery('') }}
-                >
-                  <UserPlus className="h-3.5 w-3.5 mr-1" />
-                  Add
-                </Button>
+                <div className="flex items-center gap-1 shrink-0">
+                  {groupDetail.members.length > 5 && (
+                    <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setShowAllMembers(true)}>
+                      View all
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7"
+                    onClick={() => { setShowAddMember(true); setSearchQuery('') }}
+                  >
+                    <UserPlus className="h-3.5 w-3.5 mr-1" />
+                    Add
+                  </Button>
+                </div>
               </div>
               <div className="p-0">
                 {groupDetail.members.length === 0 ? (
                   <p className="p-4 text-sm text-muted-foreground">No members yet.</p>
                 ) : (
-                  <div className="divide-y max-h-[500px] overflow-y-auto">
-                    {groupDetail.members.map(m => (
+                  <div className="divide-y">
+                    {groupDetail.members.slice(0, 5).map(m => (
                       <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/30 transition-colors">
                         <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
                           {m.username[0]?.toUpperCase()}
@@ -514,6 +535,11 @@ function GroupsPage() {
                         </Button>
                       </div>
                     ))}
+                    {groupDetail.members.length > 5 && (
+                      <button className="w-full px-4 py-2.5 text-left text-xs font-medium text-primary hover:bg-muted/40" onClick={() => setShowAllMembers(true)}>
+                        View all {groupDetail.members.length} members
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -521,6 +547,66 @@ function GroupsPage() {
           </div>
         )}
       </div>
+
+      {/* Full member list stays separate from the compact detail preview. */}
+      <Modal open={showAllMembers} onClose={() => setShowAllMembers(false)} className="max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
+        <ModalHeader title={`Members in ${groupDetail?.name ?? ''}`} description={`${groupDetail?.members.length ?? 0} members`} onClose={() => setShowAllMembers(false)} />
+        <div className="p-3 border-b border-border/50">
+          <Input placeholder="Search members..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+        </div>
+        <div className="overflow-y-auto divide-y flex-1">
+          {groupDetail?.members
+            .filter(member => member.username.toLowerCase().includes(searchQuery.toLowerCase()) || (member.email ?? '').toLowerCase().includes(searchQuery.toLowerCase()))
+            .map(member => (
+              <div key={member.id} className="flex items-center gap-3 px-5 py-3 hover:bg-muted/30 transition-colors">
+                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary shrink-0">
+                  {member.username[0]?.toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{member.username}</p>
+                  <p className="text-xs text-muted-foreground truncate">{member.email ?? '—'}</p>
+                </div>
+                {member.vpn_ip && <code className="hidden sm:inline-block text-xs bg-emerald-50 text-emerald-700 border border-emerald-100 px-1.5 py-0.5 rounded">{member.vpn_ip}</code>}
+                <Badge variant={member.is_active ? 'default' : 'secondary'} className="text-xs">{member.is_active ? 'active' : 'inactive'}</Badge>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 shrink-0" onClick={() => detailGroup && removeMemberMutation.mutate({ groupId: detailGroup, userId: member.id })}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
+        </div>
+        <ModalFooter>
+          <Button variant="outline" onClick={() => setShowAllMembers(false)}>Close</Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Networks are also previewed in the panel and expanded only on demand. */}
+      <Modal open={showAllNetworks} onClose={() => setShowAllNetworks(false)} className="max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
+        <ModalHeader title={`Networks in ${groupDetail?.name ?? ''}`} description={`${groupDetail?.networks.length ?? 0} assigned networks`} onClose={() => setShowAllNetworks(false)} />
+        <div className="p-3 border-b border-border/50">
+          <Input placeholder="Search networks..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+        </div>
+        <div className="overflow-y-auto divide-y flex-1">
+          {groupDetail?.networks
+            .filter(network => network.name.toLowerCase().includes(searchQuery.toLowerCase()) || network.cidr.toLowerCase().includes(searchQuery.toLowerCase()))
+            .map(network => (
+              <div key={network.id} className="flex items-center gap-3 px-5 py-3 hover:bg-muted/30 transition-colors">
+                <div className="h-8 w-8 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
+                  <NetworkIcon className="h-4 w-4 text-emerald-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{network.name}</p>
+                  <code className="text-xs text-muted-foreground">{network.cidr}</code>
+                </div>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 shrink-0" onClick={() => detailGroup && removeNetworkMutation.mutate({ groupId: detailGroup, networkId: network.id })}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
+        </div>
+        <ModalFooter>
+          <Button variant="outline" onClick={() => setShowAllNetworks(false)}>Close</Button>
+        </ModalFooter>
+      </Modal>
 
       {/* Create Modal */}
       <Modal open={showCreate} onClose={() => setShowCreate(false)}>

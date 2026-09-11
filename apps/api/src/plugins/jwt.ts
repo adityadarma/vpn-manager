@@ -76,6 +76,11 @@ export default fp(async (app, options: JwtPluginOptions) => {
     if (await checkBlacklist(request)) {
       return reply.status(401).send({ error: 'Unauthorized', message: 'Token has been revoked' })
     }
+
+    // This hook protects browser API routes. Refresh the web activity time for
+    // every authenticated request, but never for node-token or VPN hook traffic.
+    const user = request.user as { id?: string }
+    if (user.id) await app.db('users').where({ id: user.id }).update({ last_login: new Date() })
   })
 
   app.decorate('authenticateAdmin', async (request: FastifyRequest, reply: FastifyReply) => {
@@ -93,5 +98,8 @@ export default fp(async (app, options: JwtPluginOptions) => {
     if (user.role !== 'admin') {
       return reply.status(403).send({ error: 'Forbidden', message: 'Admin access required' })
     }
+
+    const admin = request.user as { id?: string }
+    if (admin.id) await app.db('users').where({ id: admin.id }).update({ last_login: new Date() })
   })
 })

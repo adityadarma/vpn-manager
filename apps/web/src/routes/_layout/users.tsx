@@ -7,7 +7,7 @@ export const Route = createFileRoute('/_layout/users')({
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, API_URL } from '@/lib/api'
-import { Trash2, Download, Shield, Search, X, Plus, Key, Lock, AlertTriangle, RefreshCw, Edit } from 'lucide-react'
+import { Trash2, Download, Shield, Search, X, Plus, Key, Lock, AlertTriangle, RefreshCw, Edit, ChevronLeft, ChevronRight } from 'lucide-react'
 import { formatBrowserDateTime, type User } from '@vpn/shared'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -39,14 +39,18 @@ function UsersPage() {
   const [form, setForm] = useState<CreateUserPayload>({ username: '', email: '', password: '', role: 'user' })
   const [editForm, setEditForm] = useState<EditUserPayload>({ email: '', password: '', role: 'user', isActive: true })
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const pageSize = 10
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set())
   const [revokeReason, setRevokeReason] = useState('')
   const [revokingCertId, setRevokingCertId] = useState<string | null>(null)
 
-  const { data: users = [], isLoading } = useQuery<User[]>({
-    queryKey: ['users'],
-    queryFn: () => api.get('/api/v1/users'),
+  const { data: usersData, isLoading } = useQuery<{ users: User[]; pagination: { page: number; pages: number; total: number } }>({
+    queryKey: ['users', page, search],
+    queryFn: () => api.get(`/api/v1/users?page=${page}&limit=${pageSize}&search=${encodeURIComponent(search)}`),
   })
+  const users = usersData?.users ?? []
+  const pagination = usersData?.pagination
 
   const { data: nodes = [] } = useQuery<any[]>({
     queryKey: ['nodes'],
@@ -312,10 +316,7 @@ function UsersPage() {
     setShowEditForm(true)
   }
 
-  const filtered = users.filter(u =>
-    u.username.toLowerCase().includes(search.toLowerCase()) ||
-    (u.email ?? '').toLowerCase().includes(search.toLowerCase())
-  )
+  const filtered = users
 
   return (
     <div className="space-y-6">
@@ -354,7 +355,7 @@ function UsersPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">VPN Users</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {users.length} user{users.length !== 1 ? 's' : ''} registered
+            {pagination?.total ?? 0} user{(pagination?.total ?? 0) !== 1 ? 's' : ''} registered
             {selectedUsers.size > 0 && ` • ${selectedUsers.size} selected`}
           </p>
         </div>
@@ -414,7 +415,7 @@ function UsersPage() {
           type="text"
           placeholder="Search users..."
           value={search}
-          onChange={e => setSearch(e.target.value)}
+          onChange={e => { setSearch(e.target.value); setPage(1); setSelectedUsers(new Set()) }}
           className="w-full max-w-sm pl-9 pr-4 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-card text-card-foreground"
         />
       </div>
@@ -436,7 +437,7 @@ function UsersPage() {
               <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">User</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Role</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
-              <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Last Login (Web)</th>
+              <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Last Active (Web)</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Last Connect (VPN)</th>
               <th className="text-right px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Actions</th>
             </tr>
@@ -533,6 +534,23 @@ function UsersPage() {
           </tbody>
         </table>
         </div>
+        {pagination && pagination.pages > 1 && (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-5 py-4 border-t border-border/60">
+            <p className="text-sm text-muted-foreground">
+              Page {pagination.page} of {pagination.pages} • {pagination.total} users
+            </p>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => { setPage(current => Math.max(1, current - 1)); setSelectedUsers(new Set()) }} disabled={page === 1}>
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                Previous
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => { setPage(current => current + 1); setSelectedUsers(new Set()) }} disabled={page >= pagination.pages}>
+                Next
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Add User Modal */}

@@ -56,8 +56,12 @@ const userRoutes: FastifyPluginAsync = async (app) => {
   app.get(
     '/users',
     { onRequest: [app.authenticateAdmin], schema: { tags: ['users'], summary: 'List all VPN users', security: [{ bearerAuth: [] }] } },
-    async () => {
-      const usersWithGroups = await app.db('users as u')
+    async (request) => {
+      const query = request.query as { page?: string; limit?: string; search?: string }
+      const paginated = query.page !== undefined || query.limit !== undefined || query.search !== undefined
+      const page = Math.max(1, Number.parseInt(query.page ?? '1', 10) || 1)
+      const limit = Math.min(100, Math.max(1, Number.parseInt(query.limit ?? '10', 10) || 10))
+      const usersWithGroups = app.db('users as u')
         .leftJoin('user_groups as ug', 'u.id', 'ug.user_id')
         .leftJoin('groups as g', 'ug.group_id', 'g.id')
         .select(
@@ -77,7 +81,30 @@ const userRoutes: FastifyPluginAsync = async (app) => {
           'u.updated_at',
         )
 
-      return usersWithGroups
+      if (query.search?.trim()) {
+        const pattern = `%${query.search.trim()}%`
+        usersWithGroups.where((builder: any) => {
+          builder.where('u.username', 'like', pattern).orWhere('u.email', 'like', pattern)
+        })
+      }
+
+      if (!paginated) return usersWithGroups
+
+      const rows = await usersWithGroups.clone().orderBy('u.username').limit(limit).offset((page - 1) * limit)
+      const countBuilder = app.db('users as u')
+      if (query.search?.trim()) {
+        const pattern = `%${query.search.trim()}%`
+        countBuilder.where((builder: any) => {
+          builder.where('u.username', 'like', pattern).orWhere('u.email', 'like', pattern)
+        })
+      }
+      const countRow = await countBuilder.count<{ count: string }>('* as count').first()
+      const total = Number(countRow?.count ?? 0)
+
+      return {
+        users: rows,
+        pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+      }
     },
   )
 

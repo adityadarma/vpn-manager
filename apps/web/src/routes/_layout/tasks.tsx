@@ -7,18 +7,12 @@ export const Route = createFileRoute('/_layout/tasks')({
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { Clock, CheckCircle, XCircle, AlertCircle, Server, Search } from 'lucide-react'
+import { Clock, CheckCircle, XCircle, AlertCircle, Server, Search, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { formatBrowserDateTime } from '@vpn/shared'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 
 interface Task {
   id: string
@@ -44,17 +38,23 @@ function formatDuration(start: string, end: string | null) {
 
 function TasksPage() {
   const [searchQuery, setSearchQuery] = useState('')
+  const [page, setPage] = useState(1)
+  const [activeTab, setActiveTab] = useState<'pending' | 'done' | 'failed'>('pending')
+  const pageSize = 25
 
-  const { data: tasks = [], isLoading } = useQuery<Task[]>({
-    queryKey: ['tasks'],
-    queryFn: () => api.get('/api/v1/tasks'),
+  const { data, isLoading } = useQuery<{ tasks: Task[]; pagination: { page: number; pages: number; total: number }; status_counts: Record<string, number> }>({
+    queryKey: ['tasks', activeTab, page],
+    queryFn: () => api.get(`/api/v1/tasks?status=${activeTab}&page=${page}&limit=${pageSize}`),
     refetchInterval: 10_000, // Auto-refresh every 10s
   })
 
-  // Filter tasks
-  const pendingTasks = tasks.filter(t => t.status === 'pending')
-  const doneTasks = tasks.filter(t => t.status === 'done')
-  const failedTasks = tasks.filter(t => t.status === 'failed')
+  const tasks = data?.tasks ?? []
+  const pagination = data?.pagination
+  const statusCounts = data?.status_counts ?? {}
+
+  const pendingCount = statusCounts.pending ?? 0
+  const doneCount = statusCounts.done ?? 0
+  const failedCount = statusCounts.failed ?? 0
 
   // Search filter
   const filterTasks = (taskList: Task[]) => {
@@ -67,11 +67,9 @@ function TasksPage() {
     )
   }
 
-  const filteredPending = filterTasks(pendingTasks)
-  const filteredDone = filterTasks(doneTasks)
-  const filteredFailed = filterTasks(failedTasks)
+  const filteredTasks = filterTasks(tasks)
 
-  const TaskCard = ({ task }: { task: Task }) => {
+  const TaskRow = ({ task }: { task: Task }) => {
     const statusConfig = {
       pending: { icon: Clock, color: 'text-amber-500', bg: 'bg-amber-50', label: 'Pending' },
       done: { icon: CheckCircle, color: 'text-emerald-500', bg: 'bg-emerald-50', label: 'Done' },
@@ -81,60 +79,73 @@ function TasksPage() {
     const config = statusConfig[task.status]
     const Icon = config.icon
 
+    const details = task.error_message || (task.result && task.status === 'done')
+
     return (
-      <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm overflow-hidden flex flex-col h-full">
-        <div className="p-4 border-b border-border/50 bg-muted/10">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
-                <Server className="h-4 w-4 text-muted-foreground" />
-                {task.node_hostname}
-              </h3>
-              <div className="mt-2">
-                <Badge variant="outline" className="text-[10px] font-mono tracking-wider uppercase bg-background">
-                  {task.action}
-                </Badge>
-              </div>
+      <details className="group bg-card text-card-foreground rounded-xl border border-border shadow-sm open:border-primary/30 open:shadow-md transition-all">
+        <summary className="list-none cursor-pointer px-4 py-3 sm:px-5 sm:py-3.5 grid grid-cols-[auto_minmax(0,1fr)_auto] sm:grid-cols-[auto_minmax(10rem,1.3fr)_minmax(9rem,1fr)_minmax(8rem,0.8fr)_auto] items-center gap-x-3 gap-y-2 hover:bg-muted/30 rounded-xl">
+          <div className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 ${config.bg} ${config.color}`}>
+            <Icon className="h-4 w-4" />
+          </div>
+
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="font-mono text-xs font-semibold text-foreground truncate">{task.action}</span>
+              <span className={`sm:hidden inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${config.bg} ${config.color}`}>
+                {config.label}
+              </span>
             </div>
-            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wider border ${config.bg} ${config.color} border-current/20`}>
-              <Icon className="h-3.5 w-3.5" />
-              {config.label}
+            <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground truncate">
+              <Server className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{task.node_hostname}</span>
             </div>
           </div>
-        </div>
-        <div className="p-4 space-y-3 text-sm flex-1 flex flex-col">
-          <div className="flex justify-between items-center text-xs text-muted-foreground bg-muted/30 p-2 rounded-md border border-border/50">
-            <div className="flex flex-col gap-0.5">
-              <span className="uppercase text-[10px] font-bold tracking-wider opacity-70">Created</span>
-               <span className="font-medium text-foreground">{formatBrowserDateTime(task.created_at)}</span>
-            </div>
-            {task.completed_at && (
-              <div className="flex flex-col gap-0.5 text-right">
-                <span className="uppercase text-[10px] font-bold tracking-wider opacity-70">Duration</span>
-                <span className="font-medium text-foreground">{formatDuration(task.created_at, task.completed_at)}</span>
-              </div>
+
+          <div className="hidden sm:block min-w-0 text-xs text-muted-foreground tabular-nums">
+            <div className="text-[10px] uppercase font-semibold tracking-wider text-muted-foreground/70">Created</div>
+            <div className="mt-1 truncate">{formatBrowserDateTime(task.created_at)}</div>
+          </div>
+
+          <div className="hidden sm:block text-xs text-muted-foreground">
+            <div className="text-[10px] uppercase font-semibold tracking-wider text-muted-foreground/70">Duration</div>
+            <div className="mt-1 font-medium text-foreground">{formatDuration(task.created_at, task.completed_at)}</div>
+          </div>
+
+          <div className="col-start-2 sm:col-start-auto flex items-center justify-between gap-3 sm:justify-end">
+            <span className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider ${config.bg} ${config.color}`}>
+              {config.label}
+            </span>
+            {details ? (
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground group-open:text-foreground">
+                Details
+                <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground/60">No details</span>
             )}
           </div>
-          
-          {task.error_message && (
-            <div className="flex items-start gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-md text-xs text-red-600 dark:text-red-400">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              <span className="leading-relaxed font-medium">{task.error_message}</span>
+        </summary>
+
+        {details && (
+          <div className="border-t border-border/60 px-4 py-3 sm:px-5 bg-muted/20 space-y-3">
+            <div className="sm:hidden flex items-center gap-4 text-xs text-muted-foreground tabular-nums">
+              <span>Created: {formatBrowserDateTime(task.created_at)}</span>
+              <span>Duration: {formatDuration(task.created_at, task.completed_at)}</span>
             </div>
-          )}
-          
-          {task.result && task.status === 'done' && (
-            <details className="text-xs group mt-auto pt-2 border-t border-border/50">
-              <summary className="cursor-pointer font-medium text-muted-foreground hover:text-foreground list-none flex items-center gap-1.5">
-                <span className="border border-border rounded px-1.5 py-0.5 text-[10px] uppercase font-bold tracking-wider group-open:bg-muted transition-colors">Show Result</span>
-              </summary>
-              <pre className="mt-2 p-3 bg-muted/50 border border-border/50 rounded-md text-xs overflow-x-auto text-muted-foreground font-mono leading-relaxed">
+            {task.error_message && (
+              <div className="flex items-start gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-xs text-red-600 dark:text-red-400">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span className="leading-relaxed font-medium">{task.error_message}</span>
+              </div>
+            )}
+            {task.result && task.status === 'done' && (
+              <pre className="p-3 bg-background border border-border/60 rounded-lg text-xs overflow-x-auto text-muted-foreground font-mono leading-relaxed max-h-64">
                 {JSON.stringify(JSON.parse(task.result), null, 2)}
               </pre>
-            </details>
-          )}
-        </div>
-      </div>
+            )}
+          </div>
+        )}
+      </details>
     )
   }
 
@@ -145,7 +156,7 @@ function TasksPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Task Queue</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {tasks.length} task{tasks.length !== 1 ? 's' : ''} • {pendingTasks.length} pending
+            {pagination?.total ?? 0} task{(pagination?.total ?? 0) !== 1 ? 's' : ''} • {pendingCount} pending
           </p>
         </div>
         <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted text-muted-foreground text-xs font-medium rounded-full">
@@ -166,7 +177,7 @@ function TasksPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-card text-card-foreground rounded-xl border border-border p-5 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm font-medium text-muted-foreground">Pending</span>
@@ -174,7 +185,7 @@ function TasksPage() {
               <Clock className="h-4 w-4 text-amber-500" />
             </div>
           </div>
-          <div className="text-2xl font-bold text-foreground">{pendingTasks.length}</div>
+          <div className="text-2xl font-bold text-foreground">{pendingCount}</div>
           <p className="text-xs text-muted-foreground/70 mt-1">Waiting for execution</p>
         </div>
 
@@ -185,7 +196,7 @@ function TasksPage() {
               <CheckCircle className="h-4 w-4 text-emerald-500" />
             </div>
           </div>
-          <div className="text-2xl font-bold text-foreground">{doneTasks.length}</div>
+          <div className="text-2xl font-bold text-foreground">{doneCount}</div>
           <p className="text-xs text-muted-foreground/70 mt-1">Successfully executed</p>
         </div>
 
@@ -196,7 +207,7 @@ function TasksPage() {
               <XCircle className="h-4 w-4 text-red-500" />
             </div>
           </div>
-          <div className="text-2xl font-bold text-foreground">{failedTasks.length}</div>
+          <div className="text-2xl font-bold text-foreground">{failedCount}</div>
           <p className="text-xs text-muted-foreground/70 mt-1">Execution errors</p>
         </div>
       </div>
@@ -204,64 +215,61 @@ function TasksPage() {
       {/* Tabs */}
       {isLoading ? (
         <div className="py-12 text-center text-muted-foreground/70">Loading tasks...</div>
-      ) : tasks.length === 0 ? (
+      ) : (pagination?.total ?? 0) === 0 ? (
         <div className="bg-card text-card-foreground rounded-xl border border-dashed border-border/60 py-16 text-center">
           <Clock className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
           <p className="font-medium text-foreground">No tasks yet</p>
           <p className="text-sm text-muted-foreground/70 mt-1">Tasks will appear here when agents execute operations</p>
         </div>
       ) : (
-        <Tabs defaultValue="pending" className="space-y-4">
+        <Tabs value={activeTab} onValueChange={(value) => { setActiveTab(value as typeof activeTab); setPage(1) }} className="space-y-4">
           <TabsList>
             <TabsTrigger value="pending" className="gap-2">
               <Clock className="h-4 w-4" />
-              Pending ({pendingTasks.length})
+              Pending ({pendingCount})
             </TabsTrigger>
             <TabsTrigger value="done" className="gap-2">
               <CheckCircle className="h-4 w-4" />
-              Done ({doneTasks.length})
+              Done ({doneCount})
             </TabsTrigger>
             <TabsTrigger value="failed" className="gap-2">
               <XCircle className="h-4 w-4" />
-              Failed ({failedTasks.length})
+              Failed ({failedCount})
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="pending" className="space-y-4">
-            {filteredPending.length === 0 ? (
-              <div className="bg-card text-card-foreground rounded-xl border border-dashed border-border/60 py-12 text-center text-sm text-muted-foreground">
-                {searchQuery ? 'No pending tasks match your search' : 'No pending tasks'}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {filteredPending.map(task => <TaskCard key={task.id} task={task} />)}
-              </div>
-            )}
-          </TabsContent>
-
-          <TabsContent value="done" className="space-y-4">
-            {filteredDone.length === 0 ? (
-              <div className="bg-card text-card-foreground rounded-xl border border-dashed border-border/60 py-12 text-center text-sm text-muted-foreground">
-                {searchQuery ? 'No completed tasks match your search' : 'No completed tasks'}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {filteredDone.map(task => <TaskCard key={task.id} task={task} />)}
-              </div>
-            )}
-          </TabsContent>
-
-          <TabsContent value="failed" className="space-y-4">
-            {filteredFailed.length === 0 ? (
-              <div className="bg-card text-card-foreground rounded-xl border border-dashed border-border/60 py-12 text-center text-sm text-muted-foreground">
-                {searchQuery ? 'No failed tasks match your search' : 'No failed tasks'}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {filteredFailed.map(task => <TaskCard key={task.id} task={task} />)}
-              </div>
-            )}
-          </TabsContent>
+          {(['pending', 'done', 'failed'] as const).map((status) => (
+            <TabsContent key={status} value={status} className="space-y-4">
+              {filteredTasks.length === 0 ? (
+                <div className="bg-card text-card-foreground rounded-xl border border-dashed border-border/60 py-12 text-center text-sm text-muted-foreground">
+                  {searchQuery ? `No ${status} tasks match your search` : `No ${status} tasks`}
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    {filteredTasks.map(task => <TaskRow key={task.id} task={task} />)}
+                  </div>
+                  {pagination && pagination.pages > 1 && (
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pt-2">
+                      <p className="text-sm text-muted-foreground">
+                        Page {pagination.page} of {pagination.pages} • {pagination.total} {status} tasks
+                      </p>
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={() => setPage(current => Math.max(1, current - 1))} disabled={page === 1}>
+                          <ChevronLeft className="h-4 w-4 mr-1" />
+                          Previous
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => setPage(current => current + 1)} disabled={page >= pagination.pages}>
+                          Next
+                          <ChevronRight className="h-4 w-4 ml-1" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </TabsContent>
+          ))}
         </Tabs>
       )}
     </div>

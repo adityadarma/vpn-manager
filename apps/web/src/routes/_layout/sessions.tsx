@@ -304,7 +304,7 @@ function SessionsPage() {
                     <th className="text-left px-5 py-3.5">User</th>
                     <th className="text-left px-5 py-3.5">Device</th>
                     <th className="text-left px-5 py-3.5">Location</th>
-                    <th className="text-left px-5 py-3.5">Node</th>
+                    <th className="text-left px-5 py-3.5 min-w-[11rem]">Node</th>
                     <th className="text-left px-5 py-3.5">VPN IP</th>
                     <th className="text-left px-5 py-3.5">Duration</th>
                     <th className="text-left px-5 py-3.5">Traffic</th>
@@ -356,7 +356,7 @@ function SessionsPage() {
                           <span className="text-xs text-muted-foreground/60">-</span>
                         )}
                       </td>
-                      <td className="px-5 py-4">
+                      <td className="px-5 py-4 min-w-[11rem]">
                         <div className="flex items-center gap-2">
                           <Server className="h-4 w-4 text-muted-foreground/70 shrink-0" />
                           <div>
@@ -432,7 +432,7 @@ function SessionsPage() {
                     <tr className="bg-muted/40 border-b border-border text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                       <th className="text-left px-5 py-3.5">User</th>
                       <th className="text-left px-5 py-3.5">Device</th>
-                      <th className="text-left px-5 py-3.5">Node</th>
+                      <th className="text-left px-5 py-3.5 min-w-[11rem]">Node</th>
                       <th className="text-left px-5 py-3.5">VPN IP</th>
                       <th className="text-left px-5 py-3.5 whitespace-nowrap">Connected</th>
                       <th className="text-left px-5 py-3.5 whitespace-nowrap">Duration</th>
@@ -443,7 +443,7 @@ function SessionsPage() {
                   <tbody className="divide-y divide-border/60">
                     {history.map((s) => (
                       <tr key={s.id} className="hover:bg-muted/40 transition-colors">
-                        <td className="px-5 py-4">
+                        <td className="px-5 py-4 min-w-[11rem]">
                           <div className="flex items-center gap-3">
                             <div className="h-8 w-8 rounded-full bg-primary/10 text-primary font-semibold flex items-center justify-center text-xs shrink-0 border border-primary/20">
                               {s.username.slice(0, 2).toUpperCase()}

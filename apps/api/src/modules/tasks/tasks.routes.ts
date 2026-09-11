@@ -12,20 +12,44 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
     '/tasks',
     { onRequest: [app.authenticateAdmin], schema: { tags: ['tasks'], summary: 'List all tasks', security: [{ bearerAuth: [] }] } },
     async (request) => {
-      const query = request.query as { nodeId?: string; status?: string }
+      const query = request.query as { nodeId?: string; status?: string; page?: string; limit?: string }
+      const paginated = query.page !== undefined || query.limit !== undefined
+      const page = Math.max(1, Number.parseInt(query.page ?? '1', 10) || 1)
+      const limit = Math.min(100, Math.max(1, Number.parseInt(query.limit ?? '25', 10) || 25))
       const builder = app.db('tasks as t')
         .join('vpn_nodes as n', 't.node_id', 'n.id')
         .select('t.*', 'n.hostname as node_hostname')
         .orderBy('t.created_at', 'desc')
-        .limit(100)
 
       if (query.nodeId) builder.where('t.node_id', query.nodeId)
       if (query.status) builder.where('t.status', query.status)
 
       // `t.*` includes the raw payload, which for generate_client_cert carries
       // the private-key passphrase. Mask it before it leaves the API.
-      const rows = await builder
-      return redactTaskRows(rows)
+      // Preserve the legacy array response unless a caller explicitly asks for
+      // pagination. Agents and existing scripts use the unpaginated endpoint.
+      if (!paginated) {
+        const rows = await builder.limit(100)
+        return redactTaskRows(rows)
+      }
+
+      const rows = await builder.clone().limit(limit).offset((page - 1) * limit)
+      const countBuilder = app.db('tasks as t')
+      if (query.nodeId) countBuilder.where('t.node_id', query.nodeId)
+      if (query.status) countBuilder.where('t.status', query.status)
+      const totalRow = await countBuilder.count<{ count: string }>('* as count').first()
+      const total = Number(totalRow?.count ?? 0)
+
+      const statusBuilder = app.db('tasks as t').select('t.status').count<{ count: string }>('* as count').groupBy('t.status')
+      if (query.nodeId) statusBuilder.where('t.node_id', query.nodeId)
+      const statusRows = await statusBuilder as unknown as Array<{ status: string; count: string | number }>
+      const statusCounts = Object.fromEntries(statusRows.map((row) => [row.status, Number(row.count)]))
+
+      return {
+        tasks: redactTaskRows(rows),
+        pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+        status_counts: statusCounts,
+      }
     },
   )
 

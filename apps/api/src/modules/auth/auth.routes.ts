@@ -39,7 +39,9 @@ const authRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(401).send({ error: 'Unauthorized', message: 'Invalid credentials' })
       }
 
-      // Update last_login
+      // Record the latest successful web authentication. Page/API requests do
+      // not update this value; otherwise an open dashboard would obscure when
+      // the user last actually signed in.
       const now = new Date()
       await app.db('users').where({ id: user.id }).update({ last_login: now })
 
