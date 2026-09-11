@@ -31,6 +31,7 @@ export async function revokeExpiredCertificates(db: Knex): Promise<RevocationRes
         'c.user_id',
         'c.node_id',
         'c.client_cert',
+        'c.common_name',
         'c.expires_at',
         'u.username',
         'n.hostname as node_hostname',
@@ -62,9 +63,9 @@ export async function revokeExpiredCertificates(db: Knex): Promise<RevocationRes
               user_id: cert.user_id,
               node_id: cert.node_id,
               revoked_cert: cert.client_cert,
-              reason: 'Certificate expired',
               revoked_by: null,
               revoked_at: new Date(),
+              reason: 'Certificate expired',
             })
           } catch {
             // Ignore duplicate revocation entries
@@ -79,7 +80,7 @@ export async function revokeExpiredCertificates(db: Knex): Promise<RevocationRes
             node_id: cert.node_id,
             action: 'revoke_vpn_user',
             payload: JSON.stringify({
-              username: cert.username,
+              username: cert.common_name || cert.username,
               client_cert: cert.client_cert,
             }),
             status: 'pending',

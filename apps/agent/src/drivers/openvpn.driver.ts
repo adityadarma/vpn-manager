@@ -722,6 +722,10 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
       await this.disconnectClient(username)
     } catch { /* client may not be connected */ }
 
+    try {
+      await this.deleteClientConfig(username)
+    } catch { /* ccd might not exist */ }
+
     console.log(`[openvpn] Certificate revoked for: ${username}`)
     return { username, stdout: stdout.trim() }
   }

@@ -35,7 +35,7 @@ function UsersPage() {
   const [selectedUserForCert, setSelectedUserForCert] = useState<User | null>(null)
   const [selectedUserForCertList, setSelectedUserForCertList] = useState<User | null>(null)
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<User | null>(null)
-  const [certForm, setCertForm] = useState({ nodeId: '', passwordProtected: false, password: '', validDays: 0 })
+  const [certForm, setCertForm] = useState({ nodeId: '', credentialName: '', passwordProtected: false, password: '', validDays: 0 })
   const [form, setForm] = useState<CreateUserPayload>({ username: '', email: '', password: '', role: 'user' })
   const [editForm, setEditForm] = useState<EditUserPayload>({ email: '', password: '', role: 'user', isActive: true })
   const [search, setSearch] = useState('')
@@ -132,14 +132,15 @@ function UsersPage() {
   })
 
   const generateCertMutation = useMutation({
-    mutationFn: ({ userId, nodeId, password, passwordProtected, validDays }: { userId: string; nodeId: string; password?: string; passwordProtected: boolean; validDays: number | null }) =>
-      api.post(`/api/v1/users/${userId}/generate-cert`, { nodeId, password, passwordProtected, validDays: validDays === 0 ? null : validDays }),
+    mutationFn: ({ userId, nodeId, credentialName, password, passwordProtected, validDays }: { userId: string; nodeId: string; credentialName: string; password?: string; passwordProtected: boolean; validDays: number | null }) =>
+      api.post(`/api/v1/users/${userId}/generate-cert`, { nodeId, credentialName: credentialName.trim(), password, passwordProtected, validDays: validDays === 0 ? null : validDays }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['users'] })
+      qc.invalidateQueries({ queryKey: ['user-certificates'] })
       qc.invalidateQueries({ queryKey: ['expiring-certs'] })
       setShowCertModal(false)
       setSelectedUserForCert(null)
-      setCertForm({ nodeId: '', passwordProtected: false, password: '', validDays: 0 })
+      setCertForm({ nodeId: '', credentialName: '', passwordProtected: false, password: '', validDays: 0 })
       toast.success('Certificate generated successfully')
     },
     onError: (e: Error) => toast.error(e.message),
@@ -758,7 +759,7 @@ function UsersPage() {
                 onClick={() => {
                   setShowCertModal(false)
                   setSelectedUserForCert(null)
-                  setCertForm({ nodeId: '', passwordProtected: false, password: '', validDays: 0 })
+                  setCertForm({ nodeId: '', credentialName: '', passwordProtected: false, password: '', validDays: 0 })
                 }}
                 className="p-1 text-muted-foreground/70 hover:text-muted-foreground rounded-md"
               >
@@ -772,6 +773,10 @@ function UsersPage() {
                   toast.error('Please select a node')
                   return
                 }
+                if (!certForm.credentialName.trim()) {
+                  toast.error('Please enter a credential / device name')
+                  return
+                }
                 if (certForm.passwordProtected && !certForm.password) {
                   toast.error('Please enter a password')
                   return
@@ -779,6 +784,7 @@ function UsersPage() {
                 generateCertMutation.mutate({
                   userId: selectedUserForCert.id,
                   nodeId: certForm.nodeId,
+                  credentialName: certForm.credentialName,
                   password: certForm.passwordProtected ? certForm.password : undefined,
                   passwordProtected: certForm.passwordProtected,
                   validDays: certForm.validDays
@@ -806,6 +812,24 @@ function UsersPage() {
                 {nodes.filter((n: any) => n.status === 'online').length === 0 && (
                   <p className="text-xs text-amber-600 mt-1">⚠️ No online nodes available</p>
                 )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1.5">
+                  Credential / Device Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={certForm.credentialName}
+                  onChange={(e) => setCertForm({ ...certForm, credentialName: e.target.value })}
+                  placeholder="e.g. Laptop, iPhone, Work-PC"
+                  required
+                  maxLength={100}
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-card text-card-foreground"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Unique name for this device/credential on this node (allows multiple certificates).
+                </p>
               </div>
 
               {(() => {
@@ -902,10 +926,9 @@ function UsersPage() {
                 )
               })()}
 
-              <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
-                <p className="text-xs text-blue-800">
-                  <strong>Note:</strong> This will generate a new client certificate and private key.
-                  Any existing certificate for this user will be revoked.
+              <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3">
+                <p className="text-xs text-blue-700 dark:text-blue-300">
+                  <strong>Note:</strong> Multiple certificates can be created for the same user on one node using different credential names.
                 </p>
               </div>
 
@@ -916,7 +939,7 @@ function UsersPage() {
                   onClick={() => {
                     setShowCertModal(false)
                     setSelectedUserForCert(null)
-                    setCertForm({ nodeId: '', passwordProtected: false, password: '', validDays: 0 })
+                    setCertForm({ nodeId: '', credentialName: '', passwordProtected: false, password: '', validDays: 0 })
                   }}
                   className="flex-1"
                 >
@@ -995,7 +1018,7 @@ function UsersPage() {
                           {/* Header section with badges */}
                           <div className="flex flex-wrap items-center gap-3 mb-4">
                             <h3 className="text-lg font-bold text-foreground">
-                              {cert.node_hostname}
+                              {cert.credential_name || 'default'}
                             </h3>
 
                             <div className="flex items-center gap-2">
@@ -1026,7 +1049,15 @@ function UsersPage() {
                           {/* Data Grid */}
                           <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
                             <div className="flex flex-col">
-                              <span className="text-xs font-semibold text-muted-foreground/70 uppercase tracking-widest mb-0.5">IP Address</span>
+                              <span className="text-xs font-semibold text-muted-foreground/70 uppercase tracking-widest mb-0.5">VPN IP</span>
+                              <span className="font-mono font-medium text-emerald-600 dark:text-emerald-400">{cert.vpn_ip || 'N/A'}</span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-xs font-semibold text-muted-foreground/70 uppercase tracking-widest mb-0.5">Node</span>
+                              <span className="font-medium text-foreground">{cert.node_hostname}</span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-xs font-semibold text-muted-foreground/70 uppercase tracking-widest mb-0.5">Server IP</span>
                               <span className="font-mono text-foreground">{cert.node_ip || 'N/A'}</span>
                             </div>
                             <div className="flex flex-col">
@@ -1096,7 +1127,7 @@ function UsersPage() {
                               onClick={() => {
                                 setShowCertListModal(false)
                                 handleOpenCertModal(selectedUserForCertList)
-                                setCertForm(prev => ({ ...prev, nodeId: cert.node_id }))
+                                setCertForm(prev => ({ ...prev, nodeId: cert.node_id, credentialName: cert.credential_name || '' }))
                               }}
                               className="w-32 justify-start shadow-sm"
                             >

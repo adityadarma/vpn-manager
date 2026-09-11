@@ -222,7 +222,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
   )
 
   // POST /api/v1/users/:id/generate-cert
-  app.post<{ Params: { id: string }; Body: { nodeId: string; credentialName?: string; password?: string; passwordProtected?: boolean; validDays?: number | null } }>(
+  app.post<{ Params: { id: string }; Body: { nodeId: string; credentialName: string; password?: string; passwordProtected?: boolean; validDays?: number | null } }>(
     '/users/:id/generate-cert',
     {
       onRequest: [app.authenticate],
@@ -232,10 +232,10 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         security: [{ bearerAuth: [] }],
         body: {
           type: 'object',
-          required: ['nodeId'],
+          required: ['nodeId', 'credentialName'],
           properties: {
             nodeId: { type: 'string', format: 'uuid' },
-            credentialName: { type: 'string', description: 'Unique device label for this credential on the node' },
+            credentialName: { type: 'string', minLength: 1, maxLength: 100, description: 'Unique device label for this credential on the node' },
             password: { type: 'string', description: 'Password to encrypt private key (optional)' },
             passwordProtected: { type: 'boolean', description: 'Whether to password-protect the key', default: false },
             validDays: { type: ['number', 'null'], description: 'Certificate validity in days (null = unlimited)', default: null }
@@ -263,9 +263,9 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       }
       const membership = await app.db('user_groups').where({ user_id: id }).first('group_id')
 
-      const label = credentialName?.trim() || 'default'
-      if (label.length === 0 || label.length > 100 || /[\r\n\u0000]/.test(label)) {
-        return reply.status(400).send({ error: 'Bad Request', message: 'credentialName must be a single line up to 100 characters' })
+      const label = credentialName?.trim()
+      if (!label || label.length === 0 || label.length > 100 || /[\r\n\u0000]/.test(label)) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'credentialName is required and must be a single line up to 100 characters' })
       }
       const existingCredential = await app.db('user_node_certificates')
         .where({ user_id: id, node_id: nodeId, credential_name: label, is_revoked: false })
@@ -712,7 +712,8 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       const user = await app.db('users').where({ id }).first()
       if (!user) return reply.status(404).send({ error: 'Not Found', message: 'User not found' })
 
-      const revokeError = await revokeCertificateOnNode(certificate.node_id, user.username, certificate.client_cert)
+      const credentialCommonName = certificate.common_name || user.username
+      const revokeError = await revokeCertificateOnNode(certificate.node_id, credentialCommonName, certificate.client_cert)
       if (revokeError) {
         return reply.status(502).send({
           error: 'Certificate revocation failed',

@@ -370,7 +370,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
               node_id: request.params.id,
               action: 'revoke_vpn_user',
               payload: JSON.stringify({ 
-                username: userObj.username,
+                username: cert.common_name || userObj.username,
                 client_cert: cert.client_cert 
               }),
               status: 'pending',
