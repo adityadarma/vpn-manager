@@ -25,7 +25,7 @@ FROM base AS builder
 WORKDIR /app
 
 # Copy dependency files for better caching
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml turbo.json tsconfig.base.json ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml turbo.json tsconfig.base.json .npmrc* ./
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/ui/package.json ./packages/ui/
 COPY packages/db/package.json ./packages/db/
@@ -51,7 +51,7 @@ RUN pnpm --filter @vpn/api build
 
 # Deploy production dependencies for API
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
-  pnpm deploy --filter @vpn/api --prod /prod/api
+  pnpm deploy --legacy --filter @vpn/api --prod /prod/api
 
 # Copy built API bundle
 RUN cp -r /app/apps/api/dist /prod/api/dist

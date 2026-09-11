@@ -10,7 +10,7 @@ FROM base AS builder
 WORKDIR /app
 
 # Copy only dependency files first for better caching
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json turbo.json* ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json turbo.json* .npmrc* ./
 COPY apps/agent/package.json ./apps/agent/
 COPY packages/shared/package.json ./packages/shared/
 
@@ -29,7 +29,7 @@ RUN pnpm --filter @vpn/agent build
 # Isolate app with only its required dependencies for a leaner image
 FROM builder AS production-builder
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
-    pnpm deploy --filter @vpn/agent --prod /prod/agent
+    pnpm deploy --legacy --filter @vpn/agent --prod /prod/agent
 
 # Alpine's iptables package ships only the nft backend. Build a musl-compatible
 # legacy backend for hosts that still route VPN traffic through iptables-legacy.
