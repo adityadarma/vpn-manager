@@ -18,7 +18,7 @@
 # and removed on exit.
 set -euo pipefail
 
-COREDNS_IMAGE="coredns/coredns:1.12.0"
+COREDNS_IMAGE="coredns/coredns:1.14.7"
 PROBE_IMAGE="alpine:3.20"
 SERVER="managed-dns-e2e-$RANDOM"
 GENERATED_DIR=$(mktemp -d)

@@ -97,13 +97,13 @@ function emitBlockedBlock(templates: string[], patterns: string[], zoneArgs: str
  * orders plugins by its own plugin.cfg, not by Corefile order, and `template`
  * runs before `hosts`, `file` and `forward`. A block without `fallthrough`
  * therefore answers *every* query for the listener — verified against
- * coredns/coredns:1.12.0, where it turned all lookups into SERVFAIL.
+ * coredns/coredns:1.14.7, where it turned all lookups into SERVFAIL.
  *
  * `scope=internal` policies are restricted to the group's own declared zones
  * via an explicit zone argument on the `template` line — CoreDNS accepts a
  * zone list narrower than the enclosing server block's zones, restricting
  * the rule's effect to just those zones instead of the whole listener.
- * Verified on coredns/coredns:1.12.0: a `template` scoped to `corp.internal`
+ * Verified on coredns/coredns:1.14.7: a `template` scoped to `corp.internal`
  * left unrelated public lookups on the same listener untouched.
  */
 function policyTemplates(group: DnsGroup): string[] {
@@ -188,7 +188,7 @@ function zoneNameFromPattern(pattern: string): string {
  * name, so declaring the group's internal zones plus its allow-listed
  * domains as one block's explicit zones, and leaving `.` for a second block
  * that always answers NXDOMAIN, reproduces "allow-list, deny everything
- * else" with zero custom code. Verified on coredns/coredns:1.12.0: a name
+ * else" with zero custom code. Verified on coredns/coredns:1.14.7: a name
  * inside a declared zone resolves via that block's `forward`, and any other
  * name falls to the `.` block's blanket NXDOMAIN.
  *
@@ -209,7 +209,7 @@ function buildGroupBlocks(group: DnsGroup, includeHealth: boolean): string[] {
     const blocks: string[] = []
     // `.:port` plus an explicit `bind` is required. Writing `ip:port {` makes
     // CoreDNS treat the address as a *zone name* instead of a listen address,
-    // which answers REFUSED for everything — verified on coredns/coredns:1.12.0.
+    // which answers REFUSED for everything — verified on coredns/coredns:1.14.7.
     blocks.push(`.:${group.listener_port} {`)
     blocks.push(`    bind ${group.listener_ip}`)
     blocks.push('    errors')

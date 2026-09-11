@@ -3,7 +3,7 @@
 # CoreDNS reference configuration for Managed DNS policy enforcement.
 #
 # Two properties are load-bearing and were verified against
-# coredns/coredns:1.12.0:
+# coredns/coredns:1.14.7:
 #
 #   1. A listener must be declared as `.:port` plus an explicit `bind`.
 #      Writing `10.20.10.53:53 {` makes CoreDNS treat the address as a zone
