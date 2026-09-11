@@ -15,10 +15,7 @@ export default fp(async (app, options: SwaggerPluginOptions) => {
       info: {
         title: 'VPN Manager API',
         description: 'VPN Management API',
-        // Keep in sync with package.json on release. Not imported from there
-        // because the API ships as a bundled dist where package.json is not a
-        // reliable relative path.
-        version: '1.1.7',
+        version: '2.0.0',
       },
       tags: [
         { name: 'auth', description: 'Authentication' },
