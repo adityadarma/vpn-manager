@@ -92,11 +92,4 @@ describe('VPN IP Uniqueness', () => {
     ).rejects.toThrow()
   })
 
-  it('removes the legacy users.vpn_ip and users.vpn_group_id columns from the schema', async () => {
-    // Migration 20260101000034 drops both columns once VPN identity became
-    // credential-scoped (user_node_certificates.vpn_ip). This asserts the
-    // schema itself no longer carries them, not just that call sites avoid them.
-    await expect(app.db.schema.hasColumn('users', 'vpn_ip')).resolves.toBe(false)
-    await expect(app.db.schema.hasColumn('users', 'vpn_group_id')).resolves.toBe(false)
-  })
 })

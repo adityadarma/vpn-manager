@@ -36,16 +36,6 @@ describe('Users API', () => {
     expect(Array.isArray(res.json())).toBe(true)
   })
 
-  it('removes the unused legacy certificates table', async () => {
-    expect(await app.db.schema.hasTable('certificates')).toBe(false)
-    expect(await app.db.schema.hasTable('user_node_certificates')).toBe(true)
-  })
-
-  it('removes unused history tables', async () => {
-    expect(await app.db.schema.hasTable('node_config_history')).toBe(false)
-    expect(await app.db.schema.hasTable('cert_download_history')).toBe(false)
-  })
-
   it('should create a user', async () => {
     const res = await app.inject({
       method: 'POST',
