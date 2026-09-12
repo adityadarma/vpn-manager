@@ -66,7 +66,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         .leftJoin('groups as g', 'ug.group_id', 'g.id')
         .select(
           'u.id', 'u.username', 'u.email', 'u.role', 'u.is_active', 
-          'u.last_login', 'u.last_vpn_connect', 'u.created_at', 'u.updated_at',
+          'u.last_login', 'u.created_at', 'u.updated_at',
           groupConcatExpr
         )
         .groupBy(
@@ -76,7 +76,6 @@ const userRoutes: FastifyPluginAsync = async (app) => {
           'u.role',
           'u.is_active',
           'u.last_login',
-          'u.last_vpn_connect',
           'u.created_at',
           'u.updated_at',
         )
@@ -115,7 +114,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
     async (request, reply) => {
       const user = await app.db('users')
         .where({ id: request.params.id })
-        .select('id', 'username', 'email', 'role', 'is_active', 'last_login', 'last_vpn_connect', 'created_at', 'updated_at')
+        .select('id', 'username', 'email', 'role', 'is_active', 'last_login', 'created_at', 'updated_at')
         .where({ id: request.params.id })
         .first()
       if (!user) return reply.status(404).send({ error: 'Not Found', message: 'User not found' })
@@ -213,6 +212,51 @@ const userRoutes: FastifyPluginAsync = async (app) => {
 
       if (input.password) {
         updates['password'] = await bcrypt.hash(input.password, 10)
+      }
+
+      if (input.isActive === false && user.is_active) {
+        const now = new Date()
+        const activeCredentials = await app.db('user_node_certificates')
+          .where({ user_id: id, is_revoked: false })
+          .select('id', 'node_id', 'common_name', 'client_cert')
+
+        // Account disable must cut off every device. Queue node work without
+        // waiting: an offline node receives the pending revocation on return.
+        await app.db.transaction(async (trx) => {
+          for (const credential of activeCredentials) {
+            if (credential.client_cert) {
+              await trx('tasks').insert({
+                id: uuidv7(),
+                node_id: credential.node_id,
+                action: 'revoke_vpn_user',
+                payload: JSON.stringify({ username: credential.common_name || user.username, client_cert: credential.client_cert }),
+                status: 'pending',
+                created_at: now,
+              })
+              await trx('cert_revocations').insert({
+                id: uuidv7(),
+                user_id: id,
+                node_id: credential.node_id,
+                revoked_cert: credential.client_cert,
+                reason: 'User account disabled',
+                revoked_by: (request.user as { id: string }).id,
+                revoked_at: now,
+              })
+            }
+          }
+
+          await trx('user_node_certificates').where({ user_id: id, is_revoked: false }).update({
+            is_revoked: true,
+            revoked_at: now,
+            revoked_by: (request.user as { id: string }).id,
+            revoke_reason: 'User account disabled',
+            updated_at: now,
+          })
+          await trx('vpn_sessions').where({ user_id: id }).whereNull('disconnected_at').update({
+            disconnected_at: now,
+            disconnect_reason: 'user_disabled',
+          })
+        })
       }
 
       // Group membership controls credential policy; IP assignment happens when a
@@ -669,13 +713,15 @@ const userRoutes: FastifyPluginAsync = async (app) => {
           'user_node_certificates.common_name',
           'user_node_certificates.vpn_ip',
           'vpn_nodes.hostname as node_hostname',
-          'vpn_nodes.ip_address as node_ip',
-          'vpn_nodes.status as node_status',
+           'vpn_nodes.ip_address as node_ip',
+           'vpn_nodes.status as node_status',
+           'vpn_nodes.vpn_type as node_vpn_type',
           'user_node_certificates.password_protected',
           'user_node_certificates.generated_at',
           'user_node_certificates.expires_at',
-          'user_node_certificates.last_downloaded_at',
-          'user_node_certificates.download_count',
+           'user_node_certificates.last_downloaded_at',
+           'user_node_certificates.download_count',
+           'user_node_certificates.last_vpn_connect',
           'user_node_certificates.is_revoked',
           'user_node_certificates.revoked_at',
           'user_node_certificates.revoke_reason'
@@ -872,16 +918,8 @@ const userRoutes: FastifyPluginAsync = async (app) => {
             download_count: app.db.raw('download_count + 1')
           })
 
-        await app.db('cert_download_history').insert({
-          id: uuidv7(),
-          user_id: id,
-          node_id: node.id,
-          ip_address: getClientIp(request),
-          user_agent: request.headers['user-agent'] || null,
-          downloaded_at: new Date()
-        })
-
-        // Also push to audit_logs for visibility in global logs
+        // Audit logs retain the download event without duplicating it in a
+        // dedicated history table.
         await logAudit(app, {
           userId: id,
           username: user.username,
@@ -970,7 +1008,11 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         let allowedIps = '0.0.0.0/0, ::/0' // Full mode
         
         if (node.tunnel_mode === 'split') {
-          allowedIps = [...new Set(splitCidrs)].join(', ')
+          const configuredAllowedIps = (node.wireguard_allowed_ips || '')
+            .split(',')
+            .map((cidr: string) => cidr.trim())
+            .filter(Boolean)
+          allowedIps = [...new Set([...splitCidrs, ...configuredAllowedIps])].join(', ')
         }
 
         // For WireGuard: prioritise explicit endpoint_port, then custom port, then fallback to standard 51820.

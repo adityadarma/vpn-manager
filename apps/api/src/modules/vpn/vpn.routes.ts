@@ -216,8 +216,9 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
           geo_country: geoCountry,
         })
 
-        // Update user's last_vpn_connect time to reflect VPN usage
-        await trx('users').where({ id: user.id }).update({ last_vpn_connect: new Date() })
+        if (credential.credential_id) {
+          await trx('user_node_certificates').where({ id: credential.credential_id }).update({ last_vpn_connect: new Date() })
+        }
       })
 
       app.log.info(`[vpn/connect] ${user.username} connected — session ${sessionId}, IP ${vpn_ip}, device: ${resolvedDeviceName ?? 'unknown'}`)

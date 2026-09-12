@@ -280,6 +280,20 @@ const UpdateServerConfigPayload = z
       )
       .optional()
       .nullable(),
+    wireguard_allowed_ips: z
+      .string()
+      .max(1000)
+      .refine(
+        (v) =>
+          v
+            .split(',')
+            .map((r) => r.trim())
+            .filter(Boolean)
+            .every((r) => /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/.test(r)),
+        'wireguard_allowed_ips must be a comma-separated list of IPv4 CIDRs',
+      )
+      .optional()
+      .nullable(),
     cipher: CipherSchema,
     auth_digest: AuthDigestSchema.optional(),
     compression: CompressionSchema,

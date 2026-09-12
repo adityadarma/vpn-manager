@@ -7,6 +7,7 @@ import { secretsMatchTrimmed } from '../../utils/secret-compare'
 import geoip from 'geoip-lite'
 import { enqueueApplyPolicies } from '../policies/policies.routes'
 import { enqueueNodeDnsSync } from '../../services/managed-dns'
+import { cidrToRoute } from '../../services/ip-pool'
 
 interface NodeConfig {
   port: number
@@ -16,6 +17,7 @@ interface NodeConfig {
   vpn_netmask: string
   dns_servers: string
   push_routes: string
+  wireguard_allowed_ips?: string
   cipher: string
   auth_digest: string
   compression: string
@@ -23,6 +25,8 @@ interface NodeConfig {
   keepalive_timeout: number
   max_clients: number
   custom_push_directives?: string
+  network_push_directives?: string
+  managed_dns_directives?: string
   firewall_engine: string
 }
 
@@ -258,6 +262,21 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
     async (request, reply) => {
       const config = await app.db('vpn_nodes').where({ id: request.params.id }).first()
       if (!config) return reply.status(404).send({ error: 'Not Found', message: 'Node not found' })
+
+      const networkCidrs = await app.db('node_networks as nn')
+        .join('networks as n', 'nn.network_id', 'n.id')
+        .where('nn.node_id', config.id)
+        .orderBy('n.name')
+        .pluck('n.cidr') as string[]
+
+      const managedDnsListeners = config.managed_dns_enabled && config.dns_sync_status === 'healthy'
+        ? await app.db('group_node_dns_settings as s')
+          .join('groups as g', 's.group_id', 'g.id')
+          .where({ 's.node_id': config.id, 's.enabled': true })
+          .whereNotNull('s.listener_ip')
+          .select('g.name as group_name', 's.listener_ip')
+          .orderBy('g.name') as Array<{ group_name: string; listener_ip: string }>
+        : []
       
       return {
         port: config.port,
@@ -267,6 +286,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         vpn_netmask: config.vpn_netmask,
         dns_servers: config.dns_servers,
         push_routes: config.push_routes,
+        wireguard_allowed_ips: config.wireguard_allowed_ips ?? '',
         cipher: config.cipher,
         auth_digest: config.auth_digest,
         compression: config.compression,
@@ -274,6 +294,14 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         keepalive_timeout: config.keepalive_timeout,
         max_clients: config.max_clients,
         custom_push_directives: config.custom_push_directives ?? '',
+        // Network routes are managed from the Networks page, not persisted as
+        // custom directives, so unassigning a network removes them immediately.
+        network_push_directives: networkCidrs.map(cidrToRoute).join('\n'),
+        // Managed DNS is selected per client group during profile generation;
+        // never push a group's resolver globally from server.conf.
+        managed_dns_directives: managedDnsListeners
+          .map(({ group_name, listener_ip }) => `${group_name}: dhcp-option DNS ${listener_ip}`)
+          .join('\n'),
         firewall_engine: config.firewall_engine ?? 'iptables',
       }
     },
@@ -293,6 +321,13 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         .whereNotNull('vpn_subnet')
         .pluck('vpn_subnet') as string[]
 
+      const networkCidrs = await app.db('node_networks as nn')
+        .join('networks as n', 'nn.network_id', 'n.id')
+        .where('nn.node_id', node.id)
+        .pluck('n.cidr') as string[]
+
+      const managedSubnets = [...new Set([...groupSubnets, ...networkCidrs])]
+
       // This body is written straight into the node's server.conf by the agent,
       // on a server running with `script-security 2`, so directives like `up`
       // or `plugin` would execute commands. Validate with the same schema
@@ -300,7 +335,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       // is never persisted even though the task would have been rejected.
       const validation = validateTaskPayload('update_server_config', {
         ...request.body,
-        group_subnets: groupSubnets,
+        group_subnets: managedSubnets,
       })
       if (!validation.ok) {
         app.log.warn(
@@ -323,6 +358,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         vpn_netmask: config.vpn_netmask,
         dns_servers: config.dns_servers,
         push_routes: config.push_routes,
+        wireguard_allowed_ips: config.wireguard_allowed_ips ?? null,
         cipher: config.cipher,
         auth_digest: config.auth_digest,
         compression: config.compression,
@@ -703,10 +739,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
                   bytes_received: client.bytesReceived,
                   last_activity_at: new Date(),
                 })
-                await app.db('users')
-                  .where({ id: userId })
-                  .whereNull('last_vpn_connect')
-                  .update({ last_vpn_connect: new Date(client.connectedSince) })
+                await app.db('user_node_certificates').where({ id: credential.id }).update({ last_vpn_connect: new Date(client.connectedSince) })
               } else {
               app.log.info(`[heartbeat] Creating new session for user ${userId} via WireGuard heartbeat`)
               
@@ -740,12 +773,8 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
                 geo_country: geoCountry,
               })
               
-               // This fallback discovers an already-connected peer through the
-               // heartbeat. Preserve its actual connection time rather than the
-               // later heartbeat time so "Last Connect (VPN)" remains accurate.
-               await app.db('users').where({ id: userId }).update({
-                 last_vpn_connect: new Date(client.connectedSince),
-               })
+                // Preserve the peer's actual connection time on its credential.
+                await app.db('user_node_certificates').where({ id: credential.id }).update({ last_vpn_connect: new Date(client.connectedSince) })
 
               // Get username for audit
               const userObj = await app.db('users').where('id', userId).first()
@@ -772,11 +801,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
                 last_activity_at: new Date(),
               })
               
-              // Ensure last_vpn_connect is populated if it was null before our update
-              await app.db('users')
-                .where({ id: userId })
-                .whereNull('last_vpn_connect')
-                .update({ last_vpn_connect: new Date(client.connectedSince) })
+              await app.db('user_node_certificates').where({ id: credential.id }).update({ last_vpn_connect: new Date(client.connectedSince) })
             }
           }
         }
@@ -870,10 +895,9 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
                 bytes_received: client.bytesReceived ?? concurrentSession.bytes_received,
                 last_activity_at: new Date(),
               })
-              await app.db('users')
-                .where({ id: user.id })
-                .whereNull('last_vpn_connect')
-                .update({ last_vpn_connect: client.connectedSince ? new Date(client.connectedSince) : new Date() })
+              if (resolvedCredential.credential_id) {
+                await app.db('user_node_certificates').where({ id: resolvedCredential.credential_id }).update({ last_vpn_connect: client.connectedSince ? new Date(client.connectedSince) : new Date() })
+              }
             } else {
               app.log.info(`[heartbeat] Creating OpenVPN session for ${commonName} (${client.virtualAddress})`)
               
@@ -905,9 +929,9 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
                 geo_city: geoCity,
                 geo_country: geoCountry,
               })
-              await app.db('users').where({ id: user.id }).update({
-                last_vpn_connect: client.connectedSince ? new Date(client.connectedSince) : new Date(),
-              })
+              if (resolvedCredential.credential_id) {
+                await app.db('user_node_certificates').where({ id: resolvedCredential.credential_id }).update({ last_vpn_connect: client.connectedSince ? new Date(client.connectedSince) : new Date() })
+              }
               await logAudit(app, {
                 userId: user.id,
                 username: user.username,
@@ -925,10 +949,9 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
               bytes_received: client.bytesReceived ?? existingSession.bytes_received,
               last_activity_at: new Date(),
             })
-            await app.db('users')
-              .where({ id: user.id })
-              .whereNull('last_vpn_connect')
-              .update({ last_vpn_connect: client.connectedSince ? new Date(client.connectedSince) : new Date() })
+            if (resolvedCredential.credential_id) {
+              await app.db('user_node_certificates').where({ id: resolvedCredential.credential_id }).update({ last_vpn_connect: client.connectedSince ? new Date(client.connectedSince) : new Date() })
+            }
           }
         }
 

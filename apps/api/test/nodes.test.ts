@@ -202,6 +202,48 @@ describe('Nodes API', () => {
       expect(res.json().taskId).toBeDefined()
     })
 
+    it('shows assigned network routes in the node configuration', async () => {
+      const networkId = 'network-for-node-config'
+      await app.db('networks').insert({ id: networkId, name: 'AWS', cidr: '172.31.0.0/20' })
+      await app.db('node_networks').insert({ node_id: nodeId, network_id: networkId })
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/v1/nodes/${nodeId}/config`,
+        headers: { Cookie: adminCookie },
+      })
+
+      expect(res.statusCode).toBe(200)
+      expect(res.json().network_push_directives).toBe('route 172.31.0.0 255.255.240.0')
+    })
+
+    it('shows healthy Managed DNS listeners without globally pushing them', async () => {
+      const groupId = 'group-for-managed-dns-config'
+      await app.db('groups').insert({ id: groupId, name: 'Engineering', description: null })
+      await app.db('group_node_dns_settings').insert({
+        group_id: groupId,
+        node_id: nodeId,
+        enabled: true,
+        vpn_subnet: '10.20.0.0/24',
+        listener_ip: '10.20.0.53',
+        listener_port: 53,
+        upstreams: JSON.stringify(['1.1.1.1', '8.8.8.8']),
+      })
+      await app.db('vpn_nodes').where({ id: nodeId }).update({
+        managed_dns_enabled: true,
+        dns_sync_status: 'healthy',
+      })
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/v1/nodes/${nodeId}/config`,
+        headers: { Cookie: adminCookie },
+      })
+
+      expect(res.statusCode).toBe(200)
+      expect(res.json().managed_dns_directives).toBe('Engineering: dhcp-option DNS 10.20.0.53')
+    })
+
     it('rejects a script-executing custom_push_directive', async () => {
       const res = await putConfig({ custom_push_directives: 'up /tmp/evil.sh' })
       expect(res.statusCode).toBe(400)

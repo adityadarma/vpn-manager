@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/_layout/nodes')({
   component: NodesPage,
@@ -27,6 +27,7 @@ interface NodeConfig {
   vpn_netmask: string
   dns_servers: string
   push_routes: string
+  wireguard_allowed_ips?: string
   cipher: string
   auth_digest: string
   compression: string
@@ -34,6 +35,8 @@ interface NodeConfig {
   keepalive_timeout: number
   max_clients: number
   custom_push_directives: string
+  network_push_directives?: string
+  managed_dns_directives?: string
   firewall_engine: string
 }
 
@@ -47,7 +50,7 @@ function NodesPage() {
   const [form, setForm] = useState<NodeForm>({ hostname: '', ipAddress: '', region: '' })
   const [registeredNode, setRegisteredNode] = useState<{ id: string; token: string } | null>(null)
   const [copied, setCopied] = useState(false)
-  const [configNode, setConfigNode] = useState<string | null>(null)
+  const [configNode, setConfigNode] = useState<VpnNode | null>(null)
   const [editNode, setEditNode] = useState<VpnNode | null>(null)
   const [viewFirewallNode, setViewFirewallNode] = useState<VpnNode | null>(null)
   const [editForm, setEditForm] = useState<NodeForm>({ hostname: '', ipAddress: '', region: '', managedDnsEnabled: false })
@@ -119,11 +122,11 @@ function NodesPage() {
     onError: (e: Error) => toast.error(e.message),
   })
 
-  const openConfigModal = async (nodeId: string) => {
+  const openConfigModal = async (node: VpnNode) => {
     try {
-      const config = await api.get<NodeConfig>(`/api/v1/nodes/${nodeId}/config`)
+      const config = await api.get<NodeConfig>(`/api/v1/nodes/${node.id}/config`)
       setNodeConfig(config)
-      setConfigNode(nodeId)
+      setConfigNode(node)
     } catch (error: any) {
       toast.error(error.message || 'Failed to load configuration')
     }
@@ -322,7 +325,7 @@ function NodesPage() {
                     <Edit className="h-4 w-4" />
                   </button>
                   <button
-                    onClick={() => openConfigModal(node.id)}
+                    onClick={() => openConfigModal(node)}
                     className="p-2 text-muted-foreground hover:text-emerald-600 hover:bg-emerald-500/10 rounded-lg transition-colors"
                     title="Configure"
                   >
@@ -561,44 +564,82 @@ function NodesPage() {
             <form
               onSubmit={e => {
                 e.preventDefault()
-                updateConfigMutation.mutate({ nodeId: configNode, config: nodeConfig })
+                updateConfigMutation.mutate({ nodeId: configNode.id, config: nodeConfig })
               }}
               className="p-5 space-y-4 max-h-[70vh] overflow-y-auto"
             >
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">Port</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">Port</label>
                   <input
                     type="number"
                     value={nodeConfig.port}
                     onChange={e => setNodeConfig({ ...nodeConfig, port: parseInt(e.target.value) })}
                     className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
+                  </div>
+                  {configNode.vpn_type === 'openvpn' ? (
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-1.5">Protocol</label>
+                      <select
+                        value={nodeConfig.protocol}
+                        onChange={e => setNodeConfig({ ...nodeConfig, protocol: e.target.value as 'udp' | 'tcp' })}
+                        className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      >
+                        <option value="udp">UDP</option>
+                        <option value="tcp">TCP</option>
+                      </select>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-1.5">Protocol</label>
+                      <div className="px-3 py-2 border border-border rounded-lg text-sm bg-muted text-muted-foreground">UDP (required by WireGuard)</div>
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">Protocol</label>
-                  <select
-                    value={nodeConfig.protocol}
-                    onChange={e => setNodeConfig({ ...nodeConfig, protocol: e.target.value as 'udp' | 'tcp' })}
-                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  >
-                    <option value="udp">UDP</option>
-                    <option value="tcp">TCP</option>
-                  </select>
-                </div>
-              </div>
 
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1.5">Tunnel Mode</label>
-                <select
-                  value={nodeConfig.tunnel_mode}
-                  onChange={e => setNodeConfig({ ...nodeConfig, tunnel_mode: e.target.value as 'full' | 'split' })}
-                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                >
-                  <option value="full">Full Tunnel (All traffic through VPN)</option>
-                  <option value="split">Split Tunnel (Only specific routes)</option>
-                </select>
-              </div>
+                {configNode.vpn_type === 'openvpn' && (
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">Tunnel Mode</label>
+                    <select
+                      value={nodeConfig.tunnel_mode}
+                      onChange={e => setNodeConfig({ ...nodeConfig, tunnel_mode: e.target.value as 'full' | 'split' })}
+                      className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    >
+                      <option value="full">Full Tunnel (All traffic through VPN)</option>
+                      <option value="split">Split Tunnel (Only specific routes)</option>
+                    </select>
+                  </div>
+                )}
+
+                {configNode.vpn_type === 'wireguard' && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-1.5">Routing Mode</label>
+                      <select
+                        value={nodeConfig.tunnel_mode}
+                        onChange={e => setNodeConfig({ ...nodeConfig, tunnel_mode: e.target.value as 'full' | 'split' })}
+                        className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      >
+                        <option value="full">Full Tunnel (all traffic through VPN)</option>
+                        <option value="split">Split Tunnel (selected destinations only)</option>
+                      </select>
+                    </div>
+                    {nodeConfig.tunnel_mode === 'split' && (
+                      <div>
+                        <label className="block text-sm font-medium text-foreground mb-1.5">WireGuard Allowed IPs</label>
+                        <input
+                          type="text"
+                          value={nodeConfig.wireguard_allowed_ips ?? ''}
+                          onChange={e => setNodeConfig({ ...nodeConfig, wireguard_allowed_ips: e.target.value })}
+                          placeholder="10.0.0.0/8,172.31.0.0/20"
+                          className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+                        />
+                        <p className="text-xs text-muted-foreground/70 mt-1">Optional IPv4 CIDRs, comma-separated. They are combined with networks allowed through group assignments when WireGuard client profiles are generated.</p>
+                      </div>
+                    )}
+                  </>
+                )}
 
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1.5">Firewall Engine</label>
@@ -638,6 +679,7 @@ function NodesPage() {
                 </div>
               </div>
 
+              {configNode.vpn_type === 'openvpn' && <>
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1.5">DNS Servers</label>
                 <input
@@ -647,8 +689,40 @@ function NodesPage() {
                   placeholder="8.8.8.8,1.1.1.1"
                   className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
                 />
-                <p className="text-xs text-muted-foreground/70 mt-1">Comma-separated DNS server IPs (generates <code className="bg-muted px-1 rounded">push "dhcp-option DNS ...</code>)</p>
+                <p className="text-xs text-muted-foreground/70 mt-1">Optional fallback DNS servers, comma-separated. Each generates <code className="bg-muted px-1 rounded">push "dhcp-option DNS ...</code>.</p>
               </div>
+
+              {nodeConfig.managed_dns_directives && (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-sm font-medium text-foreground">Managed DNS Directives</label>
+                    <span className="text-xs text-muted-foreground/70 bg-muted px-2 py-0.5 rounded">Applied per group</span>
+                  </div>
+                  <textarea
+                    value={nodeConfig.managed_dns_directives}
+                    readOnly
+                    rows={Math.max(2, nodeConfig.managed_dns_directives.split('\n').length)}
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm font-mono resize-y bg-muted text-muted-foreground"
+                  />
+                  <p className="text-xs text-muted-foreground/70 mt-1">Included automatically only in profiles for clients assigned to the matching group. Configure listeners from Managed DNS.</p>
+                </div>
+              )}
+
+              {nodeConfig.network_push_directives && (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-sm font-medium text-foreground">Network Push Directives</label>
+                    <span className="text-xs text-muted-foreground/70 bg-muted px-2 py-0.5 rounded">Managed automatically</span>
+                  </div>
+                  <textarea
+                    value={nodeConfig.network_push_directives}
+                    readOnly
+                    rows={Math.max(2, nodeConfig.network_push_directives.split('\n').length)}
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm font-mono resize-y bg-muted text-muted-foreground"
+                  />
+                  <p className="text-xs text-muted-foreground/70 mt-1">Routes from networks assigned to this node. Change them from the Networks page.</p>
+                </div>
+              )}
 
               {/* Custom Push Directives */}
               <div>
@@ -664,7 +738,7 @@ function NodesPage() {
                   className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono resize-y"
                 />
                 <div className="mt-1.5 space-y-0.5">
-                  <p className="text-xs text-muted-foreground/70">One directive per line — prepended with <code className="bg-muted px-1 rounded">push "..."</code> automatically.</p>
+                  <p className="text-xs text-muted-foreground/70">Optional override. One directive per line — prepended with <code className="bg-muted px-1 rounded">push "..."</code> automatically.</p>
                   <p className="text-xs text-muted-foreground/70">These are appended <em>after</em> the DNS Servers above. Both fields can be used together.</p>
                   <p className="text-xs text-amber-600 mt-1">Example:</p>
                   <pre className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded px-2 py-1.5 font-mono">{`dhcp-option DNS 172.31.6.140
@@ -757,6 +831,7 @@ route 172.31.0.0 255.255.0.0`}</pre>
                   />
                 </div>
               </div>
+              </>}
 
               <div className="flex gap-3 pt-4 border-t border-border/50">
                 <Button
