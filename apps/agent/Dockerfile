@@ -30,6 +30,12 @@ RUN pnpm --filter @vpn/agent build
 FROM builder AS production-builder
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
     pnpm deploy --legacy --filter @vpn/agent --prod /prod/agent
+RUN rm -rf /prod/agent/src /prod/agent/test /prod/agent/tests /prod/agent/__tests__ \
+    /prod/agent/coverage /prod/agent/tsconfig*.json /prod/agent/tsup.config.* \
+    /prod/agent/vitest.config.* /prod/agent/*.log
+RUN find /prod/agent/node_modules -type f \( -name '*.md' -o -name '*.map' \) -delete \
+    && find /prod/agent/node_modules -type d \
+    \( -name test -o -name tests -o -name __tests__ \) -prune -exec rm -rf {} +
 
 # Alpine's iptables package ships only the nft backend. Build a musl-compatible
 # legacy backend for hosts that still route VPN traffic through iptables-legacy.

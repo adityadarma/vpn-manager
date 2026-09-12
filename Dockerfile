@@ -53,6 +53,18 @@ RUN pnpm --filter @vpn/api build
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
   pnpm deploy --legacy --filter @vpn/api --prod /prod/api
 
+# pnpm deploy retains package source files. The runner only needs the compiled
+# bundle, production dependencies, start script, and database migrations.
+RUN rm -rf /prod/api/src /prod/api/test /prod/api/tests /prod/api/__tests__ \
+  /prod/api/coverage /prod/api/tsconfig*.json /prod/api/tsup.config.* \
+  /prod/api/vitest.config.* /prod/api/*.log
+# Dependencies can include test suites, documentation, and source maps even
+# after `pnpm deploy --prod`; none are needed to execute the bundled API.
+RUN find /prod/api/node_modules -type f \
+  \( -name '*.md' -o -name '*.map' \) -delete \
+  && find /prod/api/node_modules -type d \
+  \( -name test -o -name tests -o -name __tests__ \) -prune -exec rm -rf {} +
+
 # Copy built API bundle
 RUN cp -r /app/apps/api/dist /prod/api/dist
 RUN cp /app/apps/api/start.sh /prod/api/start.sh
@@ -61,6 +73,9 @@ RUN cp /app/apps/api/start.sh /prod/api/start.sh
 # when Knex dynamically loads migrations and seeds at startup.
 RUN cp -r /app/packages/db/src /prod/api/db
 RUN cp -r /app/packages/db/node_modules /prod/api/db/node_modules 2>/dev/null || true
+RUN find /prod/api/db/node_modules -type f \( -name '*.md' -o -name '*.map' \) -delete \
+  && find /prod/api/db/node_modules -type d \
+  \( -name test -o -name tests -o -name __tests__ \) -prune -exec rm -rf {} +
 
 # Copy Vite static output -> will be served by Fastify
 RUN cp -r /app/apps/web/dist /prod/web
