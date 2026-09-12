@@ -9,7 +9,7 @@ export const DnsStatusSchema = z.object({
 
 export const RegisterNodeSchema = z.object({
   hostname: z.string().min(1),
-  ip: z.string().ip(),
+  ip: z.ipv4(),
   port: z.number().int().min(1).max(65535).default(1194),
   region: z.string().optional(),
   version: z.string().min(1),
