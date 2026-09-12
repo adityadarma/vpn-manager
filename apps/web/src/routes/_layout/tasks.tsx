@@ -55,6 +55,7 @@ function TasksPage() {
   const pendingCount = statusCounts.pending ?? 0
   const doneCount = statusCounts.done ?? 0
   const failedCount = statusCounts.failed ?? 0
+  const totalTasks = pendingCount + doneCount + failedCount
 
   // Search filter
   const filterTasks = (taskList: Task[]) => {
@@ -156,7 +157,7 @@ function TasksPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Task Queue</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {pagination?.total ?? 0} task{(pagination?.total ?? 0) !== 1 ? 's' : ''} • {pendingCount} pending
+            {totalTasks} task{totalTasks !== 1 ? 's' : ''} • {pendingCount} pending
           </p>
         </div>
         <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted text-muted-foreground text-xs font-medium rounded-full">
@@ -215,7 +216,7 @@ function TasksPage() {
       {/* Tabs */}
       {isLoading ? (
         <div className="py-12 text-center text-muted-foreground/70">Loading tasks...</div>
-      ) : (pagination?.total ?? 0) === 0 ? (
+      ) : totalTasks === 0 ? (
         <div className="bg-card text-card-foreground rounded-xl border border-dashed border-border/60 py-16 text-center">
           <Clock className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
           <p className="font-medium text-foreground">No tasks yet</p>

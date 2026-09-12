@@ -9,29 +9,29 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as LoginRouteImport } from './routes/login'
 import { Route as LayoutRouteImport } from './routes/_layout'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
-import { Route as LayoutUsersRouteImport } from './routes/_layout/users'
-import { Route as LayoutTasksRouteImport } from './routes/_layout/tasks'
-import { Route as LayoutSessionsRouteImport } from './routes/_layout/sessions'
-import { Route as LayoutProfileRouteImport } from './routes/_layout/profile'
-import { Route as LayoutPoliciesRouteImport } from './routes/_layout/policies'
-import { Route as LayoutNodesRouteImport } from './routes/_layout/nodes'
-import { Route as LayoutNetworksRouteImport } from './routes/_layout/networks'
-import { Route as LayoutGroupsRouteImport } from './routes/_layout/groups'
-import { Route as LayoutDnsRouteImport } from './routes/_layout/dns'
 import { Route as LayoutAuditRouteImport } from './routes/_layout/audit'
+import { Route as LayoutDnsRouteImport } from './routes/_layout/dns'
+import { Route as LayoutGroupsRouteImport } from './routes/_layout/groups'
+import { Route as LayoutNetworksRouteImport } from './routes/_layout/networks'
+import { Route as LayoutNodesRouteImport } from './routes/_layout/nodes'
+import { Route as LayoutPoliciesRouteImport } from './routes/_layout/policies'
+import { Route as LayoutProfileRouteImport } from './routes/_layout/profile'
+import { Route as LayoutSessionsRouteImport } from './routes/_layout/sessions'
+import { Route as LayoutTasksRouteImport } from './routes/_layout/tasks'
+import { Route as LayoutUsersRouteImport } from './routes/_layout/users'
 import { Route as LayoutUsersIndexRouteImport } from './routes/_layout/users/index'
 import { Route as LayoutUsersUserIdCertificatesRouteImport } from './routes/_layout/users.$userId.certificates'
 
+const LayoutRoute = LayoutRouteImport.update({
+  id: '/_layout',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LayoutRoute = LayoutRouteImport.update({
-  id: '/_layout',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LayoutIndexRoute = LayoutIndexRouteImport.update({
@@ -39,44 +39,9 @@ const LayoutIndexRoute = LayoutIndexRouteImport.update({
   path: '/',
   getParentRoute: () => LayoutRoute,
 } as any)
-const LayoutUsersRoute = LayoutUsersRouteImport.update({
-  id: '/users',
-  path: '/users',
-  getParentRoute: () => LayoutRoute,
-} as any)
-const LayoutTasksRoute = LayoutTasksRouteImport.update({
-  id: '/tasks',
-  path: '/tasks',
-  getParentRoute: () => LayoutRoute,
-} as any)
-const LayoutSessionsRoute = LayoutSessionsRouteImport.update({
-  id: '/sessions',
-  path: '/sessions',
-  getParentRoute: () => LayoutRoute,
-} as any)
-const LayoutProfileRoute = LayoutProfileRouteImport.update({
-  id: '/profile',
-  path: '/profile',
-  getParentRoute: () => LayoutRoute,
-} as any)
-const LayoutPoliciesRoute = LayoutPoliciesRouteImport.update({
-  id: '/policies',
-  path: '/policies',
-  getParentRoute: () => LayoutRoute,
-} as any)
-const LayoutNodesRoute = LayoutNodesRouteImport.update({
-  id: '/nodes',
-  path: '/nodes',
-  getParentRoute: () => LayoutRoute,
-} as any)
-const LayoutNetworksRoute = LayoutNetworksRouteImport.update({
-  id: '/networks',
-  path: '/networks',
-  getParentRoute: () => LayoutRoute,
-} as any)
-const LayoutGroupsRoute = LayoutGroupsRouteImport.update({
-  id: '/groups',
-  path: '/groups',
+const LayoutAuditRoute = LayoutAuditRouteImport.update({
+  id: '/audit',
+  path: '/audit',
   getParentRoute: () => LayoutRoute,
 } as any)
 const LayoutDnsRoute = LayoutDnsRouteImport.update({
@@ -84,9 +49,44 @@ const LayoutDnsRoute = LayoutDnsRouteImport.update({
   path: '/dns',
   getParentRoute: () => LayoutRoute,
 } as any)
-const LayoutAuditRoute = LayoutAuditRouteImport.update({
-  id: '/audit',
-  path: '/audit',
+const LayoutGroupsRoute = LayoutGroupsRouteImport.update({
+  id: '/groups',
+  path: '/groups',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutNetworksRoute = LayoutNetworksRouteImport.update({
+  id: '/networks',
+  path: '/networks',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutNodesRoute = LayoutNodesRouteImport.update({
+  id: '/nodes',
+  path: '/nodes',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutPoliciesRoute = LayoutPoliciesRouteImport.update({
+  id: '/policies',
+  path: '/policies',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutProfileRoute = LayoutProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutSessionsRoute = LayoutSessionsRouteImport.update({
+  id: '/sessions',
+  path: '/sessions',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutTasksRoute = LayoutTasksRouteImport.update({
+  id: '/tasks',
+  path: '/tasks',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutUsersRoute = LayoutUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
   getParentRoute: () => LayoutRoute,
 } as any)
 const LayoutUsersIndexRoute = LayoutUsersIndexRouteImport.update({
@@ -208,18 +208,18 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/_layout': {
       id: '/_layout'
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof LayoutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_layout/': {
@@ -229,60 +229,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutIndexRouteImport
       parentRoute: typeof LayoutRoute
     }
-    '/_layout/users': {
-      id: '/_layout/users'
-      path: '/users'
-      fullPath: '/users'
-      preLoaderRoute: typeof LayoutUsersRouteImport
-      parentRoute: typeof LayoutRoute
-    }
-    '/_layout/tasks': {
-      id: '/_layout/tasks'
-      path: '/tasks'
-      fullPath: '/tasks'
-      preLoaderRoute: typeof LayoutTasksRouteImport
-      parentRoute: typeof LayoutRoute
-    }
-    '/_layout/sessions': {
-      id: '/_layout/sessions'
-      path: '/sessions'
-      fullPath: '/sessions'
-      preLoaderRoute: typeof LayoutSessionsRouteImport
-      parentRoute: typeof LayoutRoute
-    }
-    '/_layout/profile': {
-      id: '/_layout/profile'
-      path: '/profile'
-      fullPath: '/profile'
-      preLoaderRoute: typeof LayoutProfileRouteImport
-      parentRoute: typeof LayoutRoute
-    }
-    '/_layout/policies': {
-      id: '/_layout/policies'
-      path: '/policies'
-      fullPath: '/policies'
-      preLoaderRoute: typeof LayoutPoliciesRouteImport
-      parentRoute: typeof LayoutRoute
-    }
-    '/_layout/nodes': {
-      id: '/_layout/nodes'
-      path: '/nodes'
-      fullPath: '/nodes'
-      preLoaderRoute: typeof LayoutNodesRouteImport
-      parentRoute: typeof LayoutRoute
-    }
-    '/_layout/networks': {
-      id: '/_layout/networks'
-      path: '/networks'
-      fullPath: '/networks'
-      preLoaderRoute: typeof LayoutNetworksRouteImport
-      parentRoute: typeof LayoutRoute
-    }
-    '/_layout/groups': {
-      id: '/_layout/groups'
-      path: '/groups'
-      fullPath: '/groups'
-      preLoaderRoute: typeof LayoutGroupsRouteImport
+    '/_layout/audit': {
+      id: '/_layout/audit'
+      path: '/audit'
+      fullPath: '/audit'
+      preLoaderRoute: typeof LayoutAuditRouteImport
       parentRoute: typeof LayoutRoute
     }
     '/_layout/dns': {
@@ -292,11 +243,60 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutDnsRouteImport
       parentRoute: typeof LayoutRoute
     }
-    '/_layout/audit': {
-      id: '/_layout/audit'
-      path: '/audit'
-      fullPath: '/audit'
-      preLoaderRoute: typeof LayoutAuditRouteImport
+    '/_layout/groups': {
+      id: '/_layout/groups'
+      path: '/groups'
+      fullPath: '/groups'
+      preLoaderRoute: typeof LayoutGroupsRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/networks': {
+      id: '/_layout/networks'
+      path: '/networks'
+      fullPath: '/networks'
+      preLoaderRoute: typeof LayoutNetworksRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/nodes': {
+      id: '/_layout/nodes'
+      path: '/nodes'
+      fullPath: '/nodes'
+      preLoaderRoute: typeof LayoutNodesRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/policies': {
+      id: '/_layout/policies'
+      path: '/policies'
+      fullPath: '/policies'
+      preLoaderRoute: typeof LayoutPoliciesRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/profile': {
+      id: '/_layout/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof LayoutProfileRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/sessions': {
+      id: '/_layout/sessions'
+      path: '/sessions'
+      fullPath: '/sessions'
+      preLoaderRoute: typeof LayoutSessionsRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/tasks': {
+      id: '/_layout/tasks'
+      path: '/tasks'
+      fullPath: '/tasks'
+      preLoaderRoute: typeof LayoutTasksRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/users': {
+      id: '/_layout/users'
+      path: '/users'
+      fullPath: '/users'
+      preLoaderRoute: typeof LayoutUsersRouteImport
       parentRoute: typeof LayoutRoute
     }
     '/_layout/users/': {

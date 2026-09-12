@@ -33,6 +33,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { toast } from 'sonner'
+import { formatBrowserDateTime } from '@vpn/shared'
 
 export const Route = createFileRoute('/_layout/dns')({ component: ManagedDnsPage })
 
@@ -375,7 +376,7 @@ function ManagedDnsPage() {
                   <div className="mt-4 flex items-center justify-between border-t pt-3 text-[11px] text-muted-foreground">
                     <span>
                       {node.dns_last_synced_at
-                        ? `Synced ${new Date(node.dns_last_synced_at).toLocaleTimeString()}`
+                        ? `Synced ${formatBrowserDateTime(node.dns_last_synced_at)}`
                         : 'No sync yet'}
                     </span>
                     <Button

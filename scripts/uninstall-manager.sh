@@ -19,6 +19,8 @@ NC='\033[0m'
 
 INSTALL_DIR="/opt/vpn-manager"
 KEEP_DATA=false
+COMPOSE_PROJECT="vpn-manager"
+MANAGER_IMAGE="ghcr.io/adityadarma/vpn-manager"
 
 print_header() {
     echo -e "${RED}"
@@ -87,7 +89,7 @@ stop_services() {
     if [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
         cd "$INSTALL_DIR"
         # Stop all profiles so database containers are also removed
-        docker compose --profile postgres --profile mysql down || true
+        docker compose --profile postgres --profile mysql down --remove-orphans || true
         print_success "Services stopped"
     else
         print_warning "docker-compose.yml not found, skipping service stop"
@@ -104,6 +106,8 @@ remove_volumes() {
     if [ "$delete_data" = "yes" ]; then
         print_info "Removing Docker volumes..."
         
+        docker volume ls -q --filter "label=com.docker.compose.project=${COMPOSE_PROJECT}" | \
+            xargs -r docker volume rm 2>/dev/null || true
         docker volume rm vpn-manager_manager_data 2>/dev/null || true
         docker volume rm vpn-manager_postgres_data 2>/dev/null || true
         docker volume rm vpn-manager_mariadb_data 2>/dev/null || true
@@ -114,6 +118,16 @@ remove_volumes() {
     fi
 }
 
+remove_networks() {
+    print_info "Removing Docker networks..."
+
+    docker network ls -q --filter "label=com.docker.compose.project=${COMPOSE_PROJECT}" | \
+        xargs -r docker network rm 2>/dev/null || true
+    docker network rm vpn-manager_vpn-network 2>/dev/null || true
+
+    print_success "Networks removed"
+}
+
 remove_images() {
     echo ""
     read -p "Do you want to remove Docker images? (yes/no) [default: yes]: " remove_imgs < /dev/tty
@@ -121,8 +135,9 @@ remove_images() {
     
     if [ "$remove_imgs" = "yes" ]; then
         print_info "Removing Docker images..."
-        
-        docker rmi ghcr.io/adityadarma/vpn-manager:latest 2>/dev/null || true
+
+        docker image ls --format '{{.Repository}}:{{.Tag}}' "$MANAGER_IMAGE" | \
+            grep -v ':<none>$' | sort -u | xargs -r docker image rm 2>/dev/null || true
         
         print_success "Images removed"
     else
@@ -196,6 +211,7 @@ print_summary() {
     echo ""
     echo -e "${BLUE}What was removed:${NC}"
     echo "  - Docker containers stopped"
+    echo "  - Docker networks removed"
     
     if [ "$delete_data" = "yes" ]; then
         echo "  - Data volumes deleted"
@@ -227,6 +243,7 @@ main() {
     backup_before_remove
     stop_services
     remove_volumes
+    remove_networks
     remove_images
     remove_cron_jobs
     remove_install_dir

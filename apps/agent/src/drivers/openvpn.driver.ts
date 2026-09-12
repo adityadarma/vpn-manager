@@ -1297,7 +1297,7 @@ crl-verify /etc/openvpn/server/crl.pem
       port: 1194, protocol: 'udp', cipher: 'AES-128-GCM', auth: 'SHA256',
       vpnNetwork: '10.8.0.0', vpnNetmask: '255.255.255.0', dnsServers: '',
       pushRoutes: '', customPushDirectives: '', compression: 'none',
-      keepalivePing: 10, keepaliveTimeout: 60, maxClients: 100, tunnelMode: 'full',
+      keepalivePing: 10, keepaliveTimeout: 60, maxClients: 100, tunnelMode: 'split',
     }
     const customLines: string[] = []
     for (const line of content.split('\n')) {

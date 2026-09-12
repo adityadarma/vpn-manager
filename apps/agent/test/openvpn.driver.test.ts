@@ -91,6 +91,12 @@ describe('OpenVpnDriver Unit Tests (Mock Socket)', () => {
     expect(info.version).toContain('OpenVPN 2.6.0')
   })
 
+  it('identifies a config without redirect-gateway as a split tunnel', () => {
+    const config = (driver as any)._parseServerConfig('push "route 10.0.0.0 255.0.0.0"\n')
+
+    expect(config.tunnelMode).toBe('split')
+  })
+
   it('parses getClients output correctly', async () => {
     await driver.connect()
     const clients = await driver.getClients()

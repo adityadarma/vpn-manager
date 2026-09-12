@@ -55,7 +55,18 @@ curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/script
   sudo bash -s -- CHANNEL=beta
 ```
 
-For a VPN node, add `CHANNEL=beta` alongside `MANAGER_URL`, `VPN_TOKEN`, `REG_KEY`, and `VPN_TYPE` in the node command above. The beta channel can change without a stable release; use the default channel for production.
+For a VPN node, use the same channel argument alongside its registration settings:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-agent.sh | sudo bash -s -- \
+  CHANNEL=beta \
+  MANAGER_URL=https://vpn.example.com \
+  VPN_TOKEN=replace-with-vpn-token \
+  REG_KEY=replace-with-registration-key \
+  VPN_TYPE=openvpn
+```
+
+The Agent installer writes `IMAGE_VERSION=beta` to `/opt/vpn-agent/.env`, so subsequent installer updates remain on beta. The beta channel can change without a stable release; use the default channel for production.
 
 ## Local Development
 
