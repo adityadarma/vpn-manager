@@ -59,8 +59,8 @@ function DashboardPage() {
             {nodes.length === 0 ? (
               <p className="text-sm text-muted-foreground/70 text-center py-8">No nodes registered yet.</p>
             ) : (
-              <div className="space-y-3">
-                {nodes.slice(0, 5).map((node) => {
+              <div className="min-h-56 max-h-80 space-y-3 overflow-y-auto pr-2">
+                {nodes.map((node) => {
                   const activeCount = sessions.filter(s => s.node_id === node.id).length
                   return (
                     <div key={node.id} className="flex items-center justify-between">
@@ -102,8 +102,8 @@ function DashboardPage() {
                 <p className="text-sm text-muted-foreground/70">No active sessions</p>
               </div>
             ) : (
-              <div className="space-y-3">
-                {sessions.slice(0, 5).map((s) => (
+              <div className="min-h-56 max-h-80 space-y-3 overflow-y-auto pr-2">
+                {sessions.map((s) => (
                   <div key={s.id} className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-foreground">{s.username}</p>
