@@ -100,12 +100,6 @@ if [ -f .env ]; then
     # Manager cannot disconnect registered nodes or invalidate admin sessions.
     APP_PORT=$(grep '^PORT=' .env | tail -n1 | cut -d '=' -f2-)
     APP_PORT=${APP_PORT:-3000}
-    DATABASE_TYPE=$(grep '^DATABASE_TYPE=' .env | tail -n1 | cut -d '=' -f2-)
-    case "$DATABASE_TYPE" in
-        postgres) DATABASE_PROFILE="--profile postgres" ;;
-        mysql) DATABASE_PROFILE="--profile mariadb" ;;
-        *) DATABASE_PROFILE="" ;;
-    esac
     if grep -q '^IMAGE_VERSION=' .env; then
         sed -i "s|^IMAGE_VERSION=.*|IMAGE_VERSION=${IMAGE_VERSION}|" .env
     else
@@ -138,37 +132,7 @@ else
         info "A strong admin password will be generated and shown once after installation"
     fi
 
-    echo "Select database:"
-    echo "1) SQLite (default, simple)"
-    echo "2) PostgreSQL (production)"
-    echo "3) MariaDB"
-    read -p "Choice [1-3] (default: 1): " db_choice < /dev/tty
-    db_choice=${db_choice:-1}
-
-    case $db_choice in
-        1) DATABASE_TYPE="sqlite"; DATABASE_PROFILE="" ;;
-        2)
-            DATABASE_TYPE="postgres"; DATABASE_PROFILE="--profile postgres"
-            read -p "PostgreSQL password (auto-generate if empty): " POSTGRES_PASSWORD < /dev/tty
-            POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-$(openssl rand -base64 32 | tr -d '/')}
-            ;;
-        3)
-            DATABASE_TYPE="mysql"; DATABASE_PROFILE="--profile mariadb"
-            read -p "MariaDB password (auto-generate if empty): " MARIADB_PASSWORD < /dev/tty
-            MARIADB_PASSWORD=${MARIADB_PASSWORD:-$(openssl rand -base64 32 | tr -d '/')}
-            read -p "MariaDB root password (auto-generate if empty): " MARIADB_ROOT_PASSWORD < /dev/tty
-            MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD:-$(openssl rand -base64 32 | tr -d '/')}
-            ;;
-        *) DATABASE_TYPE="sqlite"; DATABASE_PROFILE=""; warn "Invalid choice, defaulting to SQLite" ;;
-    esac
-
-    if [ "$DATABASE_TYPE" = "postgres" ]; then
-        DATABASE_URL="postgresql://vpn:${POSTGRES_PASSWORD}@postgres:5432/vpn"
-    elif [ "$DATABASE_TYPE" = "mysql" ]; then
-        DATABASE_URL="mysql://vpn:${MARIADB_PASSWORD}@mariadb:3306/vpn"
-    else
-        DATABASE_URL=""
-    fi
+    info "Using the built-in SQLite database"
 
     read -p "Manager HTTP port (default: 3000): " APP_PORT < /dev/tty
     APP_PORT=${APP_PORT:-3000}
@@ -186,9 +150,7 @@ PORT=${APP_PORT}
 IMAGE_VERSION=${IMAGE_VERSION}
 
 # Database
-DATABASE_TYPE=${DATABASE_TYPE}
-DATABASE_URL=${DATABASE_URL}
-$([ "$DATABASE_TYPE" = "sqlite" ] && echo "DATABASE_SQLITE_PATH=/data/vpn.sqlite")
+DATABASE_SQLITE_PATH=/data/vpn.sqlite
 $([ -n "$POSTGRES_PASSWORD" ] && echo "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}")
 $([ -n "$MARIADB_PASSWORD" ] && echo "MARIADB_PASSWORD=${MARIADB_PASSWORD}")
 $([ -n "$MARIADB_ROOT_PASSWORD" ] && echo "MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD}")
@@ -208,8 +170,8 @@ echo ""
 
 # Start services
 info "Starting services..."
-docker compose $DATABASE_PROFILE pull
-docker compose $DATABASE_PROFILE up -d
+docker compose pull
+docker compose up -d
 
 sleep 5
 

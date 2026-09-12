@@ -89,7 +89,7 @@ stop_services() {
     if [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
         cd "$INSTALL_DIR"
         # Stop all profiles so database containers are also removed
-        docker compose --profile postgres --profile mysql down --remove-orphans || true
+        docker compose down --remove-orphans || true
         print_success "Services stopped"
     else
         print_warning "docker-compose.yml not found, skipping service stop"
@@ -109,8 +109,6 @@ remove_volumes() {
         docker volume ls -q --filter "label=com.docker.compose.project=${COMPOSE_PROJECT}" | \
             xargs -r docker volume rm 2>/dev/null || true
         docker volume rm vpn-manager_manager_data 2>/dev/null || true
-        docker volume rm vpn-manager_postgres_data 2>/dev/null || true
-        docker volume rm vpn-manager_mariadb_data 2>/dev/null || true
         
         print_success "Volumes removed"
     else

@@ -17,6 +17,7 @@ warn() { echo -e "${Y}⚠ $1${NC}"; }
 
 VPN_MANAGER_IP_FORWARD_MARKER="# vpn-manager-ip-forward"
 COMPOSE_PROJECT="vpn-agent"
+AGENT_IMAGE="ghcr.io/adityadarma/vpn-agent"
 
 cleanup_coredns() {
     docker ps -aq --filter "label=com.docker.compose.project=${COMPOSE_PROJECT}" | \
@@ -25,6 +26,21 @@ cleanup_coredns() {
     docker volume ls -q --filter "label=com.docker.compose.project=${COMPOSE_PROJECT}" | \
         xargs -r docker volume rm 2>/dev/null || true
     docker volume rm vpn-agent_managed-dns 2>/dev/null || true
+}
+
+remove_agent_images() {
+    read -p "Remove local Agent Docker images? (yes/no) [default: yes]: " remove_images < /dev/tty
+    remove_images=${remove_images:-yes}
+
+    if [ "$remove_images" != "yes" ]; then
+        warn "Keeping local Agent Docker images"
+        return
+    fi
+
+    # Remove every cached Agent tag, including beta and stable semantic tags.
+    docker image ls --format '{{.Repository}}:{{.Tag}}' "$AGENT_IMAGE" | \
+        grep -v ':<none>$' | sort -u | xargs -r docker image rm 2>/dev/null || true
+    ok "Agent Docker images removed"
 }
 
 neutralize_legacy_openvpn_nat_execstop() {
@@ -216,6 +232,7 @@ if [ -d "/opt/vpn-agent" ]; then
 fi
 cleanup_coredns
 ok "CoreDNS container and managed DNS volume removed"
+remove_agent_images
 
 if [ "$VPN_TYPE" = "openvpn" ] || [ "$VPN_TYPE" = "both" ]; then
     VPN_CIDR=""
