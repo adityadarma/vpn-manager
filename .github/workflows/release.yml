@@ -187,6 +187,10 @@ jobs:
           file: ${{ matrix.image == 'manager' && 'Dockerfile' || 'apps/agent/Dockerfile' }}
           push: true
           tags: ${{ steps.version-tags.outputs.tags }}
+          # GHCR shows Buildx provenance/SBOM attestations as untagged sha256
+          # package versions. This registry publishes only deployable tags.
+          provenance: false
+          sbom: false
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
           platforms: linux/amd64
