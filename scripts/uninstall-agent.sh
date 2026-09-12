@@ -16,6 +16,16 @@ ok() { echo -e "${G}✓ $1${NC}"; }
 warn() { echo -e "${Y}⚠ $1${NC}"; }
 
 VPN_MANAGER_IP_FORWARD_MARKER="# vpn-manager-ip-forward"
+COMPOSE_PROJECT="vpn-agent"
+
+cleanup_coredns() {
+    docker ps -aq --filter "label=com.docker.compose.project=${COMPOSE_PROJECT}" | \
+        xargs -r docker rm -f 2>/dev/null || true
+    docker rm -f vpn-coredns 2>/dev/null || true
+    docker volume ls -q --filter "label=com.docker.compose.project=${COMPOSE_PROJECT}" | \
+        xargs -r docker volume rm 2>/dev/null || true
+    docker volume rm vpn-agent_managed-dns 2>/dev/null || true
+}
 
 neutralize_legacy_openvpn_nat_execstop() {
     local unit_file="/etc/systemd/system/openvpn-nat.service"
@@ -201,9 +211,11 @@ echo "Stopping services..."
 # Stop agent
 if [ -d "/opt/vpn-agent" ]; then
     cd /opt/vpn-agent
-    docker compose down 2>/dev/null || true
-    ok "Agent stopped"
+    docker compose --profile dns down --volumes --remove-orphans 2>/dev/null || true
+    ok "Agent and CoreDNS stopped"
 fi
+cleanup_coredns
+ok "CoreDNS container and managed DNS volume removed"
 
 if [ "$VPN_TYPE" = "openvpn" ] || [ "$VPN_TYPE" = "both" ]; then
     VPN_CIDR=""

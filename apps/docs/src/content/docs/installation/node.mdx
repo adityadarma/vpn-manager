@@ -98,7 +98,7 @@ sudo bash scripts/uninstall-agent.sh
 The script reads `/opt/vpn-agent/.env` to detect which engine (`OpenVPN` or `WireGuard`) and firewall engine were configured at install time, then:
 
 1. Notifies the Manager to delete this node (`DELETE /api/v1/nodes/me`), so it disappears from the dashboard instead of showing as permanently offline. This step is best-effort — the uninstall continues even if the Manager is unreachable.
-2. Stops and removes the `vpn-agent` container.
+2. Stops and removes the `vpn-agent` and profile-managed `vpn-coredns` containers, plus the `managed-dns` Docker volume.
 3. Stops the VPN engine (`openvpn-server@server` or `wg-quick@wg0`) and its NAT/forwarding systemd units.
 4. Removes only the firewall rules tagged as created by VPN Manager (iptables policy chains, the `nftables` tables it created, `ufw` rules commented `vpn-manager`, or the `firewalld` direct rules/rich rules it added) — it does not touch unrelated firewall configuration.
 5. Uninstalls the `openvpn`/`easy-rsa` or `wireguard-tools` packages and removes `/etc/openvpn`, `/etc/wireguard`, and `/opt/vpn-agent`.
