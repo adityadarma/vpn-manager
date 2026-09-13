@@ -146,6 +146,7 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
 
   // Cache CID → client info so disconnect events still have username/IP
   private clientCache: Map<string, { username: string; vpnIp: string; realIp: string }> = new Map()
+  private pendingUnkicks = new Map<string, ReturnType<typeof setTimeout>>()
 
   constructor(
     private socketPath: string = '/run/openvpn/server.sock',
@@ -872,7 +873,7 @@ ${tlsKey ? `\n<tls-crypt>\n${tlsKey.trim()}\n</tls-crypt>` : ''}`.trim()
   // ── Session management ──────────────────────────────────────────────────────
 
   async kickSession(commonName: string, options: KickSessionOptions = {}): Promise<KickSessionResult> {
-    const { permanent = false } = options
+    const { permanent = false, blockDurationSeconds } = options
     const MGMT_SOCKET = this.socketPath
     const CCD_DIR = '/etc/openvpn/ccd'
 
@@ -881,11 +882,22 @@ ${tlsKey ? `\n<tls-crypt>\n${tlsKey.trim()}\n</tls-crypt>` : ''}`.trim()
       kill_method: null, kill_response: null,
     }
 
-    if (permanent) {
+    this.cancelPendingUnkick(commonName)
+    if (permanent || blockDurationSeconds) {
       this._writeCcdDisable(commonName, CCD_DIR)
       result.ccd_disabled = true
     } else {
       this._removeCcdDisable(commonName, CCD_DIR)
+    }
+
+    if (blockDurationSeconds && !permanent) {
+      const timer = setTimeout(() => {
+        if (this.pendingUnkicks.get(commonName) !== timer) return
+        this.pendingUnkicks.delete(commonName)
+        this._removeCcdDisable(commonName, CCD_DIR)
+        console.log(`[openvpn] Reconnect block expired for ${commonName}`)
+      }, blockDurationSeconds * 1000)
+      this.pendingUnkicks.set(commonName, timer)
     }
 
     // Primary: reuse the driver's own management connection, when it has one.
@@ -943,6 +955,7 @@ ${tlsKey ? `\n<tls-crypt>\n${tlsKey.trim()}\n</tls-crypt>` : ''}`.trim()
 
   async unkickSession(commonName: string, _options: UnkickSessionOptions = {}): Promise<Record<string, unknown>> {
     const CCD_DIR = '/etc/openvpn/ccd'
+    this.cancelPendingUnkick(commonName)
     const ccdFile = resolveWithin(CCD_DIR, commonName, 'common_name')
 
     if (!existsSync(ccdFile)) {
@@ -1290,6 +1303,12 @@ crl-verify /etc/openvpn/server/crl.pem
         writeFileSync(ccdFile, content.split('\n').filter(l => l.trim() !== 'disable').join('\n').trimEnd() + '\n', 'utf-8')
       }
     } catch { /* non-fatal */ }
+  }
+
+  private cancelPendingUnkick(commonName: string): void {
+    const timer = this.pendingUnkicks.get(commonName)
+    if (timer) clearTimeout(timer)
+    this.pendingUnkicks.delete(commonName)
   }
 
   private _parseServerConfig(content: string): Record<string, unknown> {

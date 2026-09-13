@@ -310,7 +310,7 @@ PersistentKeepalive = 25`
   // ── Session management ──────────────────────────────────────────────────────
 
   async kickSession(commonName: string, options: KickSessionOptions = {}): Promise<KickSessionResult> {
-    const { permanent = false, publicKey, vpnIp } = options
+    const { permanent = false, blockDurationSeconds, publicKey, vpnIp } = options
     const result: KickSessionResult = {
       kicked: false, common_name: commonName, permanent,
       kill_method: null, kill_response: null,
@@ -344,7 +344,7 @@ PersistentKeepalive = 25`
           this.restorePeer(publicKey, peerState)
           console.log(`[wireguard] ✓ Peer ${commonName} restored after temp kick`)
         } catch (e: any) { console.error(`[wireguard] Failed to restore peer:`, e.message) }
-      }, 2000)
+      }, (blockDurationSeconds ?? 2) * 1000)
       this.pendingRestores.set(publicKey, timer)
       result.kicked = true
       result.kill_method = 'wg_temp_remove'

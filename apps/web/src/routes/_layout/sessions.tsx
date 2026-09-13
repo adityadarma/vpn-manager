@@ -71,7 +71,7 @@ function formatDuration(since: string, until?: string | null, durationSeconds?: 
 interface KickDropdownProps {
   sessionId: string
   username: string
-  onKick: (sessionId: string, permanent: boolean) => void
+  onKick: (sessionId: string, permanent: boolean, blockDurationSeconds?: number) => void
   isPending: boolean
 }
 
@@ -113,12 +113,12 @@ function KickDropdown({ sessionId, username, onKick, isPending }: KickDropdownPr
         {/* Main kick button */}
         <button
           onClick={() => {
-            if (confirm(`Disconnect ${username}?\n\nUser will be able to reconnect after.`)) {
-              onKick(sessionId, false)
+            if (confirm(`Block ${username} for 5 minutes?\n\nOpenVPN reconnects will be rejected and WireGuard access will be unavailable until the block expires.`)) {
+              onKick(sessionId, false, 300)
             }
           }}
           disabled={isPending}
-          title="Disconnect session"
+          title="Block reconnects for 5 minutes"
           className="h-8 px-2.5 flex items-center gap-1.5 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-xs font-medium transition-colors disabled:opacity-50"
         >
           {isPending ? (
@@ -126,7 +126,7 @@ function KickDropdown({ sessionId, username, onKick, isPending }: KickDropdownPr
           ) : (
             <UserX className="h-3.5 w-3.5" />
           )}
-          <span>Kick</span>
+          <span>Block 5m</span>
         </button>
 
         {/* Dropdown trigger */}
@@ -151,8 +151,8 @@ function KickDropdown({ sessionId, username, onKick, isPending }: KickDropdownPr
             className="w-full text-left p-2 rounded-lg hover:bg-muted/70 flex items-center gap-3 text-foreground transition-colors group"
             onClick={() => {
               setOpen(false)
-              if (confirm(`Disconnect ${username}?\n\nUser will be able to reconnect after.`)) {
-                onKick(sessionId, false)
+              if (confirm(`Block ${username} for 5 minutes?\n\nOpenVPN reconnects will be rejected and WireGuard access will be unavailable until the block expires.`)) {
+                onKick(sessionId, false, 300)
               }
             }}
           >
@@ -160,8 +160,8 @@ function KickDropdown({ sessionId, username, onKick, isPending }: KickDropdownPr
               <UserX className="h-4 w-4" />
             </div>
             <div>
-              <div className="font-medium text-xs text-foreground">Kick (Temporary)</div>
-              <div className="text-[11px] text-muted-foreground/80">Disconnect, allow reconnect</div>
+              <div className="font-medium text-xs text-foreground">Block for 5 minutes</div>
+              <div className="text-[11px] text-muted-foreground/80">Disconnect and restore automatically</div>
             </div>
           </button>
 
@@ -171,7 +171,7 @@ function KickDropdown({ sessionId, username, onKick, isPending }: KickDropdownPr
             className="w-full text-left p-2 rounded-lg hover:bg-red-500/10 flex items-center gap-3 text-red-600 dark:text-red-400 transition-colors group"
             onClick={() => {
               setOpen(false)
-              if (confirm(`Permanently block ${username}?\n\nUser will NOT be able to reconnect until an admin unkicks them.`)) {
+              if (confirm(`Block ${username} until Unkick?\n\nThe user cannot reconnect until an admin restores access.`)) {
                 onKick(sessionId, true)
               }
             }}
@@ -180,8 +180,8 @@ function KickDropdown({ sessionId, username, onKick, isPending }: KickDropdownPr
               <ShieldOff className="h-4 w-4" />
             </div>
             <div>
-              <div className="font-semibold text-xs text-red-600 dark:text-red-400">Kick & Block</div>
-              <div className="text-[11px] text-red-500/70">Disconnect + block reconnect</div>
+              <div className="font-semibold text-xs text-red-600 dark:text-red-400">Block until Unkick</div>
+              <div className="text-[11px] text-red-500/70">Disconnect + require admin restore</div>
             </div>
           </button>
         </div>
@@ -230,10 +230,10 @@ function SessionsPage() {
   })
 
   const kickMutation = useMutation({
-    mutationFn: ({ sessionId, permanent }: { sessionId: string; permanent: boolean }) =>
-      api.post(`/api/v1/sessions/${sessionId}/kick`, { permanent }),
+    mutationFn: ({ sessionId, permanent, blockDurationSeconds }: { sessionId: string; permanent: boolean; blockDurationSeconds?: number }) =>
+      api.post(`/api/v1/sessions/${sessionId}/kick`, { permanent, blockDurationSeconds }),
     onSuccess: (_data, { permanent }) => {
-      toast.success(permanent ? 'Session kicked and reconnection blocked' : 'Session kicked successfully')
+      toast.success(permanent ? 'Session blocked until Unkick' : 'Session blocked for 5 minutes')
       queryClient.invalidateQueries({ queryKey: ['sessions'] })
       queryClient.invalidateQueries({ queryKey: ['sessions', 'history'] })
     },
@@ -249,8 +249,8 @@ function SessionsPage() {
     onError: (e: Error) => toast.error(e.message || 'Failed to unkick session'),
   })
 
-  const handleKick = (sessionId: string, permanent: boolean) => {
-    kickMutation.mutate({ sessionId, permanent })
+  const handleKick = (sessionId: string, permanent: boolean, blockDurationSeconds?: number) => {
+    kickMutation.mutate({ sessionId, permanent, blockDurationSeconds })
   }
 
   const history = historyData?.sessions || []

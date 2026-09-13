@@ -223,6 +223,7 @@ const GenerateClientConfigPayload = z.object({
 const KickVpnSessionPayload = z.object({
   common_name: UsernameSchema,
   permanent: z.union([z.boolean(), z.literal('true'), z.literal('false')]).optional(),
+  block_duration_seconds: z.number().int().min(1).max(3600).optional().nullable(),
   public_key: CertOrKeySchema.optional().nullable(),
   vpn_ip: Ipv4Schema.optional().nullable(),
 })

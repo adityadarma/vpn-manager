@@ -207,9 +207,9 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
     },
   )
 
-  // POST /api/v1/sessions/:id/kick  — admin kick user
-  // Body: { permanent?: boolean }  — if true, blocks reconnect via CCD disable
-  app.post<{ Params: { id: string }; Body: { permanent?: boolean } }>(
+  // POST /api/v1/sessions/:id/kick  — admin block user reconnects
+  // Body: { permanent?: boolean, blockDurationSeconds?: 300 }
+  app.post<{ Params: { id: string }; Body: { permanent?: boolean; blockDurationSeconds?: number } }>(
     '/sessions/:id/kick',
     { 
       onRequest: [app.authenticateAdmin],
@@ -225,6 +225,11 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
               description: 'If true, write CCD disable file to block reconnection permanently (until unkicked)',
               default: false,
             },
+            blockDurationSeconds: {
+              type: 'number',
+              enum: [300],
+              description: 'Block reconnects for this many seconds before restoring access',
+            },
           },
         },
       },
@@ -238,6 +243,10 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
 
       const { id } = request.params
       const permanent = request.body?.permanent === true
+      const blockDurationSeconds = request.body?.blockDurationSeconds
+      if (!permanent && blockDurationSeconds !== 300) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Choose a 5-minute block or block until Unkick' })
+      }
       const adminUser = user
 
       const session = await app.db('vpn_sessions')
@@ -298,6 +307,7 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
             payload: JSON.stringify({ 
               common_name: commonName, 
               permanent,
+              block_duration_seconds: permanent ? undefined : blockDurationSeconds,
               public_key: publicKey,
               vpn_ip: vpnIp
             }),
@@ -307,7 +317,7 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
             created_at: new Date(),
             completed_at: null,
           })
-          app.log.info(`[sessions/kick] Enqueued kick_vpn_session (permanent=${permanent}) for ${commonName} on node ${session.node_id}`)
+          app.log.info(`[sessions/kick] Enqueued kick_vpn_session (permanent=${permanent}, duration=${blockDurationSeconds ?? 'until unkick'}) for ${commonName} on node ${session.node_id}`)
         } catch (taskErr) {
           app.log.error(`[sessions/kick] Failed to enqueue disconnect task: ${(taskErr as Error).message}`)
         }
@@ -317,7 +327,7 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
 
       return {
         ok: true,
-        message: permanent ? 'Session kicked and reconnection blocked' : 'Session kicked',
+        message: permanent ? 'Session blocked until Unkick' : 'Session blocked for 5 minutes',
         permanent,
       }
     },

@@ -15,9 +15,13 @@ export async function handleKickSession(
   if (payload['permanent'] !== undefined) {
     permanent = payload['permanent'] === true || payload['permanent'] === 'true'
   }
+  const blockDurationSeconds = typeof payload['block_duration_seconds'] === 'number'
+    ? payload['block_duration_seconds']
+    : undefined
 
   return driver.kickSession(commonName, {
     permanent,
+    blockDurationSeconds,
     publicKey:  typeof payload['public_key'] === 'string' ? payload['public_key'] : undefined,
     vpnIp:     typeof payload['vpn_ip'] === 'string' ? payload['vpn_ip'] : undefined,
   })

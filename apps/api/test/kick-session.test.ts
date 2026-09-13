@@ -30,5 +30,8 @@ describe('Kick Session Handler', () => {
 
     await handleKickSession({ common_name: 'user5' }, mockDriver)
     expect(receivedOptions.permanent).toBeUndefined()
+
+    await handleKickSession({ common_name: 'user6', block_duration_seconds: 300 }, mockDriver)
+    expect(receivedOptions.blockDurationSeconds).toBe(300)
   })
 })

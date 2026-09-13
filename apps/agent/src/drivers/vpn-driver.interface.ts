@@ -75,6 +75,8 @@ export interface ClientConfigOptions {
 
 export interface KickSessionOptions {
   permanent?: boolean
+  /** Seconds to block reconnects before automatically restoring access. */
+  blockDurationSeconds?: number
   /** WireGuard: peer public key */
   publicKey?: string
   /** WireGuard: VPN IP — required for temporary kick/restore */
