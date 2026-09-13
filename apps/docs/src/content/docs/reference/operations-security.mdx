@@ -29,9 +29,55 @@ The Manager health endpoint is `/api/v1/health`. The production container has an
 
 ## Backup and recovery
 
-Back up the SQLite `manager_data` volume or database file while the service is stopped, or use a consistent SQLite backup procedure. Backups must include application data, secrets, and the PKI or node configuration material needed to restore service.
+Backups must include application data, `/opt/vpn-manager/.env`, and any reverse-proxy or PKI material needed to restore service. Store backups outside the Manager host and protect them as secrets.
 
-Test restores in an isolated environment. Do not run `docker compose down -v` in production unless data is intentionally being deleted: it removes database volumes.
+### Create a backup
+
+Run this on the Manager host. Stopping the Manager prevents writes while the Docker volume is archived.
+
+```bash
+sudo install -d -m 700 /opt/vpn-manager/backups
+cd /opt/vpn-manager
+VOLUME="$(docker volume ls -q --filter label=com.docker.compose.volume=manager_data)"
+test -n "$VOLUME"
+docker compose stop manager
+sudo tar -C "$(docker volume inspect "$VOLUME" --format '{{ .Mountpoint }}')" \
+  -czf "backups/manager-data-$(date +%F-%H%M%S).tar.gz" .
+sudo cp .env "backups/manager-env-$(date +%F-%H%M%S).env"
+docker compose start manager
+```
+
+Verify the archive before relying on it:
+
+```bash
+tar -tzf /opt/vpn-manager/backups/manager-data-YYYY-MM-DD-HHMMSS.tar.gz
+curl -f http://localhost:3000/api/v1/health
+```
+
+The archive contains the SQLite database and is not encrypted. Encrypt it at rest or store it only in an access-controlled backup system.
+
+### Restore a backup
+
+Restoring replaces all current Manager data. Stop first, retain a copy of the current volume, and restore only a backup made by a compatible application version.
+
+```bash
+cd /opt/vpn-manager
+VOLUME="$(docker volume ls -q --filter label=com.docker.compose.volume=manager_data)"
+test -n "$VOLUME"
+docker compose down
+docker volume rm "$VOLUME"
+docker compose create
+VOLUME="$(docker volume ls -q --filter label=com.docker.compose.volume=manager_data)"
+sudo tar -C "$(docker volume inspect "$VOLUME" --format '{{ .Mountpoint }}')" \
+  -xzf backups/manager-data-YYYY-MM-DD-HHMMSS.tar.gz
+sudo install -m 600 backups/manager-env-YYYY-MM-DD-HHMMSS.env .env
+docker compose up -d
+curl -f http://localhost:3000/api/v1/health
+```
+
+Test restores on an isolated host before an incident. A restored database reverts users, nodes, credentials, policies, and audit history to the backup point; Agents whose credentials changed after that point may need to be registered again.
+
+Do not run `docker compose down -v` in production unless data is intentionally being deleted: it removes database volumes.
 
 ## Updates and uninstalling
 

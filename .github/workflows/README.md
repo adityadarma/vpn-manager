@@ -105,5 +105,5 @@ docker compose -f docker-compose.agent.yml build
 
 ### Support
 
-- [Deployment Guide](../../docs/DEPLOYMENT-GUIDE.md)
+- [Deployment Guide](https://adityadarma.github.io/vpn-manager/installation/manager/)
 - [GitHub Issues](https://github.com/adityadarma/vpn-manager/issues)

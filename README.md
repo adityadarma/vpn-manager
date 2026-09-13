@@ -112,6 +112,8 @@ Run from the root directory:
 - **[Full Documentation](https://adityadarma.github.io/vpn-manager/)** — Installation, administration, configuration, operations, security, and troubleshooting
 - **[Architecture](https://adityadarma.github.io/vpn-manager/architecture/)** — Component topology and data flow
 - **[API and Development](https://adityadarma.github.io/vpn-manager/reference/api-development/)** — Local development and API boundaries
+- **[Contributing](CONTRIBUTING.md)** — Development, testing, and pull-request workflow
+- **[Security Policy](SECURITY.md)** — Private vulnerability reporting and supported versions
 
 ## License
 

@@ -32,7 +32,48 @@ pnpm db:rollback
 
 Application endpoints are under `/api/v1`. Modules include health, auth, users, nodes, sessions, policies, tasks, VPN hooks, groups, networks, and audit. Interactive OpenAPI documentation is available at `/docs` only when `NODE_ENV` is not `production`.
 
-Do not treat Swagger as a production contract when an endpoint does not yet have a complete schema. Inspect related routes and tests before building an integration. Agent endpoints use node credentials; VPN endpoints use a dedicated token. Never send tokens in query strings or write them to application logs.
+The `/api/v1` prefix is the current API major version. Additive fields and endpoints may appear within that version. Treat incompatible changes as a new versioned API rather than relying on undocumented behavior.
+
+| Caller | Authentication | Use |
+| --- | --- | --- |
+| Dashboard administrator | HTTP-only `vpn_token` cookie or `Authorization: Bearer <JWT>` | Administrative and user-facing routes |
+| VPN Node Agent | `Authorization: Bearer <AGENT_SECRET_TOKEN>` | Node self-service, heartbeats, configuration, and task routes |
+| VPN hooks | `X-VPN-Token` | Connection events from VPN services |
+| Node registration | Admin JWT or `registrationKey` request field | Node bootstrap |
+| Health check | none | `GET /api/v1/health` |
+
+Requests are globally limited to 100 per IP per minute. Login is limited to 10 per IP per minute; node registration uses a tighter sensitive-route budget. A limited response is `429 Too Many Requests`; back off for one minute rather than retrying in a tight loop.
+
+Use the development Swagger UI to explore schemas and try requests locally. Do not treat Swagger as a production contract when an endpoint does not yet have a complete schema. Inspect related route code and tests before building an integration. Never send tokens in query strings or write them to application logs.
+
+### Agent registration example
+
+The installer is the supported way to register production nodes. This example only shows the request shape for integration testing; keep the secrets out of shell history and logs.
+
+```bash
+curl --fail-with-body \
+  -H 'Content-Type: application/json' \
+  -X POST https://vpn.example.com/api/v1/nodes/register \
+  --data '{"hostname":"node-1","ip":"203.0.113.10","vpnType":"wireguard","registrationKey":"replace-with-registration-key"}'
+```
+
+Registration payload requirements evolve with Agent capabilities. Use `scripts/install-agent.sh` or inspect `/docs` and `apps/api/test/node-registration.test.ts` for the release being integrated.
+
+## Testing and contributions
+
+Run the repository checks before submitting a change:
+
+```bash
+pnpm lint
+pnpm typecheck
+pnpm --filter @vpn/api test
+pnpm --filter @vpn/agent test
+pnpm --filter @vpn/docs build
+```
+
+Agent live tests require a Linux host with VPN and firewall prerequisites; they are deliberately excluded from the normal Agent test command. Run them only in an isolated test environment with `pnpm --filter @vpn/agent test:live`.
+
+See [CONTRIBUTING.md](https://github.com/adityadarma/vpn-manager/blob/main/CONTRIBUTING.md) for branch, change, test, and pull-request expectations.
 
 ## Schedulers
 
