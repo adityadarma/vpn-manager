@@ -209,7 +209,7 @@ fi
 echo ""
 if [ "$EXISTING_INSTALL" = false ]; then
     echo -e "${G}Default Credentials:${NC}"
-    echo "  Username: admin"
+    echo "  Admin email: admin@vpn.local"
     if [ "$ADMIN_PASSWORD_GENERATED" = true ]; then
         echo "  Password: $ADMIN_PASSWORD"
         echo "  (Auto-generated because no initial password was entered)"

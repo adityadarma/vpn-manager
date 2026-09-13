@@ -5,7 +5,7 @@ description: Manage identities, roles, groups, networks, and policies.
 
 ## Users and roles
 
-Create users from the Users page with a username, email address, and password. The `admin` role has administrative access, including Audit Logs; the `user` role is for ordinary VPN users. Apply least privilege: do not use an administrator account for daily VPN connections.
+Create Staff identities from the Users page with a name; they receive VPN credentials but cannot sign in to the dashboard. Admin accounts require an email address and password and can access administration features including Audit Logs. Apply least privilege: do not use an administrator account for daily VPN connections.
 
 Disabling a user or changing a role should be followed by a session and token review. The system stores token revocations so a revoked token cannot be used for the rest of its lifetime. If active access is high risk, revoke the user's VPN credentials and terminate relevant sessions.
 

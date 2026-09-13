@@ -84,7 +84,7 @@ pnpm dev
 - API: `http://localhost:3000`
 - Development API reference: `http://localhost:3000/docs`
 
-Set `ADMIN_PASSWORD` before seeding, or save the generated password printed by `pnpm db:seed`.
+Set `ADMIN_PASSWORD` before seeding, or save the generated password printed by `pnpm db:seed`. Sign in with `admin@vpn.local` and that password.
 
 ## Documentation
 

@@ -74,7 +74,7 @@ function ProfilePage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="bg-muted/30 text-card-foreground rounded-xl border border-border/50 p-4">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-medium text-muted-foreground">Username</span>
+                  <span className="text-sm font-medium text-muted-foreground">Name</span>
                   <div className="bg-primary/10 p-2 rounded-lg">
                     <User className="h-4 w-4 text-primary" />
                   </div>

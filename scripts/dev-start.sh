@@ -35,7 +35,7 @@ case "$MODE" in
     echo "   Web UI:   http://localhost:5173"
     echo "   API:      http://localhost:3000"
     echo "   API Docs: http://localhost:3000/docs"
-    echo "   Login:    admin / password from the seed output or ADMIN_PASSWORD"
+    echo "   Login:    admin@vpn.local / password from the seed output or ADMIN_PASSWORD"
     echo ""
     pnpm dev
     ;;
@@ -70,7 +70,7 @@ case "$MODE" in
     echo ""
     echo "   Web UI:   http://localhost:5173"
     echo "   API:      http://localhost:3000"
-    echo "   Login:    admin / password from the seed output or ADMIN_PASSWORD"
+    echo "   Login:    admin@vpn.local / password from the seed output or ADMIN_PASSWORD"
     echo ""
     ;;
 
