@@ -45,7 +45,7 @@ fi
 
 curl -fsS -c "$COOKIE_JAR" -X POST "http://127.0.0.1:$MANAGER_PORT/api/v1/auth/login" \
   -H 'Content-Type: application/json' \
-  -d "{\"username\":\"admin\",\"password\":\"$ADMIN_PASSWORD\"}" >/dev/null
+  -d "{\"email\":\"admin@vpn.local\",\"password\":\"$ADMIN_PASSWORD\"}" >/dev/null
 
 REGISTER=$(curl -fsS -X POST "http://127.0.0.1:$MANAGER_PORT/api/v1/nodes/register" \
   -b "$COOKIE_JAR" -H 'Content-Type: application/json' \

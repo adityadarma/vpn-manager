@@ -100,7 +100,7 @@ curl -fsS --connect-timeout 2 "http://127.0.0.1:$PORT/api/v1/health" >/dev/null 
   || { echo "Manager never became ready"; docker logs "$MANAGER" | tail -20; exit 1; }
 curl -fsS -c "$COOKIE_JAR" -X POST "http://127.0.0.1:$PORT/api/v1/auth/login" \
   -H 'Content-Type: application/json' \
-  -d "{\"username\":\"admin\",\"password\":\"$ADMIN_PASSWORD\"}" >/dev/null
+  -d "{\"email\":\"admin@vpn.local\",\"password\":\"$ADMIN_PASSWORD\"}" >/dev/null
 echo "  ok   Manager ready and authenticated"
 
 echo "==> Registering an OpenVPN node"
