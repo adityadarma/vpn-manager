@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url'
 
 // Load .env from monorepo root (walk up from apps/api/src/)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-dotenv.config({ path: path.resolve(__dirname, '../../../.env') })
+dotenv.config({ path: path.resolve(__dirname, '../../../.env'), quiet: true })
 
 import { buildApp } from './app'
 import { loadEnv } from './config/env'

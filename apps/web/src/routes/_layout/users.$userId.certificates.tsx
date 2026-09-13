@@ -73,11 +73,17 @@ function UserCertificatesPage() {
 
     <div className="bg-card border border-border rounded-xl overflow-hidden">
       {certificates.length === 0 ? <div className="py-16 text-center text-muted-foreground"><Key className="mx-auto mb-3 h-10 w-10 opacity-40" />No certificates for this user.</div> :
-        <div className="divide-y divide-border">{certificates.map((cert: any) => <div key={cert.id} className="p-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="min-w-0"><div className="flex items-center gap-2"><span className="font-semibold">{cert.credential_name || 'default'}</span>{cert.is_revoked && <span className="text-xs text-red-600">Revoked</span>}{cert.password_protected && <Lock className="h-3.5 w-3.5 text-blue-600" />}</div>
-            <div className="mt-2 grid grid-cols-2 gap-x-8 gap-y-1 text-sm text-muted-foreground sm:grid-cols-4"><span>Node: {cert.node_hostname}</span><span>VPN IP: {cert.vpn_ip || '-'}</span><span>Last connect: {cert.last_vpn_connect ? formatBrowserDateTime(cert.last_vpn_connect) : 'Never'}</span><span>Downloads: {cert.download_count}</span></div>
+        <div className="divide-y divide-border">{certificates.map((cert: any) => <div key={cert.id} className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:gap-6">
+          <div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className="font-semibold">{cert.credential_name || 'default'}</span>{Boolean(cert.is_revoked) && <span className="text-xs text-red-600">Revoked</span>}{Boolean(cert.password_protected) && <Lock className="h-3.5 w-3.5 text-blue-600" />}</div>
+            <dl className="mt-2 grid grid-cols-2 gap-x-5 gap-y-2 sm:grid-cols-3 xl:grid-cols-5">
+              <div><dt className="text-xs font-medium text-muted-foreground">Node</dt><dd className="mt-0.5 text-sm">{cert.node_hostname}</dd></div>
+              <div><dt className="text-xs font-medium text-muted-foreground">VPN IP</dt><dd className="mt-0.5 text-sm">{cert.vpn_ip || '-'}</dd></div>
+              <div><dt className="text-xs font-medium text-muted-foreground">Expires</dt><dd className="mt-0.5 text-sm">{cert.expires_at ? formatBrowserDateTime(cert.expires_at) : 'Unlimited'}</dd></div>
+              <div><dt className="text-xs font-medium text-muted-foreground">Last connect</dt><dd className="mt-0.5 text-sm">{cert.last_vpn_connect ? formatBrowserDateTime(cert.last_vpn_connect) : 'Never'}</dd></div>
+              <div><dt className="text-xs font-medium text-muted-foreground">Downloads</dt><dd className="mt-0.5 text-sm">{cert.download_count}</dd></div>
+            </dl>
           </div>
-          <div className="flex gap-2">{!cert.is_revoked ? <><Button size="sm" onClick={() => download(cert)} disabled={downloadingId === cert.id}><Download className="mr-2 h-4 w-4" />{downloadingId === cert.id ? 'Downloading...' : 'Download'}</Button><Button size="sm" variant="outline" onClick={() => setRevokingId(cert.id)} className="text-red-600"><Trash2 className="mr-2 h-4 w-4" />Revoke</Button></> : <Button size="sm" variant="outline" onClick={() => { setForm({ ...form, nodeId: cert.node_id, credentialName: cert.credential_name || '' }); setShowForm(true) }}><RefreshCw className="mr-2 h-4 w-4" />Regenerate</Button>}</div>
+          <div className="flex shrink-0 gap-2">{!Boolean(cert.is_revoked) ? <><Button size="sm" onClick={() => download(cert)} disabled={downloadingId === cert.id}><Download className="mr-2 h-4 w-4" />{downloadingId === cert.id ? 'Downloading...' : 'Download'}</Button><Button size="sm" variant="outline" onClick={() => setRevokingId(cert.id)} className="text-red-600"><Trash2 className="mr-2 h-4 w-4" />Revoke</Button></> : <Button size="sm" variant="outline" onClick={() => { setForm({ ...form, nodeId: cert.node_id, credentialName: cert.credential_name || '' }); setShowForm(true) }}><RefreshCw className="mr-2 h-4 w-4" />Regenerate</Button>}</div>
         </div>)}</div>}
     </div>
 
