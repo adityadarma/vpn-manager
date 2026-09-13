@@ -274,7 +274,7 @@ jobs:
       always() &&
       startsWith(github.ref, 'refs/tags/v') &&
       needs.verify-ci.result == 'success' &&
-      needs.publish.result == 'success' &&
+      needs.publish.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
