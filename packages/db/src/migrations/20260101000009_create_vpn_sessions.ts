@@ -15,8 +15,6 @@ export async function up(knex: Knex): Promise<void> {
     table.string('disconnect_reason', 50).nullable()
     table.string('client_version', 100).nullable()
     table.string('device_name', 255).nullable()
-    table.string('geo_country', 2).nullable()
-    table.string('geo_city', 100).nullable()
     table.integer('connection_duration_seconds').nullable()
     table.string('credential_id', 36).nullable().references('id').inTable('user_node_certificates').onDelete('SET NULL')
     table.timestamps(true, true)

@@ -4,7 +4,6 @@ import crypto from 'node:crypto'
 import { HeartbeatSchema, TunnelModeSchema, validateTaskPayload } from '@vpn/shared'
 import { logAudit, getClientIp } from '../../utils/audit'
 import { secretsMatchTrimmed } from '../../utils/secret-compare'
-import geoip from 'geoip-lite'
 import { enqueueApplyPolicies } from '../policies/policies.routes'
 import { enqueueNodeDnsSync } from '../../services/managed-dns'
 import { cidrToRoute } from '../../services/ip-pool'
@@ -743,19 +742,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
               } else {
               app.log.info(`[heartbeat] Creating new session for user ${userId} via WireGuard heartbeat`)
               
-              let geoCity = null
-              let geoCountry = null
-              if (client.realAddress) {
-                // Remove port if present: e.g. "1.2.3.4:51820" -> "1.2.3.4"
-                const cleanIp = client.realAddress.split(':')[0]
-                const geo = geoip.lookup(cleanIp)
-                if (geo) {
-                  geoCity = geo.city || null
-                  geoCountry = geo.country || null
-                }
-              }
-
-              // New session! Create it via vpn_sessions
+               // New session! Create it via vpn_sessions
               const newSessionId = uuidv7()
               await app.db('vpn_sessions').insert({
                 id: newSessionId,
@@ -768,9 +755,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
                 device_name: 'WireGuard Client',
                 bytes_sent: client.bytesSent,
                 bytes_received: client.bytesReceived,
-                connected_at: new Date(client.connectedSince),
-                geo_city: geoCity,
-                geo_country: geoCountry,
+                 connected_at: new Date(client.connectedSince),
               })
               
                 // Preserve the peer's actual connection time on its credential.
@@ -901,18 +886,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
             } else {
               app.log.info(`[heartbeat] Creating OpenVPN session for ${commonName} (${client.virtualAddress})`)
               
-              let geoCity = null
-              let geoCountry = null
-              if (client.realAddress) {
-                const cleanIp = client.realAddress.split(':')[0]
-                const geo = geoip.lookup(cleanIp)
-                if (geo) {
-                  geoCity = geo.city || null
-                  geoCountry = geo.country || null
-                }
-              }
-
-              const newSessionId = uuidv7()
+               const newSessionId = uuidv7()
               await app.db('vpn_sessions').insert({
                 id: newSessionId,
                 user_id: user.id,
@@ -925,9 +899,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
                 bytes_sent: client.bytesSent ?? 0,
                 bytes_received: client.bytesReceived ?? 0,
                 connected_at: client.connectedSince ? new Date(client.connectedSince) : new Date(),
-                last_activity_at: new Date(),
-                geo_city: geoCity,
-                geo_country: geoCountry,
+                 last_activity_at: new Date(),
               })
               if (resolvedCredential.credential_id) {
                 await app.db('user_node_certificates').where({ id: resolvedCredential.credential_id }).update({ last_vpn_connect: client.connectedSince ? new Date(client.connectedSince) : new Date() })

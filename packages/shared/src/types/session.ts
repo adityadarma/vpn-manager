@@ -10,8 +10,6 @@ export interface VpnSession {
   real_ip?: string
   client_version?: string
   device_name?: string
-  geo_country?: string
-  geo_city?: string
   bytes_sent: number
   bytes_received: number
   connected_at: string

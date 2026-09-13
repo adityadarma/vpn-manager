@@ -3,12 +3,7 @@ import { v7 as uuidv7 } from 'uuid'
 import { logAudit, getClientIp } from '../../utils/audit'
 
 const sessionRoutes: FastifyPluginAsync = async (app) => {
-  const dbClient = String(app.db.client.config.client || '')
-  const durationSecondsExpr = dbClient.includes('pg')
-    ? app.db.raw('EXTRACT(EPOCH FROM (NOW() - s.connected_at))::integer as duration_seconds')
-    : dbClient.includes('mysql')
-      ? app.db.raw('TIMESTAMPDIFF(SECOND, s.connected_at, NOW()) as duration_seconds')
-      : app.db.raw("CAST((julianday('now') - julianday(s.connected_at)) * 86400 AS INTEGER) as duration_seconds")
+  const durationSecondsExpr = app.db.raw("CAST((julianday('now') - julianday(s.connected_at)) * 86400 AS INTEGER) as duration_seconds")
 
   // GET /api/v1/sessions  — active sessions with enhanced details
   app.get(
@@ -34,8 +29,6 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
           // Fall back to the credential's device/label name (set when the
           // certificate was issued) when the Agent never reported a device name.
           app.db.raw('COALESCE(s.device_name, c.credential_name) as device_name'),
-          's.geo_country',
-          's.geo_city',
           's.bytes_sent',
           's.bytes_received',
           's.connected_at',

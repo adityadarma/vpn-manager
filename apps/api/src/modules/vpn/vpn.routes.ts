@@ -2,7 +2,6 @@ import type { FastifyPluginAsync } from 'fastify'
 import { v7 as uuidv7 } from 'uuid'
 import { logAudit, getClientIp } from '../../utils/audit'
 import { secretsMatchTrimmed } from '../../utils/secret-compare'
-import geoip from 'geoip-lite'
 
 /**
  * VPN Hooks API — called by vpn-client agent living on the VPN server.
@@ -158,16 +157,6 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
       // the new one would leave the user with no active session while connected.
       const sessionId = uuidv7()
       
-      let geoCity = null
-      let geoCountry = null
-      if (clientIp) {
-        const geo = geoip.lookup(clientIp)
-        if (geo) {
-          geoCity = geo.city || null
-          geoCountry = geo.country || null
-        }
-      }
-
       // Fall back to the credential's device/label name (set when the
       // certificate was issued) when the Agent has no OS/device info to report.
       const resolvedDeviceName = device_name ?? credential.credential_name ?? null
@@ -212,8 +201,6 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
           bytes_received: 0,
           connected_at: connectedAtOverride ?? new Date(),
           last_activity_at: new Date(),
-          geo_city: geoCity,
-          geo_country: geoCountry,
         })
 
         if (credential.credential_id) {

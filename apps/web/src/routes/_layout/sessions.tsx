@@ -10,7 +10,7 @@ import { api } from '@/lib/api'
 import { toast } from 'sonner'
 import {
   Activity, ArrowUp, ArrowDown, History, ChevronLeft, ChevronRight,
-  Monitor, MapPin, UserX, ShieldOff, ShieldCheck, ChevronDown,
+  Monitor, UserX, ShieldOff, ShieldCheck, ChevronDown,
   Clock, Globe, Server, Loader2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -29,8 +29,6 @@ interface Session {
   real_ip?: string
   client_version?: string
   device_name?: string
-  geo_country?: string
-  geo_city?: string
   bytes_sent: number
   bytes_received: number
   connected_at: string
@@ -303,7 +301,6 @@ function SessionsPage() {
                   <tr className="bg-muted/40 border-b border-border text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     <th className="text-left px-5 py-3.5">User</th>
                     <th className="text-left px-5 py-3.5">Device</th>
-                    <th className="text-left px-5 py-3.5">Location</th>
                     <th className="text-left px-5 py-3.5 min-w-[11rem]">Node</th>
                     <th className="text-left px-5 py-3.5">VPN IP</th>
                     <th className="text-left px-5 py-3.5">Duration</th>
@@ -343,18 +340,6 @@ function SessionsPage() {
                             )}
                           </div>
                         </div>
-                      </td>
-                      <td className="px-5 py-4 whitespace-nowrap">
-                        {s.geo_city || s.geo_country ? (
-                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-muted/40 border border-border/50 text-foreground text-xs font-medium">
-                            <MapPin className="h-3.5 w-3.5 text-primary/70 shrink-0" />
-                            <span>
-                              {s.geo_city && s.geo_country ? `${s.geo_city}, ${s.geo_country}` : s.geo_country || s.geo_city}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground/60">-</span>
-                        )}
                       </td>
                       <td className="px-5 py-4 min-w-[11rem]">
                         <div className="flex items-center gap-2">
