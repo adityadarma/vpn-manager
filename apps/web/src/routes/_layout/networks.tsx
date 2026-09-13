@@ -187,34 +187,46 @@ function NetworksPage() {
   const selectedAllocNode = allNodes.find(n => n.id === allocForm.node_id)
 
   const NodeSelector = ({ selectedIds }: { selectedIds: string[] }) => (
-    <div className="space-y-1.5">
-      <Label>Target Nodes <span className="text-xs text-muted-foreground font-normal">(leave empty = global, apply to all)</span></Label>
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <Label>Target Nodes</Label>
+        <span className={`text-xs font-medium ${selectedIds.length > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>
+          {selectedIds.length > 0 ? `${selectedIds.length} selected` : 'Global: all nodes'}
+        </span>
+      </div>
+      <p className="text-xs text-muted-foreground">Select specific nodes, or leave empty to apply this route to every node.</p>
       {allNodes.length === 0 ? (
         <p className="text-xs text-muted-foreground">No nodes registered.</p>
       ) : (
-        <div className="grid grid-cols-1 gap-1.5 max-h-40 overflow-y-auto border border-border rounded-lg p-2">
-          {allNodes.map(node => (
+        <div className="grid max-h-40 grid-cols-1 gap-1.5 overflow-y-auto rounded-lg border border-border p-2">
+          {allNodes.map(node => {
+            const selected = selectedIds.includes(node.id)
+            const online = node.status === 'online'
+            return (
             <button
               key={node.id}
               type="button"
               onClick={() => toggleNode(node.id)}
-              className={`flex items-center gap-2.5 px-3 py-2 rounded-md text-left text-sm transition-colors ${
-                selectedIds.includes(node.id)
-                  ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
-                  : 'hover:bg-muted border border-transparent'
+              className={`flex items-center gap-2.5 rounded-md border px-3 py-2 text-left text-sm transition-colors ${
+                selected
+                  ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-800'
+                  : 'border-transparent hover:bg-muted'
               }`}
             >
-              <div className={`w-4 h-4 rounded flex items-center justify-center border ${
-                selectedIds.includes(node.id) ? 'bg-emerald-500 border-emerald-500' : 'border-input'
+              <div className={`flex size-4 shrink-0 items-center justify-center rounded border ${
+                selected ? 'border-emerald-500 bg-emerald-500' : 'border-white bg-white'
               }`}>
-                {selectedIds.includes(node.id) && <Check className="h-3 w-3 text-white" />}
+                {selected && <Check className="h-3 w-3 text-white" />}
               </div>
-              <Server className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              <span className="font-medium truncate">{node.hostname}</span>
-              <span className="text-xs text-muted-foreground ml-auto">{node.ip_address}</span>
-              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${node.status === 'online' ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+              <Server className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium text-foreground">{node.hostname}</span>
+              </span>
+              <span className="text-xs text-muted-foreground">{node.ip_address}</span>
+              <span className={`size-1.5 shrink-0 rounded-full ${online ? 'bg-emerald-500' : 'bg-muted-foreground/60'}`} title={online ? 'Online' : 'Offline'} />
             </button>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

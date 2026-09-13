@@ -370,7 +370,9 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       if (!vpnIp) return reply.status(422).send({ error: 'Subnet full', message: `No available IPs in ${pool}` })
 
       const credentialId = uuidv7()
-      const commonName = `${id.replace(/-/g, '')}-${credentialId.replace(/-/g, '')}`
+      // EasyRSA limits the certificate common name to 64 bytes. Two UUIDs
+      // without separators preserve user and credential identity within it.
+      const commonName = `${id.replace(/-/g, '')}${credentialId.replace(/-/g, '')}`
 
       // Create task for agent to generate certificate
       const taskId = uuidv7()
@@ -544,7 +546,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
           }
 
           const credentialId = uuidv7()
-          const commonName = `${userId.replace(/-/g, '')}-${credentialId.replace(/-/g, '')}`
+          const commonName = `${userId.replace(/-/g, '')}${credentialId.replace(/-/g, '')}`
           const credentialName = `bulk-${credentialId.replace(/-/g, '').slice(-11)}`
 
           // Create task
