@@ -12,7 +12,7 @@ Manager: Fastify API + static dashboard
         |                         |
         | database                | task, heartbeat, event
         v                         v
- SQLite / PostgreSQL / MariaDB  Agent on a VPN Node
+  SQLite                         Agent on a VPN Node
                                       |
                                       v
                               OpenVPN or WireGuard
@@ -23,7 +23,7 @@ Manager: Fastify API + static dashboard
 
 ## Manager
 
-In production, one Manager container serves the static dashboard and API on the same port, `3000` by default. The API uses the `/api/v1` prefix. The Manager supports SQLite, PostgreSQL, and MySQL/MariaDB through Knex. The container does not terminate TLS; use a reverse proxy for public HTTPS.
+In production, one Manager container serves the static dashboard and API on the same port, `3000` by default. The API uses the `/api/v1` prefix and persists data in SQLite through Knex. The container does not terminate TLS; use a reverse proxy for public HTTPS.
 
 The Manager creates tasks such as client configuration generation. The Agent polls for tasks and reports their results. It also sends heartbeats; the Manager checks status every minute and marks a node offline after two minutes without a heartbeat.
 

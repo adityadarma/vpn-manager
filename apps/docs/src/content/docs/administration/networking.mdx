@@ -77,13 +77,13 @@ Add this route to every route table used by target subnets. On Server A, disable
 
 ### 4. Restrict AWS Security Groups
 
-On each target instance, allow only the required port from the VPN subnet. For example, to allow MySQL on Server B only for VPN clients in `10.8.1.0/24`:
+On each target instance, allow only the required port from the VPN subnet. For example, to allow a private application on Server B only for VPN clients in `10.8.1.0/24`:
 
 | Inbound field | Value |
 | --- | --- |
-| Type | MySQL/Aurora |
+| Type | Custom TCP |
 | Protocol | TCP |
-| Port | `3306` |
+| Port | `8443` |
 | Source | `10.8.1.0/24` |
 
 Use equivalent rules for SSH (`22`), HTTPS (`443`), or other approved application ports. Do not use `0.0.0.0/0` for private workload access.
@@ -94,8 +94,8 @@ Create an allow policy scoped to the approved group, target network, protocol, a
 
 | Priority | Scope | Target | Protocol | Port | Action |
 | --- | --- | --- | --- | --- | --- |
-| `100` | Group with `10.8.1.0/24` | `172.31.10.64/32` | TCP | `3306` | Allow |
-| `200` | Global | `172.31.10.64/32` | TCP | `3306` | Deny |
+| `100` | Group with `10.8.1.0/24` | `172.31.10.64/32` | TCP | `8443` | Allow |
+| `200` | Global | `172.31.10.64/32` | TCP | `8443` | Deny |
 
 Lower numeric priorities are evaluated first. Do not use MASQUERADE for VPC traffic when AWS Security Groups need to distinguish individual VPN client addresses; preserve the original `10.8.1.x` source and use the AWS return route instead.
 

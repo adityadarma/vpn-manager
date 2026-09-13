@@ -184,8 +184,6 @@ jobs:
             -e JWT_SECRET=ci-smoke-test-secret-key-32-characters-min \
             -e NODE_ENV=production \
             -e PORT=3000 \
-            -e DATABASE_TYPE=sqlite \
-            -e DATABASE_SQLITE_PATH=/data/vpn.sqlite \
             -e ADMIN_PASSWORD=ci-smoke-test-admin-pw-32chars!! \
             ${{ steps.image-config.outputs.image_name }}:ci-manager
 

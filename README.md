@@ -10,7 +10,7 @@ VPN Manager is an open-source control plane for operating self-hosted VPN infras
 
 ## Key Features
 
-- **Multi-Database Support:** SQLite (default/development), PostgreSQL, or MySQL/MariaDB.
+- **SQLite Storage:** A persistent local SQLite database for the Manager.
 - **VPN Engine Support:** Run OpenVPN or WireGuard nodes in the same deployment. Select an engine per node without changing the Manager's user, policy, or operational workflow.
 - **Node Clustering:** Deploy multiple VPN nodes across regions, all controlled from one central Manager.
 - **Role-Based Access Control (RBAC):** Admin and User roles.
@@ -40,7 +40,6 @@ VPN Manager is an open-source control plane for operating self-hosted VPN infras
 │                         │               │
 │              ┌──────────┴──────────┐    │
 │              │  Database           │    │
-│              │  Postgres/MySQL/    │    │
 │              │  SQLite             │    │
 │              └─────────────────────┘    │
 └────────────────────────┬────────────────┘
@@ -80,7 +79,7 @@ vpn-manager/
 │   ├── web/        ← Vite SPA + ShadCN dashboard (dev port 5173)
 │   └── agent/      ← VPN node agent (standalone worker)
 ├── packages/
-│   ├── db/         ← Knex multi-database layer
+│   ├── db/         ← Knex SQLite layer
 │   ├── shared/     ← Types, Zod schemas, endpoint constants
 │   └── ui/         ← Shared React components (Tailwind CSS)
 ├── docker-compose.yml
@@ -91,7 +90,7 @@ vpn-manager/
 
 - **Backend:** Fastify, TypeScript, Knex
 - **Frontend:** Vite, React, ShadCN UI, Tailwind CSS
-- **Database:** SQLite / PostgreSQL / MySQL (MariaDB)
+- **Database:** SQLite
 - **VPN Engines:** OpenVPN and WireGuard
 - **Tooling:** Turborepo + pnpm (monorepo)
 

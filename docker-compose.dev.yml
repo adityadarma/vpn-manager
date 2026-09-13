@@ -5,60 +5,15 @@
 #
 # Security Notes:
 # - Uses weak passwords (OK for local dev)
-# - Exposes database ports (OK for local dev)
 # - Uses host network for agent (OK for local dev)
 # - Mounts source code as volumes (OK for local dev)
 #
 # Usage:
 #   docker compose -f docker-compose.dev.yml up
-#   docker compose -f docker-compose.dev.yml --profile postgres up
-#   docker compose -f docker-compose.dev.yml --profile mysql up
 #   docker compose -f docker-compose.dev.yml --profile agent up
 # ============================================================
 
 services:
-  # ── Development Databases ──
-  postgres:
-    image: postgres:16-alpine
-    container_name: vpn-postgres-dev
-    environment:
-      POSTGRES_USER: vpn
-      POSTGRES_PASSWORD: vpn_dev
-      POSTGRES_DB: vpn_dev
-    volumes:
-      - postgres_dev_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U vpn" ]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    profiles: [ postgres ]
-    networks:
-      - vpn-dev-network
-
-  mariadb:
-    image: mariadb:11
-    container_name: vpn-mariadb-dev
-    environment:
-      MARIADB_USER: vpn
-      MARIADB_PASSWORD: vpn_dev
-      MARIADB_DATABASE: vpn_dev
-      MARIADB_ROOT_PASSWORD: root_dev
-    volumes:
-      - mariadb_dev_data:/var/lib/mysql
-    ports:
-      - "3306:3306"
-    healthcheck:
-      test: [ "CMD", "healthcheck.sh", "--connect", "--innodb_initialized" ]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    profiles: [ mysql ]
-    networks:
-      - vpn-dev-network
-
   # ── Development API — Hot-reload with tsx watch ──
   api:
     image: node:24-alpine
@@ -74,9 +29,6 @@ services:
       JWT_EXPIRES_IN: 7d
       NODE_REGISTRATION_KEY: ${NODE_REGISTRATION_KEY:-dev-registration-key}
       VPN_TOKEN: ${VPN_TOKEN:-dev-vpn-token}
-      DATABASE_TYPE: ${DATABASE_TYPE:-sqlite}
-      DATABASE_URL: ${DATABASE_URL:-}
-      DATABASE_SQLITE_PATH: /data/vpn.sqlite
       WEB_URL: ${WEB_URL:-http://localhost:3000}
     ports:
       - "3000:3000"
@@ -85,13 +37,6 @@ services:
       - api_dev_data:/data
       - pnpm_store:/root/.local/share/pnpm/store
       - node_modules_cache:/app/node_modules
-    depends_on:
-      postgres:
-        condition: service_healthy
-        required: false
-      mariadb:
-        condition: service_healthy
-        required: false
     healthcheck:
       test: [ "CMD-SHELL", "wget -qO- http://localhost:3000/api/v1/health || exit 1" ]
       interval: 15s
@@ -159,8 +104,6 @@ networks:
     driver: bridge
 
 volumes:
-  postgres_dev_data:
-  mariadb_dev_data:
   api_dev_data:
   pnpm_store:
   node_modules_cache:

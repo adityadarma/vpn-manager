@@ -24,8 +24,7 @@ const REDACTED = '[REDACTED]'
 /**
  * Parse a payload column into an object.
  *
- * The column is `json`, which knex returns as a string on SQLite/MySQL but as
- * an already-parsed object on PostgreSQL, so both shapes must be handled.
+ * SQLite returns the JSON column as a string, so decode it before redacting.
  */
 function parsePayload(payload: unknown): Record<string, unknown> | null {
   if (payload === null || payload === undefined) return null

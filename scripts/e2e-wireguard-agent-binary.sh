@@ -26,7 +26,6 @@ docker network create "$NETWORK" >/dev/null
 docker run -d --name "$MANAGER" --network "$NETWORK" --network-alias manager -p 3000 \
   -e NODE_ENV=production -e PORT=3000 -e HOST=0.0.0.0 \
   -e JWT_SECRET="$JWT_SECRET" -e ADMIN_PASSWORD="$ADMIN_PASSWORD" \
-  -e DATABASE_SQLITE_PATH=/data/e2e.sqlite \
   vpn-manager-e2e:local >/dev/null
 
 MANAGER_PORT=$(docker port "$MANAGER" 3000/tcp | cut -d: -f2)

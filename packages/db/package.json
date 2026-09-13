@@ -18,13 +18,11 @@
     "bcryptjs": "^3.0.2",
     "better-sqlite3": "^13.0.3",
     "knex": "^3.3.0",
-    "mysql2": "^3.24.4",
-    "pg": "^8.23.0",
     "uuid": "^14.0.2"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
-    "@types/pg": "^8.23.1",
+    "@types/node": "^24.13.4",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   }

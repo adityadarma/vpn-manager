@@ -15,13 +15,9 @@ Store `.env` files with restrictive permissions and never commit them to Git. Ro
 | `JWT_SECRET` | required | At least 32 characters; secret for session tokens |
 | `JWT_EXPIRES_IN` | `7d` | JWT lifetime |
 | `WEB_URL` | optional | Dashboard URL for CORS in local development |
-| `DATABASE_TYPE` | `sqlite` | `sqlite`, `postgres`, or `mysql` |
-| `DATABASE_URL` | optional | Effectively required for PostgreSQL/MySQL; for example `postgresql://...` or `mysql://...` |
-| `DATABASE_SQLITE_PATH` | internal DB path | Overrides the SQLite file location |
 | `NODE_REGISTRATION_KEY` | not validated by API env | Secret for node auto-registration; consumed by the registration route |
 | `VPN_TOKEN` | not validated by API env | `X-VPN-Token` secret for VPN hooks and registration |
 | `ADMIN_PASSWORD` | empty | Used only for the first admin seed; empty generates and prints a random password once |
-| `WEB_STATIC_PATH` | Compose deployment: `/app/web` | Location of the built dashboard in production |
 
 `VITE_API_URL` and `WEB_URL` in `.env.example` are for local development. Production serves the dashboard and API from the same origin, so they are normally unnecessary.
 

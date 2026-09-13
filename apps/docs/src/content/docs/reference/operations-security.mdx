@@ -29,7 +29,7 @@ The Manager health endpoint is `/api/v1/health`. The production container has an
 
 ## Backup and recovery
 
-For SQLite, back up the `manager_data` volume or database file while the service is stopped, or use a consistent SQLite backup procedure. For PostgreSQL and MariaDB, use native database backups in addition to safely retaining Compose configuration and `.env`. Backups must include application data, secrets, and the PKI or node configuration material needed to restore service.
+Back up the SQLite `manager_data` volume or database file while the service is stopped, or use a consistent SQLite backup procedure. Backups must include application data, secrets, and the PKI or node configuration material needed to restore service.
 
 Test restores in an isolated environment. Do not run `docker compose down -v` in production unless data is intentionally being deleted: it removes database volumes.
 

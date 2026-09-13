@@ -47,7 +47,7 @@ case "$MODE" in
     pnpm build
     run_migrations
     echo "✅ Build complete. Starting API + built Web UI on http://localhost:3000"
-    WEB_STATIC_PATH="$ROOT_DIR/apps/web/dist" NODE_ENV=production pnpm --filter @vpn/api start
+    NODE_ENV=production pnpm --filter @vpn/api start
     ;;
 
   docker)

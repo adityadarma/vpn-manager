@@ -30,9 +30,7 @@ import dnsRoutes from './modules/dns/dns.routes'
 
 export async function buildApp(env: Env) {
   const db = createDb({
-    type: env.DATABASE_TYPE,
-    url: env.DATABASE_URL,
-    sqlitePath: env.DATABASE_SQLITE_PATH,
+    inMemory: env.NODE_ENV === 'test',
   })
 
   const app = Fastify({

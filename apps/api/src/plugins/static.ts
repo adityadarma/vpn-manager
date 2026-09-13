@@ -1,14 +1,12 @@
 import fp from 'fastify-plugin'
 import fastifyStatic from '@fastify/static'
-import path from 'path'
-import { fileURLToPath } from 'url'
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
+import { existsSync } from 'node:fs'
+import path from 'node:path'
 
 export default fp(async (app) => {
-  // In production, Vite static output is placed at /app/web
-  // In development, this plugin is not loaded (dev uses Vite dev server)
-  const webRoot = process.env['WEB_STATIC_PATH'] ?? path.resolve(__dirname, '../../../web')
+  // The production image places the dashboard at /app/web. Local production
+  // runs use the workspace build without exposing a configurable path.
+  const webRoot = existsSync('/app/web') ? '/app/web' : path.resolve(process.cwd(), 'apps/web/dist')
 
   await app.register(fastifyStatic, {
     root: webRoot,
@@ -23,6 +21,6 @@ export default fp(async (app) => {
     if (url.startsWith('/api/')) {
       return reply.status(404).send({ error: 'Not Found' })
     }
-    return reply.sendFile('index.html', webRoot)
+    return reply.sendFile('index.html')
   })
 })

@@ -29,8 +29,6 @@ describe('Legacy node config compatibility', () => {
 
   beforeAll(async () => {
     app = await buildApp({
-      DATABASE_TYPE: 'sqlite',
-      DATABASE_SQLITE_PATH: ':memory:',
       JWT_SECRET: 'test-secret',
       JWT_EXPIRES_IN: '1h',
       NODE_ENV: 'test',

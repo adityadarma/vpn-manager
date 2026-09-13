@@ -17,14 +17,12 @@ export async function revokeExpiredCertificates(db: Knex): Promise<RevocationRes
   const results: RevocationResult[] = []
 
   try {
-    const now = new Date()
-
     const expiredCerts = await db('user_node_certificates as c')
       .join('users as u', 'c.user_id', 'u.id')
       .join('vpn_nodes as n', 'c.node_id', 'n.id')
       .where('c.is_revoked', false)
       .whereNotNull('c.expires_at')
-      .where('c.expires_at', '<=', now.toISOString())
+      .where('c.expires_at', '<=', db.fn.now())
       .where('n.status', 'online')
       .select(
         'c.id as cert_id',

@@ -1,14 +1,10 @@
 import knex, { type Knex } from 'knex'
 import path from 'path'
-import { fileURLToPath } from 'url'
+import { fileURLToPath } from 'node:url'
 import fs from 'fs'
 
-export type DatabaseType = 'postgres' | 'mysql' | 'sqlite'
-
 export interface DbConfig {
-  type: DatabaseType
-  url?: string
-  sqlitePath?: string
+  inMemory?: boolean
 }
 
 // Resolve the monorepo root/data directory regardless of CWD
@@ -22,8 +18,6 @@ let _db: Knex | null = null
 export function createDb(config: DbConfig): Knex {
   if (_db) return _db
 
-  const type = config.type
-
   const TS_EXTENSIONS = {
     directory: path.join(__dirname, 'migrations'),
     extension: 'ts',
@@ -36,35 +30,16 @@ export function createDb(config: DbConfig): Knex {
     loadExtensions: ['.ts'],
   }
 
-  let knexConfig: Knex.Config
-
-  if (type === 'postgres') {
-    knexConfig = {
-      client: 'pg',
-      connection: config.url,
-      pool: { min: 2, max: 10 },
-      migrations: TS_EXTENSIONS,
-      seeds: TS_SEEDS,
-    }
-  } else if (type === 'mysql') {
-    knexConfig = {
-      client: 'mysql2',
-      connection: config.url,
-      pool: { min: 2, max: 10 },
-      migrations: TS_EXTENSIONS,
-      seeds: TS_SEEDS,
-    }
-  } else {
-    // SQLite: always stored at <monorepo-root>/data/vpn.sqlite unless overridden
-    const sqlitePath = config.sqlitePath ?? DEFAULT_SQLITE_PATH
-    fs.mkdirSync(path.dirname(sqlitePath), { recursive: true })
-    knexConfig = {
-      client: 'better-sqlite3',
-      connection: { filename: sqlitePath },
-      useNullAsDefault: true,
-      migrations: TS_EXTENSIONS,
-      seeds: TS_SEEDS,
-    }
+  // Production mounts /data; local development keeps the database in the repo.
+  // Tests use an isolated in-memory database without an environment override.
+  const sqlitePath = config.inMemory ? ':memory:' : (fs.existsSync('/data') ? '/data/vpn.sqlite' : DEFAULT_SQLITE_PATH)
+  if (!config.inMemory) fs.mkdirSync(path.dirname(sqlitePath), { recursive: true })
+  const knexConfig: Knex.Config = {
+    client: 'better-sqlite3',
+    connection: { filename: sqlitePath },
+    useNullAsDefault: true,
+    migrations: TS_EXTENSIONS,
+    seeds: TS_SEEDS,
   }
 
   _db = knex(knexConfig)

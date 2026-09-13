@@ -22,12 +22,7 @@ function getCertificateExpiry(
 }
 
 const userRoutes: FastifyPluginAsync = async (app) => {
-  const dbClient = String(app.db.client.config.client || '')
-  const groupConcatExpr = dbClient.includes('pg')
-    ? app.db.raw("string_agg(g.name, ',') as current_groups")
-    : dbClient.includes('mysql')
-      ? app.db.raw("GROUP_CONCAT(g.name SEPARATOR ',') as current_groups")
-      : app.db.raw('GROUP_CONCAT(g.name) as current_groups')
+  const groupConcatExpr = app.db.raw('GROUP_CONCAT(g.name) as current_groups')
 
   async function revokeCertificateOnNode(nodeId: string, username: string, clientCert: string): Promise<string | null> {
     const taskId = uuidv7()

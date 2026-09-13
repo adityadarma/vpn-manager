@@ -22,7 +22,7 @@ Run this on the Manager host:
 curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-manager.sh | sudo bash
 ```
 
-The script creates `/opt/vpn-manager`, downloads `docker-compose.prod.yml`, creates `.env` when it does not exist, selects a database, and starts the containers. Reinstallation preserves `.env` so existing secrets, database settings, nodes, and sessions remain unchanged.
+The script creates `/opt/vpn-manager`, downloads `docker-compose.prod.yml`, creates `.env` when it does not exist, and starts the containers. The Manager uses SQLite in the persistent `manager_data` volume. Reinstallation preserves `.env` so existing secrets, nodes, and sessions remain unchanged.
 
 ### Release channels
 
@@ -34,14 +34,6 @@ curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/script
 ```
 
 The beta installer sets `IMAGE_VERSION=beta` in `/opt/vpn-manager/.env`, so subsequent installer updates remain on beta. The release workflow publishes `ghcr.io/adityadarma/vpn-manager:beta` whenever a beta prerelease tag (such as `v1.1.8-beta`) is pushed. Beta is for testing and can change without a stable release; use the default channel for production.
-
-Choose one of these databases when prompted:
-
-| Option | `DATABASE_TYPE` value | Use case |
-| --- | --- | --- |
-| SQLite | `sqlite` | Small, simple installations; data is stored in the `manager_data` volume |
-| PostgreSQL | `postgres` | Production with the bundled database container or an external service |
-| MariaDB | `mysql` | Environments using MySQL/MariaDB compatibility |
 
 On a new interactive install, the script asks for the initial `admin` password without echoing it on the terminal. Enter a password of at least eight characters, or press Enter to generate a strong random password. An auto-generated password is printed once in the final summary; a password you enter yourself is not printed again. Store the application URL, `NODE_REGISTRATION_KEY`, and `VPN_TOKEN`, then change the admin password after first login.
 
@@ -63,15 +55,6 @@ openssl rand -base64 32
 openssl rand -hex 32
 docker compose -f docker-compose.prod.yml up -d
 ```
-
-For bundled databases, the Compose profile must match `DATABASE_TYPE`:
-
-```bash
-docker compose -f docker-compose.prod.yml --profile postgres up -d
-docker compose -f docker-compose.prod.yml --profile mariadb up -d
-```
-
-The profile is named `mariadb`, while the application value remains `DATABASE_TYPE=mysql`. For an external database, set `DATABASE_URL` to the external server URL and do not enable a local database profile.
 
 ## Local development
 
@@ -105,7 +88,7 @@ sudo bash scripts/uninstall-manager.sh
 
 The script prompts for:
 
-1. **Uninstall mode** — `Full remove` deletes containers, images, database volumes, and `/opt/vpn-manager`. `Keep data` deletes containers and images but keeps the database volumes (`manager_data`, and `postgres_data`/`mariadb_data` if used), so a later reinstall can restore the same data.
+1. **Uninstall mode** — `Full remove` deletes containers, images, the SQLite `manager_data` volume, and `/opt/vpn-manager`. `Keep data` deletes containers and images but keeps `manager_data`, so a later reinstall can restore the same data.
 2. **Backup before uninstalling** — if `/opt/vpn-manager/backup.sh` exists, offers to run it before anything is removed.
 3. **Remove Docker images** — deletes the local `ghcr.io/adityadarma/vpn-manager:latest` image.
 4. **Remove the installation directory** — deletes `/opt/vpn-manager` (skipped automatically in `Keep data` mode).

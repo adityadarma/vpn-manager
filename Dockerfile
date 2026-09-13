@@ -112,8 +112,6 @@ RUN mkdir -p /data && chown -R apiuser:nodejs /data
 USER apiuser
 
 ENV NODE_ENV=production
-# Tell Fastify's static plugin where to find the web files
-ENV WEB_STATIC_PATH=/app/web
 
 # Expose single port — Fastify serves both API and web
 EXPOSE 3000
