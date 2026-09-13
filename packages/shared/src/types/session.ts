@@ -1,7 +1,7 @@
 export interface VpnSession {
   id: string
   user_id: string
-  username?: string
+  name?: string
   email?: string
   node_id: string
   node_hostname?: string

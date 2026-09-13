@@ -3,7 +3,7 @@ import { v7 as uuidv7 } from 'uuid'
 
 export interface RevocationResult {
   userId: string
-  username: string
+  name: string
   nodeId: string
   success: boolean
   error?: string
@@ -32,7 +32,7 @@ export async function revokeExpiredCertificates(db: Knex): Promise<RevocationRes
         'c.client_cert',
         'c.common_name',
         'c.expires_at',
-        'u.username',
+        'u.name',
         'n.hostname as node_hostname',
         'n.vpn_type'
       )
@@ -79,7 +79,7 @@ export async function revokeExpiredCertificates(db: Knex): Promise<RevocationRes
             node_id: cert.node_id,
             action: 'revoke_vpn_user',
             payload: JSON.stringify({
-              username: cert.common_name || cert.username,
+              username: cert.common_name,
               client_cert: cert.client_cert,
             }),
             status: 'pending',
@@ -93,7 +93,7 @@ export async function revokeExpiredCertificates(db: Knex): Promise<RevocationRes
             if (task?.status === 'done') break
             if (task?.status === 'failed') {
               console.error(
-                `[cert-expiry] Node failed to revoke expired credential for ${cert.username}: ${task.error_message || 'unknown error'}`
+                `[cert-expiry] Node failed to revoke expired credential for ${cert.name}: ${task.error_message || 'unknown error'}`
               )
               break
             }
@@ -111,23 +111,23 @@ export async function revokeExpiredCertificates(db: Knex): Promise<RevocationRes
 
         results.push({
           userId: cert.user_id,
-          username: cert.username,
+          name: cert.name,
           nodeId: cert.node_id,
           success: true,
         })
 
         console.log(
-          `[cert-expiry] Successfully revoked expired ${cert.vpn_type} certificate for ${cert.username} on ${cert.node_hostname}`
+          `[cert-expiry] Successfully revoked expired ${cert.vpn_type} certificate for ${cert.name} on ${cert.node_hostname}`
         )
       } catch (error: any) {
         results.push({
           userId: cert.user_id,
-          username: cert.username,
+          name: cert.name,
           nodeId: cert.node_id,
           success: false,
           error: error.message,
         })
-        console.error(`[cert-expiry] Failed to revoke expired certificate for ${cert.username}:`, error)
+        console.error(`[cert-expiry] Failed to revoke expired certificate for ${cert.name}:`, error)
       }
     }
   } catch (error) {

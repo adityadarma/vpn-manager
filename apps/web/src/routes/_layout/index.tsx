@@ -106,7 +106,7 @@ function DashboardPage() {
                 {sessions.map((s) => (
                   <div key={s.id} className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-foreground">{s.username}</p>
+                      <p className="text-sm font-medium text-foreground">{s.name}</p>
                       <p className="text-xs text-muted-foreground/70">
                          {s.vpn_ip} &bull; {formatBrowserDateTime(s.connected_at)}
                       </p>

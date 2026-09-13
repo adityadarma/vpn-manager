@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 export const LoginSchema = z.object({
-  username: z.string().min(1, 'Username is required'),
+  email: z.string().email('A valid email address is required'),
   password: z.string().min(1, 'Password is required'),
 })
 
@@ -9,8 +9,9 @@ export const LoginResponseSchema = z.object({
   user: z.object({
     id: z.string(),
     username: z.string(),
+    name: z.string().nullable(),
     email: z.string().nullable(),
-    role: z.enum(['admin', 'user']),
+    role: z.literal('admin'),
     lastLogin: z.string().datetime(),
   }),
 })

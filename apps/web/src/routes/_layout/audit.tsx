@@ -31,7 +31,7 @@ import {
 interface AuditLog {
   id: string
   user_id: string | null
-  username: string
+  name: string | null
   action: string
   resource_type: string
   resource_id: string | null
@@ -82,7 +82,7 @@ function AuditPage() {
     if (!searchQuery) return true
     const query = searchQuery.toLowerCase()
     return (
-      log.username.toLowerCase().includes(query) ||
+      (log.name ?? '').toLowerCase().includes(query) ||
       log.action.toLowerCase().includes(query) ||
       log.resource_type.toLowerCase().includes(query) ||
       (log.ip_address?.toLowerCase().includes(query))
@@ -172,7 +172,7 @@ function AuditPage() {
                         <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center">
                           <User className="h-3 w-3 text-primary" />
                         </div>
-                        <span className="text-sm font-medium">{log.username}</span>
+                        <span className="text-sm font-medium">{log.name ?? 'Unknown user'}</span>
                       </div>
                     </TableCell>
                     <TableCell>

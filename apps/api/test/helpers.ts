@@ -20,7 +20,7 @@ export async function loginAsAdmin(app: FastifyInstance): Promise<string> {
   const res = await app.inject({
     method: 'POST',
     url: '/api/v1/auth/login',
-    payload: { username: 'admin', password: 'Admin@1234!' },
+    payload: { email: 'admin@vpn.local', password: 'Admin@1234!' },
   })
 
   if (res.statusCode !== 200) {
@@ -31,35 +31,26 @@ export async function loginAsAdmin(app: FastifyInstance): Promise<string> {
 }
 
 /**
- * Create a non-admin user and return their auth cookie.
- * Used to verify admin-only routes reject regular users.
+ * Create a Staff JWT directly for middleware authorization tests. Staff
+ * accounts cannot obtain one through the dashboard login endpoint.
  */
 export async function loginAsUser(
   app: FastifyInstance,
-  username = 'regular_user',
+  name = 'Regular User',
   password = 'User@1234!',
 ): Promise<string> {
-  const existing = await app.db('users').where({ username }).first()
+  const existing = await app.db('users').where({ name }).first()
   if (!existing) {
     await app.db('users').insert({
       id: uuidv7(),
-      username,
-      email: `${username}@vpn.local`,
+      name,
+      email: `${name.toLowerCase().replace(/\s+/g, '.')}@vpn.local`,
       password: await bcrypt.hash(password, 10),
       role: 'user',
       is_active: true,
     })
   }
 
-  const res = await app.inject({
-    method: 'POST',
-    url: '/api/v1/auth/login',
-    payload: { username, password },
-  })
-
-  if (res.statusCode !== 200) {
-    throw new Error(`User login failed with status ${res.statusCode}: ${res.body}`)
-  }
-
-  return normalizeCookieHeader(res.headers['set-cookie'])
+  const token = app.jwt.sign({ id: existing?.id ?? (await app.db('users').where({ name }).first()).id, name, role: 'user' })
+  return `vpn_token=${token}`
 }

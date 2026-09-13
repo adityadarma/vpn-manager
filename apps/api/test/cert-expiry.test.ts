@@ -22,7 +22,7 @@ describe('certificate expiry', () => {
   })
 
   it('does not revoke credentials whose SQLite epoch expiry is still in the future', async () => {
-    const user = await app.db('users').where({ username: 'admin' }).first('id')
+    const user = await app.db('users').where({ email: 'admin@vpn.local' }).first('id')
     const nodeId = uuidv7()
     const expiredId = uuidv7()
     const futureId = uuidv7()

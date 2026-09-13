@@ -35,7 +35,7 @@ describe('VPN IP Uniqueness', () => {
       method: 'POST',
       url: '/api/v1/users',
       headers: { Cookie: adminCookie },
-      payload: { username: 'ip_test_user1', password: 'Test@1234!', vpn_group_id: groupId },
+      payload: { name: 'IP Test User 1', password: 'Test@1234!', vpn_group_id: groupId },
     })
     expect(res1.statusCode).toBe(201)
 
@@ -43,7 +43,7 @@ describe('VPN IP Uniqueness', () => {
       method: 'POST',
       url: '/api/v1/users',
       headers: { Cookie: adminCookie },
-      payload: { username: 'ip_test_user2', password: 'Test@1234!', vpn_group_id: groupId },
+      payload: { name: 'IP Test User 2', password: 'Test@1234!', vpn_group_id: groupId },
     })
     expect(res2.statusCode).toBe(201)
     // `users.vpn_ip` was removed once credential-scoped identity replaced it —
@@ -64,8 +64,8 @@ describe('VPN IP Uniqueness', () => {
     const firstUserId = uuidv7()
     const secondUserId = uuidv7()
     await app.db('users').insert([
-      { id: firstUserId, username: 'dup_ip_test_1', role: 'user', is_active: true },
-      { id: secondUserId, username: 'dup_ip_test_2', role: 'user', is_active: true },
+      { id: firstUserId, name: 'Duplicate IP Test 1', role: 'user', is_active: true },
+      { id: secondUserId, name: 'Duplicate IP Test 2', role: 'user', is_active: true },
     ])
     await app.db('user_node_certificates').insert({
       id: uuidv7(),

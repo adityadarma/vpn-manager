@@ -25,7 +25,7 @@ function LoginPage() {
   const navigate = useNavigate()
   const login = useAuthStore((s) => s.login)
 
-  const [form, setForm] = useState({ username: '', password: '' })
+  const [form, setForm] = useState({ email: '', password: '' })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -43,7 +43,7 @@ function LoginPage() {
       })
 
       const data = await res.json() as {
-        user?: { id: string; username: string; email: string | null; role: string; lastLogin?: string }
+        user?: { id: string; name: string; email: string | null; role: string; lastLogin?: string }
         message?: string
       }
 
@@ -88,14 +88,14 @@ function LoginPage() {
             )}
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
+                <Label htmlFor="email">Admin email</Label>
                 <Input
-                  id="username"
-                  type="text"
-                  placeholder="Enter your username"
-                  autoComplete="username"
-                  value={form.username}
-                  onChange={(e) => setForm({ ...form, username: e.target.value })}
+                  id="email"
+                  type="email"
+                  placeholder="admin@example.com"
+                  autoComplete="email"
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
                   required
                 />
               </div>

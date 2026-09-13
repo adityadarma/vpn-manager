@@ -49,13 +49,13 @@ interface Group {
 }
 
 interface GroupDetail extends Group {
-  members: Array<{ id: string; username: string; email: string | null; role: string; is_active: boolean; vpn_ip: string | null }>
+  members: Array<{ id: string; name: string; email: string | null; role: string; is_active: boolean; vpn_ip: string | null }>
   networks: Array<{ id: string; name: string; cidr: string }>
 }
 
 interface User {
   id: string
-  username: string
+  name: string
   email: string | null
   role: string
   is_active: boolean
@@ -234,7 +234,7 @@ function GroupsPage() {
   // Filter users that are not already in the group and match search
   const availableUsers = allUsers.filter(u => 
     !groupDetail?.members.some(m => m.id === u.id) &&
-    (u.username.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    (u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
      (u.email && u.email.toLowerCase().includes(searchQuery.toLowerCase())))
   )
 
@@ -511,10 +511,10 @@ function GroupsPage() {
                     {groupDetail.members.slice(0, 5).map(m => (
                       <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/30 transition-colors">
                         <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
-                          {m.username[0]?.toUpperCase()}
+                          {m.name[0]?.toUpperCase()}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{m.username}</p>
+                          <p className="text-sm font-medium truncate">{m.name}</p>
                           <p className="text-xs text-muted-foreground truncate">{m.email ?? '—'}</p>
                         </div>
                         {m.vpn_ip && (
@@ -556,14 +556,14 @@ function GroupsPage() {
         </div>
         <div className="overflow-y-auto divide-y flex-1">
           {groupDetail?.members
-            .filter(member => member.username.toLowerCase().includes(searchQuery.toLowerCase()) || (member.email ?? '').toLowerCase().includes(searchQuery.toLowerCase()))
+            .filter(member => member.name.toLowerCase().includes(searchQuery.toLowerCase()) || (member.email ?? '').toLowerCase().includes(searchQuery.toLowerCase()))
             .map(member => (
               <div key={member.id} className="flex items-center gap-3 px-5 py-3 hover:bg-muted/30 transition-colors">
                 <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary shrink-0">
-                  {member.username[0]?.toUpperCase()}
+                  {member.name[0]?.toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{member.username}</p>
+                  <p className="text-sm font-medium truncate">{member.name}</p>
                   <p className="text-xs text-muted-foreground truncate">{member.email ?? '—'}</p>
                 </div>
                 {member.vpn_ip && <code className="hidden sm:inline-block text-xs bg-emerald-50 text-emerald-700 border border-emerald-100 px-1.5 py-0.5 rounded">{member.vpn_ip}</code>}
@@ -701,13 +701,13 @@ function GroupsPage() {
             <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 px-3 py-2.5 text-sm text-amber-800 dark:text-amber-300">
               <span className="mt-0.5 shrink-0">⚠️</span>
               <span>
-                <strong>{usersBeingMoved.map(u => u.username).join(', ')}</strong> will be moved from their current group and assigned a new IP.
+                <strong>{usersBeingMoved.map(u => u.name).join(', ')}</strong> will be moved from their current group and assigned a new IP.
               </span>
             </div>
           )}
           <div className="space-y-3">
             <Input
-              placeholder="Search by username or email..."
+              placeholder="Search by name or email..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               autoFocus
@@ -731,10 +731,10 @@ function GroupsPage() {
                       className="rounded border-input text-emerald-600 focus:ring-emerald-500 h-4 w-4 shrink-0 transition-opacity"
                     />
                     <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary shrink-0">
-                      {u.username[0]?.toUpperCase()}
+                      {u.name[0]?.toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{u.username}</p>
+                      <p className="text-sm font-medium truncate">{u.name}</p>
                       {u.email && <p className="text-xs text-muted-foreground truncate">{u.email}</p>}
                       {u.vpn_group_name && (
                         <p className="text-xs text-amber-600 dark:text-amber-400 truncate">in group: {u.vpn_group_name}</p>

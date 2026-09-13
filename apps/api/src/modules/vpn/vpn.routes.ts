@@ -72,11 +72,6 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
           .select('c.id as credential_id', 'c.vpn_ip as credential_vpn_ip', 'c.credential_name as credential_name', 'u.*')
           .first()
       }
-      // Existing deployments issued OpenVPN certificates with users.username as
-      // their Common Name before credential-scoped identities existed.
-      if (!credential && request.body.username) {
-        credential = await app.db('users').where({ username: request.body.username }).first()
-      }
       if (!credential && request.body.public_key) {
         // WireGuard: lookup via user_node_certificates using public key prefix (16 chars)
         const keyPrefix = request.body.public_key.substring(0, 16)
@@ -104,13 +99,13 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
 
       // Validate user is active
       if (!user.is_active) {
-        app.log.warn(`[vpn/connect] Inactive user attempted connection: ${user.username} from ${clientIp}`)
+        app.log.warn(`[vpn/connect] Inactive user attempted connection: ${user.name} from ${clientIp}`)
         
         await app.db('connection_attempts').insert({
           id: uuidv7(),
           user_id: user.id,
           node_id: node_id ?? null,
-          username: user.username,
+          username: user.name,
           real_ip: clientIp,
           failure_reason: 'account_disabled',
           error_details: 'User account is disabled',
@@ -127,7 +122,7 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
           id: uuidv7(),
           user_id: user.id,
           node_id: node_id ?? null,
-          username: user.username,
+          username: user.name,
           real_ip: clientIp,
           failure_reason: 'account_not_active',
           error_details: `Account not active until ${user.valid_from}`,
@@ -142,7 +137,7 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
           id: uuidv7(),
           user_id: user.id,
           node_id: node_id ?? null,
-          username: user.username,
+          username: user.name,
           real_ip: clientIp,
           failure_reason: 'account_expired',
           error_details: `Account expired on ${user.valid_to}`,
@@ -208,12 +203,12 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
         }
       })
 
-      app.log.info(`[vpn/connect] ${user.username} connected — session ${sessionId}, IP ${vpn_ip}, device: ${resolvedDeviceName ?? 'unknown'}`)
+      app.log.info(`[vpn/connect] ${user.name} connected — session ${sessionId}, IP ${vpn_ip}, device: ${resolvedDeviceName ?? 'unknown'}`)
 
       // Log successful connection audit
       await logAudit(app, {
         userId: user.id,
-        username: user.username,
+        username: user.name,
         action: 'vpn_connect',
         resourceType: 'vpn_session',
         resourceId: sessionId,
@@ -270,7 +265,7 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
         .where({ 'c.node_id': node_id, 'c.common_name': username, 'c.is_revoked': false })
         .select('c.id as credential_id', 'u.*')
         .first()
-      const user = credential ?? await app.db('users').where({ username }).first()
+      const user = credential
       if (!user) return reply.status(404).send({ error: 'User not found' })
 
       // Get the oldest open session for this user on this node.
@@ -307,7 +302,7 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
         // Log audit
         await logAudit(app, {
           userId: user.id,
-          username: user.username,
+          username: user.name,
           action: 'vpn_disconnect',
           resourceType: 'vpn_session',
           resourceId: session.id,

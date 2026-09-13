@@ -40,8 +40,8 @@ function normalizeRecord(name: string, type: string, value: string): { name: str
 
 const dnsRoutes: FastifyPluginAsync = async (app) => {
   const audit = async (request: any, action: string, resourceType: string, resourceId: string, metadata?: Record<string, unknown>) => {
-    const user = request.user as { id: string; username: string }
-    await logAudit(app, { userId: user.id, username: user.username, action, resourceType, resourceId, ipAddress: getClientIp(request), metadata })
+    const user = request.user as { id: string; name: string }
+    await logAudit(app, { userId: user.id, username: user.name, action, resourceType, resourceId, ipAddress: getClientIp(request), metadata })
   }
 
   app.get('/dns/zones', { onRequest: [app.authenticateAdmin] }, async () => {

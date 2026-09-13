@@ -79,7 +79,7 @@ function ProfilePage() {
                     <User className="h-4 w-4 text-primary" />
                   </div>
                 </div>
-                <div className="text-xl font-bold text-foreground">{user?.username ?? '—'}</div>
+                <div className="text-xl font-bold text-foreground">{user?.name ?? '—'}</div>
               </div>
               
               <div className="bg-muted/30 text-card-foreground rounded-xl border border-border/50 p-4">

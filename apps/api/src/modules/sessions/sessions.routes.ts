@@ -18,7 +18,7 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
         .select(
           's.id',
           's.user_id',
-          'u.username',
+          'u.name',
           'u.email',
           'n.id as node_id',
           'n.hostname as node_hostname',
@@ -52,7 +52,7 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
         .where('s.id', id)
         .select(
           's.*',
-          'u.username',
+          'u.name',
           'u.email',
           'n.hostname as node_hostname',
           'n.region as node_region',
@@ -106,7 +106,7 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
         .clone()
         .select(
           's.id',
-          'u.username',
+          'u.name',
           'n.hostname as node_hostname',
           's.vpn_ip',
           's.real_ip',
@@ -183,10 +183,10 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
       const topUsers = await app.db('vpn_sessions as s')
         .join('users as u', 's.user_id', 'u.id')
         .where('s.connected_at', '>=', last7d)
-        .groupBy('s.user_id', 'u.username')
+        .groupBy('s.user_id', 'u.name')
         .select(
           's.user_id',
-          'u.username',
+          'u.name',
           app.db.raw('SUM(s.bytes_sent + s.bytes_received) as total_bytes'),
           app.db.raw('COUNT(*) as session_count'),
         )
@@ -236,7 +236,7 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
     },
     async (request, reply) => {
       // Check if user is admin
-      const user = request.user as { id: string; username: string; role: string }
+      const user = request.user as { id: string; name: string; role: string }
       if (user.role !== 'admin') {
         return reply.status(403).send({ error: 'Forbidden', message: 'Admin access required' })
       }
@@ -274,7 +274,7 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
       // Log audit
       await logAudit(app, {
         userId: adminUser.id,
-        username: adminUser.username,
+        username: adminUser.name,
         action: permanent ? 'session_kick_permanent' : 'session_kick',
         resourceType: 'vpn_session',
         resourceId: id,
@@ -289,11 +289,10 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
 
       // A session is owned by one credential. Legacy sessions created before
       // credential_id existed fall back to the former user/node lookup.
-      const kickedUser = await app.db('users').where({ id: session.user_id }).first()
       const credential = session.credential_id
         ? await app.db('user_node_certificates').where({ id: session.credential_id }).first()
         : await app.db('user_node_certificates').where({ user_id: session.user_id, node_id: session.node_id }).first()
-      const commonName = credential?.common_name ?? kickedUser?.username ?? null
+      const commonName = credential?.common_name ?? null
       const publicKey = credential?.client_cert?.trim() ?? null
       const vpnIp = credential?.vpn_ip ?? session.vpn_ip
 
@@ -322,7 +321,7 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
           app.log.error(`[sessions/kick] Failed to enqueue disconnect task: ${(taskErr as Error).message}`)
         }
       } else {
-        app.log.warn(`[sessions/kick] Could not resolve username for user_id ${session.user_id}`)
+        app.log.warn(`[sessions/kick] Could not resolve credential common name for user_id ${session.user_id}`)
       }
 
       return {
@@ -341,7 +340,7 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
       schema: { tags: ['sessions'], summary: 'Unkick session — restore reconnect access (admin only)', security: [{ bearerAuth: [] }] },
     },
     async (request, reply) => {
-      const user = request.user as { id: string; username: string; role: string }
+      const user = request.user as { id: string; name: string; role: string }
       if (user.role !== 'admin') {
         return reply.status(403).send({ error: 'Forbidden', message: 'Admin access required' })
       }
@@ -354,14 +353,13 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(404).send({ error: 'Session not found' })
       }
 
-      const kickedUser = await app.db('users').where({ id: session.user_id }).first()
       const credential = session.credential_id
         ? await app.db('user_node_certificates').where({ id: session.credential_id }).first()
         : await app.db('user_node_certificates').where({ user_id: session.user_id, node_id: session.node_id }).first()
-      const commonName = credential?.common_name ?? kickedUser?.username ?? null
+      const commonName = credential?.common_name ?? null
 
       if (!commonName) {
-        return reply.status(422).send({ error: 'Could not resolve username for this session' })
+        return reply.status(422).send({ error: 'Could not resolve credential common name for this session' })
       }
 
       const publicKey = credential?.client_cert?.trim() ?? null
@@ -405,7 +403,7 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
       // Log audit
       await logAudit(app, {
         userId: user.id,
-        username: user.username,
+        username: user.name,
         action: 'session_unkick',
         resourceType: 'vpn_session',
         resourceId: id,

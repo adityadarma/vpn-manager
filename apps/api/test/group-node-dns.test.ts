@@ -85,7 +85,7 @@ describe('Group-node DNS settings', () => {
 
   it('rejects a DNS listener IP already assigned to a credential', async () => {
     const userId = uuidv7()
-    await app.db('users').insert({ id: userId, username: 'dns-listener-conflict', role: 'user', is_active: true })
+    await app.db('users').insert({ id: userId, name: 'DNS Listener Conflict', role: 'user', is_active: true })
     await app.db('user_node_certificates').insert({
       id: uuidv7(),
       user_id: userId,

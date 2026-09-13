@@ -14,7 +14,7 @@ export interface VpnPolicy {
   created_at: string
   
   // Joined fields from DB
-  username?: string
+  name?: string
   group_name?: string
   node_name?: string
 }

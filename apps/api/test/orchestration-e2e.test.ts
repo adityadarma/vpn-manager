@@ -166,7 +166,7 @@ describe('End-to-End Orchestration: Manager Node/User/Group/Network -> Agent Exe
       url: '/api/v1/users',
       headers: { Cookie: adminCookie },
       payload: {
-        username: 'charlie_ops',
+        name: 'Charlie Ops',
         email: 'charlie@example.com',
         role: 'user',
       },

@@ -1,11 +1,7 @@
 import { z } from 'zod'
 
 export const CreateUserSchema = z.object({
-  username: z
-    .string()
-    .min(3, 'Username must be at least 3 characters')
-    .max(32)
-    .regex(/^[a-zA-Z0-9_-]+$/, 'Username can only contain letters, numbers, underscores, hyphens'),
+  name: z.string().trim().min(1).max(100),
   email: z.string().email().optional(),
   password: z.string().min(8, 'Password must be at least 8 characters').optional().or(z.literal('')),
   role: z.enum(['admin', 'user']).default('user'),
@@ -17,10 +13,13 @@ export const CreateUserSchema = z.object({
       path: ['password'],
     })
   }
+  if (data.role === 'admin' && !data.email) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Email is required for admin users', path: ['email'] })
+  }
 })
 
 export const UpdateUserSchema = z.object({
-  username: z.string().min(3).max(32).regex(/^[a-zA-Z0-9_-]+$/).optional(),
+  name: z.string().trim().min(1).max(100).optional(),
   email: z.string().email().optional(),
   password: z.string().min(8).optional().or(z.literal('')),
   role: z.enum(['admin', 'user']).optional(),

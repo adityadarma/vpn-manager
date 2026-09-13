@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware'
 
 interface AuthUser {
   id: string
-  username: string
+  name: string
   email: string | null
   role: string
   lastLogin?: string | null

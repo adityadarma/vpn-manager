@@ -28,7 +28,7 @@ const policyRoutes: FastifyPluginAsync = async (app) => {
           'p.priority',
           'p.description',
           'p.created_at',
-          'u.username',
+          'u.name',
           'g.name as group_name',
           'n.hostname as node_name'
         )
@@ -62,10 +62,10 @@ const policyRoutes: FastifyPluginAsync = async (app) => {
       // Sync policies to agent — only target the specific node if policy is node-scoped
       await enqueueApplyPolicies(app, input.nodeId ?? null)
 
-      const userObj = request.user as { id: string; username: string }
+      const userObj = request.user as { id: string; name: string }
       await logAudit(app, {
         userId: userObj.id,
-        username: userObj.username,
+        username: userObj.name,
         action: 'policy_create',
         resourceType: 'policy',
         resourceId: id,
@@ -96,10 +96,10 @@ const policyRoutes: FastifyPluginAsync = async (app) => {
       // Sync policies to agent — only target the specific node if policy was node-scoped
       await enqueueApplyPolicies(app, policyBeforeDelete?.node_id ?? null)
 
-      const userObj = request.user as { id: string; username: string }
+      const userObj = request.user as { id: string; name: string }
       await logAudit(app, {
         userId: userObj.id,
-        username: userObj.username,
+        username: userObj.name,
         action: 'policy_delete',
         resourceType: 'policy',
         resourceId: request.params.id,

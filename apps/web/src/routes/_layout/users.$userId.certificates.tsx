@@ -54,7 +54,7 @@ function UserCertificatesPage() {
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `${user?.username || 'vpn'}-${cert.credential_name || 'credential'}.${cert.node_vpn_type === 'wireguard' ? 'conf' : 'ovpn'}`
+        link.download = `${user?.name || 'vpn'}-${cert.credential_name || 'credential'}.${cert.node_vpn_type === 'wireguard' ? 'conf' : 'ovpn'}`
       link.click()
       URL.revokeObjectURL(url)
       qc.invalidateQueries({ queryKey: ['user-certificates', userId] })
@@ -65,7 +65,7 @@ function UserCertificatesPage() {
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <Link to="/users" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground"><ChevronLeft className="mr-1 h-4 w-4" />Users</Link>
-        <h1 className="mt-2 text-2xl font-bold">Certificates{user ? ` for ${user.username}` : ''}</h1>
+        <h1 className="mt-2 text-2xl font-bold">Certificates{user ? ` for ${user.name}` : ''}</h1>
         <p className="text-sm text-muted-foreground mt-1">Manage credentials and download client configurations.</p>
       </div>
       <Button onClick={() => setShowForm(true)} className="bg-emerald-600 hover:bg-emerald-700"><Plus className="mr-2 h-4 w-4" />Add Certificate</Button>
@@ -90,7 +90,7 @@ function UserCertificatesPage() {
     {showForm && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-y-auto">
       <form onSubmit={e => { e.preventDefault(); if (!form.nodeId || !form.credentialName.trim()) return toast.error('Node and credential name are required'); if (form.passwordProtected && !form.password) return toast.error('Password is required'); generate.mutate() }} className="my-6 w-full max-w-lg rounded-xl bg-card text-card-foreground shadow-xl">
         <div className="flex items-center justify-between border-b border-border/50 p-4">
-          <div><h2 className="flex items-center gap-2 text-lg font-semibold"><Key className="h-5 w-5 text-blue-600" />Generate Certificate</h2><p className="mt-0.5 text-sm text-muted-foreground">For user: <span className="font-medium text-foreground">{user?.username}</span></p></div>
+          <div><h2 className="flex items-center gap-2 text-lg font-semibold"><Key className="h-5 w-5 text-blue-600" />Generate Certificate</h2><p className="mt-0.5 text-sm text-muted-foreground">For user: <span className="font-medium text-foreground">{user?.name}</span></p></div>
           <button type="button" onClick={() => setShowForm(false)} className="rounded-md p-1 text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
         </div>
         <div className="space-y-4 p-4">

@@ -32,7 +32,7 @@ const auditRoutes: FastifyPluginAsync = async (app) => {
         .leftJoin('users as u', 'a.user_id', 'u.id')
         .select(
           'a.*',
-          'u.username',
+          'u.name',
           'u.email',
         )
 
@@ -109,7 +109,7 @@ const auditRoutes: FastifyPluginAsync = async (app) => {
         .leftJoin('vpn_nodes as n', 'ca.node_id', 'n.id')
         .select(
           'ca.*',
-          'u.username as user_username',
+          'u.name as user_name',
           'u.email as user_email',
           'n.hostname as node_hostname',
         )

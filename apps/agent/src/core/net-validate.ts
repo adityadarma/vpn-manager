@@ -5,7 +5,7 @@
 // /etc/openvpn. The agent must not assume the manager already validated them —
 // a compromised manager or a direct DB write can enqueue arbitrary payloads.
 //
-// We accept only strict IPv4 / CIDR / port / username formats, and constrain
+// We accept only strict IPv4 / CIDR / port / VPN identity formats, and constrain
 // path segments to bare filenames inside an expected directory.
 
 import path from 'node:path'
@@ -55,7 +55,7 @@ const WG_KEY_RE = /^[A-Za-z0-9+/]{43}=$/
 // manager, or a direct DB write, can enqueue arbitrary task payloads).
 const USERNAME_RE = /^[a-zA-Z0-9_-]+$/
 const USERNAME_MIN = 3
-const USERNAME_MAX = 32
+const USERNAME_MAX = 80
 
 export function isValidUsername(value: unknown): value is string {
   if (typeof value !== 'string') return false
@@ -101,7 +101,7 @@ export function assertWgKey(value: string, field: string): void {
 }
 
 /**
- * Throws unless the value is a well-formed VPN username.
+ * Throws unless the value is a well-formed VPN identity.
  *
  * Returns the value so it can be used inline when building a command or path.
  * (The assert* helpers above return void; this one returns the string because

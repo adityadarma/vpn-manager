@@ -239,10 +239,10 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       const updated = await app.db('vpn_nodes').where({ id: request.params.id }).first()
       const { token: _token, private_key: _pk, ca_cert: _ca, ta_key: _ta, ...safeNode } = updated
 
-      const userObj = request.user as { id: string; username: string }
+      const userObj = request.user as { id: string; name: string }
       await logAudit(app, {
         userId: userObj.id,
-        username: userObj.username,
+        username: userObj.name,
         action: 'node_update',
         resourceType: 'node',
         resourceId: request.params.id,
@@ -405,7 +405,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
               node_id: request.params.id,
               action: 'revoke_vpn_user',
               payload: JSON.stringify({ 
-                username: cert.common_name || userObj.username,
+                username: cert.common_name,
                 client_cert: cert.client_cert 
               }),
               status: 'pending',
@@ -424,10 +424,10 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       }
 
 
-      const userObj = request.user as { id: string; username: string }
+      const userObj = request.user as { id: string; name: string }
       await logAudit(app, {
         userId: userObj.id,
-        username: userObj.username,
+        username: userObj.name,
         action: 'node_config_update',
         resourceType: 'node',
         resourceId: request.params.id,
@@ -765,7 +765,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
               const userObj = await app.db('users').where('id', userId).first()
               await logAudit(app, {
                 userId: userId,
-                username: userObj?.username || 'unknown',
+                username: userObj?.name || 'unknown',
                 action: 'vpn_connect',
                 resourceType: 'vpn_session',
                 resourceId: newSessionId,
@@ -806,7 +806,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
             const userObj = await app.db('users').where('id', session.user_id).first()
             await logAudit(app, {
               userId: session.user_id,
-              username: userObj?.username || 'unknown',
+              username: userObj?.name || 'unknown',
               action: 'vpn_disconnect',
               resourceType: 'vpn_session',
               resourceId: session.id,
@@ -823,7 +823,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         }
       }
 
-      // OpenVPN: sync sessions via heartbeat (commonName = username in certificate)
+       // OpenVPN: sync sessions via the credential common name in the certificate.
       // This is the fallback for when event-monitor misses CLIENT:CONNECT events,
       // e.g. when clients were already connected before the agent started.
       if (currentNode?.vpn_type === 'openvpn' && clients && clients.length >= 0) {
@@ -845,19 +845,13 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
             .where({ 'c.node_id': nodeId, 'c.common_name': commonName, 'c.is_revoked': false })
             .select('c.id as credential_id', 'c.vpn_ip as credential_vpn_ip', 'u.*')
             .first()
-          // Existing OpenVPN certificates used users.username as Common Name.
-          // Keep their heartbeat path until every node credential is rotated.
-          const resolvedCredential = credential ?? await app.db('users')
-            .where({ username: commonName })
-            .select(app.db.raw('NULL as credential_id'), app.db.raw('NULL as credential_vpn_ip'), '*')
-            .first()
-          if (!resolvedCredential) {
+          if (!credential) {
             app.log.warn(`[heartbeat] OpenVPN credential "${commonName}" not found — skipping`)
             continue
           }
 
-          const user = resolvedCredential
-          const sessionKey = resolvedCredential.credential_id ?? `legacy:${user.id}`
+          const user = credential
+          const sessionKey = credential.credential_id
           reportedUserMap.set(sessionKey, client)
           const existingSession = activeSessionMap.get(sessionKey)
 
@@ -867,8 +861,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
             const concurrentSession = await app.db('vpn_sessions')
                 .where({ user_id: user.id, node_id: nodeId })
                 .modify((query: any) => {
-                  if (resolvedCredential.credential_id) query.where({ credential_id: resolvedCredential.credential_id })
-                  else query.whereNull('credential_id')
+                  query.where({ credential_id: credential.credential_id })
                 })
               .whereNull('disconnected_at')
               .first()
@@ -880,9 +873,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
                 bytes_received: client.bytesReceived ?? concurrentSession.bytes_received,
                 last_activity_at: new Date(),
               })
-              if (resolvedCredential.credential_id) {
-                await app.db('user_node_certificates').where({ id: resolvedCredential.credential_id }).update({ last_vpn_connect: client.connectedSince ? new Date(client.connectedSince) : new Date() })
-              }
+              await app.db('user_node_certificates').where({ id: credential.credential_id }).update({ last_vpn_connect: client.connectedSince ? new Date(client.connectedSince) : new Date() })
             } else {
               app.log.info(`[heartbeat] Creating OpenVPN session for ${commonName} (${client.virtualAddress})`)
               
@@ -891,8 +882,8 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
                 id: newSessionId,
                 user_id: user.id,
                 node_id: nodeId,
-                credential_id: resolvedCredential.credential_id ?? null,
-                vpn_ip: client.virtualAddress || resolvedCredential.credential_vpn_ip,
+                credential_id: credential.credential_id,
+                vpn_ip: client.virtualAddress || credential.credential_vpn_ip,
                 real_ip: client.realAddress?.split(':')[0] ?? null,
                 client_version: 'OpenVPN',
                 device_name: null,
@@ -901,12 +892,10 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
                 connected_at: client.connectedSince ? new Date(client.connectedSince) : new Date(),
                  last_activity_at: new Date(),
               })
-              if (resolvedCredential.credential_id) {
-                await app.db('user_node_certificates').where({ id: resolvedCredential.credential_id }).update({ last_vpn_connect: client.connectedSince ? new Date(client.connectedSince) : new Date() })
-              }
+              await app.db('user_node_certificates').where({ id: credential.credential_id }).update({ last_vpn_connect: client.connectedSince ? new Date(client.connectedSince) : new Date() })
               await logAudit(app, {
                 userId: user.id,
-                username: user.username,
+                username: user.name,
                 action: 'vpn_connect',
                 resourceType: 'vpn_session',
                 resourceId: newSessionId,
@@ -921,9 +910,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
               bytes_received: client.bytesReceived ?? existingSession.bytes_received,
               last_activity_at: new Date(),
             })
-            if (resolvedCredential.credential_id) {
-              await app.db('user_node_certificates').where({ id: resolvedCredential.credential_id }).update({ last_vpn_connect: client.connectedSince ? new Date(client.connectedSince) : new Date() })
-            }
+            await app.db('user_node_certificates').where({ id: credential.credential_id }).update({ last_vpn_connect: client.connectedSince ? new Date(client.connectedSince) : new Date() })
           }
         }
 
@@ -941,7 +928,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
             const userObj = await app.db('users').where('id', session.user_id).first()
             await logAudit(app, {
               userId: session.user_id,
-              username: userObj?.username || 'unknown',
+              username: userObj?.name || 'unknown',
               action: 'vpn_disconnect',
               resourceType: 'vpn_session',
               resourceId: session.id,
@@ -1057,10 +1044,10 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       const deleted = await app.db('vpn_nodes').where({ id: request.params.id }).delete()
       if (!deleted) return reply.status(404).send({ error: 'Not Found', message: 'Node not found' })
 
-      const userObj = request.user as { id: string; username: string }
+      const userObj = request.user as { id: string; name: string }
       await logAudit(app, {
         userId: userObj.id,
-        username: userObj.username,
+        username: userObj.name,
         action: 'node_delete',
         resourceType: 'node',
         resourceId: request.params.id,

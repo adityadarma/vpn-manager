@@ -62,13 +62,13 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         .leftJoin('user_groups as ug', 'u.id', 'ug.user_id')
         .leftJoin('groups as g', 'ug.group_id', 'g.id')
         .select(
-          'u.id', 'u.username', 'u.email', 'u.role', 'u.is_active', 
+          'u.id', 'u.name', 'u.email', 'u.role', 'u.is_active',
           'u.last_login', 'u.created_at', 'u.updated_at',
           groupConcatExpr
         )
         .groupBy(
           'u.id',
-          'u.username',
+          'u.name',
           'u.email',
           'u.role',
           'u.is_active',
@@ -80,18 +80,18 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       if (query.search?.trim()) {
         const pattern = `%${query.search.trim()}%`
         usersWithGroups.where((builder: any) => {
-          builder.where('u.username', 'like', pattern).orWhere('u.email', 'like', pattern)
+          builder.where('u.name', 'like', pattern).orWhere('u.email', 'like', pattern)
         })
       }
 
       if (!paginated) return usersWithGroups
 
-      const rows = await usersWithGroups.clone().orderBy('u.username').limit(limit).offset((page - 1) * limit)
+      const rows = await usersWithGroups.clone().orderBy('u.name').limit(limit).offset((page - 1) * limit)
       const countBuilder = app.db('users as u')
       if (query.search?.trim()) {
         const pattern = `%${query.search.trim()}%`
         countBuilder.where((builder: any) => {
-          builder.where('u.username', 'like', pattern).orWhere('u.email', 'like', pattern)
+          builder.where('u.name', 'like', pattern).orWhere('u.email', 'like', pattern)
         })
       }
       const countRow = await countBuilder.count<{ count: string }>('* as count').first()
@@ -111,7 +111,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
     async (request, reply) => {
       const user = await app.db('users')
         .where({ id: request.params.id })
-        .select('id', 'username', 'email', 'role', 'is_active', 'last_login', 'created_at', 'updated_at')
+        .select('id', 'name', 'email', 'role', 'is_active', 'last_login', 'created_at', 'updated_at')
         .where({ id: request.params.id })
         .first()
       if (!user) return reply.status(404).send({ error: 'Not Found', message: 'User not found' })
@@ -127,14 +127,8 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       const input = CreateUserSchema.parse(request.body)
       const vpnGroupId = (request.body as any).vpn_group_id as string | undefined
 
-      const existing = await app.db('users').where({ username: input.username }).first()
-      if (existing) {
-        return reply.status(409).send({ error: 'Conflict', message: 'Username already exists' })
-      }
-
       const passwordHash = input.password ? await bcrypt.hash(input.password, 10) : null
       const id = uuidv7()
-
       let resolvedGroupId: string | null = vpnGroupId ?? null
 
       if (vpnGroupId) {
@@ -144,8 +138,8 @@ const userRoutes: FastifyPluginAsync = async (app) => {
 
       await app.db('users').insert({
         id,
-        username: input.username,
-        email: input.email ?? null,
+        name: input.name,
+        email: input.role === 'admin' ? input.email!.toLowerCase() : null,
         password: passwordHash,
         role: input.role ?? 'user',
         is_active: true,
@@ -160,15 +154,15 @@ const userRoutes: FastifyPluginAsync = async (app) => {
 
       const user = await app.db('users').where({ id }).first()
 
-      const userObj = request.user as { id: string; username: string }
+      const userObj = request.user as { id: string; name: string }
       await logAudit(app, {
         userId: userObj.id,
-        username: userObj.username,
+        username: userObj.name,
         action: 'user_create',
         resourceType: 'user',
         resourceId: id,
         ipAddress: getClientIp(request),
-        metadata: { created_username: input.username, role: input.role }
+        metadata: { created_name: input.name, role: input.role }
       })
 
       return reply.status(201).send(user)
@@ -187,14 +181,8 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       const user = await app.db('users').where({ id }).first()
       if (!user) return reply.status(404).send({ error: 'Not Found', message: 'User not found' })
 
-      if (input.username && input.username !== user.username) {
-        return reply.status(400).send({
-          error: 'Bad Request',
-          message: 'Username cannot be changed after creation',
-        })
-      }
-
       const updates: Record<string, unknown> = {
+        ...(input.name !== undefined && { name: input.name }),
         ...(input.email !== undefined && { email: input.email }),
         ...(input.role && { role: input.role }),
         ...(input.isActive !== undefined && { is_active: input.isActive }),
@@ -226,7 +214,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
                 id: uuidv7(),
                 node_id: credential.node_id,
                 action: 'revoke_vpn_user',
-                payload: JSON.stringify({ username: credential.common_name || user.username, client_cert: credential.client_cert }),
+                payload: JSON.stringify({ username: credential.common_name, client_cert: credential.client_cert }),
                 status: 'pending',
                 created_at: now,
               })
@@ -274,10 +262,10 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       await app.db('users').where({ id }).update(updates)
       if (vpnGroupId !== undefined) await enqueueApplyPolicies(app)
       
-      const userObj = request.user as { id: string; username: string }
+      const userObj = request.user as { id: string; name: string }
       await logAudit(app, {
         userId: userObj.id,
-        username: userObj.username,
+        username: userObj.name,
         action: 'user_update',
         resourceType: 'user',
         resourceId: id,
@@ -382,7 +370,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       if (!vpnIp) return reply.status(422).send({ error: 'Subnet full', message: `No available IPs in ${pool}` })
 
       const credentialId = uuidv7()
-      const commonName = `${user.username.slice(0, 20)}-${credentialId.replace(/-/g, '').slice(-11)}`
+      const commonName = `${id.replace(/-/g, '')}-${credentialId.replace(/-/g, '')}`
 
       // Create task for agent to generate certificate
       const taskId = uuidv7()
@@ -556,7 +544,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
           }
 
           const credentialId = uuidv7()
-          const commonName = `${user.username.slice(0, 20)}-${credentialId.replace(/-/g, '').slice(-11)}`
+          const commonName = `${userId.replace(/-/g, '')}-${credentialId.replace(/-/g, '')}`
           const credentialName = `bulk-${credentialId.replace(/-/g, '').slice(-11)}`
 
           // Create task
@@ -685,7 +673,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         .select(
           'user_node_certificates.id as cert_id',
           'users.id as user_id',
-          'users.username',
+          'users.name',
           'users.email',
           'vpn_nodes.id as node_id',
           'vpn_nodes.hostname as node_hostname',
@@ -798,7 +786,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       const user = await app.db('users').where({ id }).first()
       if (!user) return reply.status(404).send({ error: 'Not Found', message: 'User not found' })
 
-      const credentialCommonName = certificate.common_name || user.username
+      const credentialCommonName = certificate.common_name
       const revokeError = await revokeCertificateOnNode(certificate.node_id, credentialCommonName, certificate.client_cert)
       if (revokeError) {
         return reply.status(502).send({
@@ -935,7 +923,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         // dedicated history table.
         await logAudit(app, {
           userId: id,
-          username: user.username,
+          username: user.name,
           action: 'cert_download',
           resourceType: 'certificate',
           resourceId: certificate.id,
@@ -1043,7 +1031,7 @@ Endpoint = ${endpoint}
 AllowedIPs = ${allowedIps}
 PersistentKeepalive = 25
 `
-        reply.header('Content-Disposition', `attachment; filename="${user.username}-${node.hostname}.conf"`)
+        reply.header('Content-Disposition', `attachment; filename="${user.name}-${node.hostname}.conf"`)
         reply.type('text/plain')
         return reply.send(wgConfig)
       }
@@ -1101,7 +1089,7 @@ ${certificate.client_key.trim()}
 ${node.ta_key?.trim() ?? ''}
 </tls-crypt>
 `
-      reply.header('Content-Disposition', `attachment; filename="${user.username}-${node.hostname}.ovpn"`)
+      reply.header('Content-Disposition', `attachment; filename="${user.name}-${node.hostname}.ovpn"`)
       reply.type('application/x-openvpn-profile')
       return reply.send(config)
     },
@@ -1115,10 +1103,10 @@ ${node.ta_key?.trim() ?? ''}
       const { id } = request.params
       const deleted = await app.db('users').where({ id }).delete()
       if (!deleted) return reply.status(404).send({ error: 'Not Found', message: 'User not found' })
-      const userObj = request.user as { id: string; username: string }
+      const userObj = request.user as { id: string; name: string }
       await logAudit(app, {
         userId: userObj.id,
-        username: userObj.username,
+        username: userObj.name,
         action: 'user_delete',
         resourceType: 'user',
         resourceId: request.params.id,

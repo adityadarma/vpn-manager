@@ -19,7 +19,7 @@ interface Policy {
   userId: string | null
   groupId: string | null
   node_id: string | null
-  username?: string
+  name?: string
   group_name?: string
   node_name?: string
   target_network: string
@@ -66,7 +66,7 @@ function PoliciesPage() {
     queryFn: () => api.get('/api/v1/policies'),
   })
 
-  const { data: users = [] } = useQuery<{ id: string; username: string }[]>({
+  const { data: users = [] } = useQuery<{ id: string; name: string }[]>({
     queryKey: ['users'],
     queryFn: () => api.get('/api/v1/users'),
   })
@@ -162,7 +162,7 @@ function PoliciesPage() {
     if (!searchQuery) return policyList
     const query = searchQuery.toLowerCase()
     return policyList.filter(p => 
-      (p.username?.toLowerCase().includes(query)) ||
+      (p.name?.toLowerCase().includes(query)) ||
       (p.group_name?.toLowerCase().includes(query)) ||
       p.target_network.toLowerCase().includes(query) ||
       (p.target_port?.toLowerCase().includes(query)) ||
@@ -225,7 +225,7 @@ function PoliciesPage() {
                     />
                   </td>
                   <td className="px-5 py-4 text-foreground font-medium whitespace-nowrap">
-                    {type === 'global' ? <span className="text-muted-foreground italic">All Clients</span> : (type === 'user' ? (p.username ?? p.userId) : (p.group_name ?? p.groupId))}
+                    {type === 'global' ? <span className="text-muted-foreground italic">All Clients</span> : (type === 'user' ? (p.name ?? p.userId) : (p.group_name ?? p.groupId))}
                   </td>
                   <td className="px-5 py-4 whitespace-nowrap">
                     {p.node_name ? (
@@ -405,7 +405,7 @@ function PoliciesPage() {
                     className="w-full px-3 py-2 border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
                   >
                     <option value="">Select user...</option>
-                    {users.map(u => <option key={u.id} value={u.id}>{u.username}</option>)}
+                    {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                   </select>
                 </div>
               )}

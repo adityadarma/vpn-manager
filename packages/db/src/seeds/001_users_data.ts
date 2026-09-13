@@ -20,7 +20,7 @@ function generatePassword(length = 20): string {
 export async function seed(knex: Knex): Promise<void> {
   // Check if admin user already exists
   const existingAdmin = await knex('users')
-    .where({ username: 'admin' })
+    .where({ email: 'admin@vpn.local', role: 'admin' })
     .first()
 
   if (!existingAdmin) {
@@ -33,14 +33,14 @@ export async function seed(knex: Knex): Promise<void> {
     const passwordHash = await bcrypt.hash(adminPassword, 10)
     await knex('users').insert({
       id: uuidv7(),
-      username: 'admin',
+      name: 'Administrator',
       email: 'admin@vpn.local',
       password: passwordHash,
       role: 'admin',
       is_active: true,
     })
 
-    console.log('✅ Admin user created (username: admin)')
+    console.log('✅ Admin user created (email: admin@vpn.local)')
     if (generated) {
       console.log('============================================================')
       console.log('  GENERATED ADMIN PASSWORD (shown once — save it now):')

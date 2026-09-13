@@ -14,13 +14,14 @@ import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
 interface CreateUserPayload {
-  username: string
+  name: string
   email: string
   password: string
   role: 'admin' | 'user'
 }
 
 interface EditUserPayload {
+  name?: string
   email?: string
   password?: string
   role?: 'admin' | 'user'
@@ -33,8 +34,8 @@ function UsersPage() {
   const [showForm, setShowForm] = useState(false)
   const [showEditForm, setShowEditForm] = useState(false)
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<User | null>(null)
-  const [form, setForm] = useState<CreateUserPayload>({ username: '', email: '', password: '', role: 'user' })
-  const [editForm, setEditForm] = useState<EditUserPayload>({ email: '', password: '', role: 'user', isActive: true })
+  const [form, setForm] = useState<CreateUserPayload>({ name: '', email: '', password: '', role: 'user' })
+  const [editForm, setEditForm] = useState<EditUserPayload>({ name: '', email: '', password: '', role: 'user', isActive: true })
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const pageSize = 10
@@ -67,7 +68,7 @@ function UsersPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['users'] })
       setShowForm(false)
-      setForm({ username: '', email: '', password: '', role: 'user' })
+      setForm({ name: '', email: '', password: '', role: 'user' })
       toast.success('User created successfully')
     },
     onError: (e: Error) => toast.error(e.message),
@@ -76,6 +77,7 @@ function UsersPage() {
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: EditUserPayload }) => {
       const payload: any = {}
+      if (data.name !== undefined) payload.name = data.name
       if (data.email !== undefined) payload.email = data.email || undefined
       if (data.password) payload.password = data.password
       if (data.role !== undefined) payload.role = data.role
@@ -86,7 +88,7 @@ function UsersPage() {
       qc.invalidateQueries({ queryKey: ['users'] })
       setShowEditForm(false)
       setSelectedUserForEdit(null)
-      setEditForm({ email: '', password: '', role: 'user', isActive: true })
+      setEditForm({ name: '', email: '', password: '', role: 'user', isActive: true })
       toast.success('User updated successfully')
     },
     onError: (e: Error) => toast.error(e.message),
@@ -196,6 +198,7 @@ function UsersPage() {
   const handleOpenEditModal = (user: User) => {
     setSelectedUserForEdit(user)
     setEditForm({
+      name: user.name,
       email: user.email || '',
       password: '',
       role: user.role,
@@ -221,7 +224,7 @@ function UsersPage() {
               <div className="mt-2 flex flex-wrap gap-2">
                 {expiringCerts.slice(0, 5).map((cert: any) => (
                   <span key={cert.id} className="inline-flex items-center gap-1 px-2 py-1 bg-card text-card-foreground border border-amber-200 rounded text-xs text-amber-800">
-                    {cert.username}
+                    {cert.name}
                     <span className="text-amber-600">
                       ({getDaysUntilExpiry(cert.expires_at)} days)
                     </span>
@@ -347,11 +350,11 @@ function UsersPage() {
                 <td className="px-5 py-4">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-semibold text-xs">
-                      {user.username[0].toUpperCase()}
+                       {user.name[0].toUpperCase()}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <p className="font-medium text-foreground">{user.username}</p>
+                          <p className="font-medium text-foreground">{user.name}</p>
                         {(user as any).clientCert && (
                           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700" title="Has certificate">
                             <Key className="h-3 w-3" />
@@ -368,7 +371,7 @@ function UsersPage() {
                     : 'bg-muted text-muted-foreground'
                     }`}>
                     {user.role === 'admin' && <Shield className="h-3 w-3" />}
-                    {user.role}
+                    {user.role === 'user' ? 'Staff' : 'Admin'}
                   </span>
                 </td>
                 <td className="px-5 py-4">
@@ -384,7 +387,7 @@ function UsersPage() {
                 <td className="px-5 py-4">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <button className="ml-auto flex p-2 text-muted-foreground/70 hover:text-foreground hover:bg-muted rounded-lg transition-colors" aria-label={`Actions for ${user.username}`}>
+                      <button className="ml-auto flex p-2 text-muted-foreground/70 hover:text-foreground hover:bg-muted rounded-lg transition-colors" aria-label={`Actions for ${user.name}`}>
                         <MoreHorizontal className="h-4 w-4" />
                       </button>
                     </DropdownMenuTrigger>
@@ -443,22 +446,22 @@ function UsersPage() {
                   onChange={(e) => setForm({ ...form, role: e.target.value as 'admin' | 'user' })}
                   className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-card text-card-foreground"
                 >
-                  <option value="user">User</option>
+                  <option value="user">Staff</option>
                   <option value="admin">Admin</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1.5">Username <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-foreground mb-1.5">Name <span className="text-red-500">*</span></label>
                 <input
                   type="text"
-                  value={form.username}
-                  onChange={(e) => setForm({ ...form, username: e.target.value })}
-                  placeholder="johndoe"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder="John Doe"
                   required
                   className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
-              <div>
+              {form.role === 'admin' && <div>
                 <label className="block text-sm font-medium text-foreground mb-1.5">Email</label>
                 <input
                   type="email"
@@ -467,8 +470,8 @@ function UsersPage() {
                   placeholder="john@example.com"
                   className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
-              </div>
-              <div>
+              </div>}
+              {form.role === 'admin' && <div>
                 <label className="block text-sm font-medium text-foreground mb-1.5">
                   Password {form.role === 'admin' && <span className="text-red-500">*</span>}
                 </label>
@@ -476,12 +479,12 @@ function UsersPage() {
                   type="password"
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  placeholder={form.role === 'admin' ? "Min. 8 characters" : "Optional for standard VPN users"}
+                  placeholder="Min. 8 characters"
                   required={form.role === 'admin'}
                   minLength={8}
                   className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
-              </div>
+              </div>}
               <div className="flex gap-3 pt-2">
                 <Button
                   type="button"
@@ -520,7 +523,7 @@ function UsersPage() {
                 onClick={() => {
                   setShowEditForm(false)
                   setSelectedUserForEdit(null)
-                  setEditForm({ email: '', password: '', role: 'user', isActive: true })
+                  setEditForm({ name: '', email: '', password: '', role: 'user', isActive: true })
                 }}
                 className="p-1 text-muted-foreground/70 hover:text-muted-foreground rounded-md"
               >
@@ -544,26 +547,25 @@ function UsersPage() {
                   onChange={(e) => setEditForm({ ...editForm, role: e.target.value as 'admin' | 'user' })}
                   className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-card text-card-foreground"
                 >
-                  <option value="user">User</option>
+                  <option value="user">Staff</option>
                   <option value="admin">Admin</option>
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1.5">
-                  Username
+                  Name
                 </label>
                 <input
                   type="text"
-                  value={selectedUserForEdit.username}
-                  disabled
-                  className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-muted/50 text-muted-foreground cursor-not-allowed"
-                  title="Username cannot be changed after creation"
+                  value={editForm.name ?? selectedUserForEdit.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Username cannot be changed (used as certificate CN)
+                  Existing certificate identifiers are unchanged.
                 </p>
               </div>
-              <div>
+              {editForm.role === 'admin' && <div>
                 <label className="block text-sm font-medium text-foreground mb-1.5">Email</label>
                 <input
                   type="email"
@@ -572,8 +574,8 @@ function UsersPage() {
                   placeholder="john@example.com"
                   className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
                 />
-              </div>
-              <div>
+              </div>}
+              {editForm.role === 'admin' && <div>
                 <label className="block text-sm font-medium text-foreground mb-1.5">
                   New Password
                 </label>
@@ -588,7 +590,7 @@ function UsersPage() {
                 <p className="text-xs text-muted-foreground mt-1">
                   Min. 8 characters. Leave blank to keep current password.
                 </p>
-              </div>
+              </div>}
               <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
                 <input
                   type="checkbox"
@@ -608,7 +610,7 @@ function UsersPage() {
                   onClick={() => {
                     setShowEditForm(false)
                     setSelectedUserForEdit(null)
-                    setEditForm({ email: '', password: '', role: 'user', isActive: true })
+                      setEditForm({ name: '', email: '', password: '', role: 'user', isActive: true })
                   }}
                   className="flex-1"
                 >

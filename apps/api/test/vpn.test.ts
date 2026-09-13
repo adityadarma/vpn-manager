@@ -6,6 +6,7 @@ import { v7 as uuidv7 } from 'uuid'
 describe('VPN Agent API', () => {
   let app: FastifyInstance
   let nodeId: string
+  let adminCommonName: string
   
   process.env.VPN_TOKEN = 'agent-secret-token'
 
@@ -29,6 +30,13 @@ describe('VPN Agent API', () => {
       token: 'mock-token',
       status: 'online',
     })
+    const admin = await app.db('users').where({ email: 'admin@vpn.local' }).first('id')
+    const credentialId = uuidv7()
+    adminCommonName = `${admin.id.replace(/-/g, '')}-${credentialId.replace(/-/g, '')}`
+    await app.db('user_node_certificates').insert({
+      id: credentialId, user_id: admin.id, node_id: nodeId, credential_name: 'admin-test',
+      common_name: adminCommonName, vpn_ip: '10.8.0.2', is_revoked: false,
+    })
   })
 
   afterAll(async () => {
@@ -51,7 +59,7 @@ describe('VPN Agent API', () => {
       url: '/api/v1/vpn/connect',
       headers: { 'X-VPN-Token': 'agent-secret-token' },
       payload: { 
-        username: 'admin', 
+        username: adminCommonName,
         vpn_ip: '10.8.0.2',
         node_id: nodeId
       }
@@ -66,7 +74,7 @@ describe('VPN Agent API', () => {
       url: '/api/v1/vpn/disconnect',
       headers: { 'X-VPN-Token': 'agent-secret-token' },
       payload: { 
-        username: 'admin', 
+        username: adminCommonName,
         node_id: nodeId,
         bytes_sent: 1024,
         bytes_received: 2048
@@ -80,7 +88,7 @@ describe('VPN Agent API', () => {
     const userId = uuidv7()
     await app.db('users').insert({
       id: userId,
-      username: 'multi_device_user',
+      name: 'Multi Device User',
       email: 'multi@example.com',
       password: 'not-used',
       role: 'user',
@@ -140,7 +148,7 @@ describe('VPN Agent API', () => {
         method: 'POST',
         url: '/api/v1/vpn/connect',
         headers,
-        payload: { username: 'admin', vpn_ip: '10.8.0.9', node_id: nodeId },
+        payload: { username: adminCommonName, vpn_ip: '10.8.0.2', node_id: nodeId },
       })
 
     it('rejects a wrong token of the same length', async () => {

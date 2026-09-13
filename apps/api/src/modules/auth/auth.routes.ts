@@ -15,19 +15,19 @@ const authRoutes: FastifyPluginAsync = async (app) => {
         summary: 'Login and get JWT token',
         body: {
           type: 'object',
-          required: ['username', 'password'],
+          required: ['email', 'password'],
           properties: {
-            username: { type: 'string' },
+            email: { type: 'string', format: 'email' },
             password: { type: 'string' },
           },
         },
       },
     },
     async (request, reply) => {
-      const { username, password } = LoginSchema.parse(request.body)
+      const { email, password } = LoginSchema.parse(request.body)
 
       const user = await app.db('users')
-        .where({ username, is_active: true })
+        .where({ email: email.toLowerCase(), role: 'admin', is_active: true })
         .first()
 
       if (!user) {
@@ -47,15 +47,15 @@ const authRoutes: FastifyPluginAsync = async (app) => {
 
       // `jti` makes every issued token unique.
       //
-      // Without it the signed payload is just {id, username, role} plus iat/exp
+      // Without it the signed payload is just {id, name, role} plus iat/exp
       // at one-second resolution, so two logins by the same user within the same
       // second produced byte-identical tokens. Since revocation is keyed on the
       // token hash, revoking one would then revoke the other — logging out of
       // one session would silently kill a concurrent one.
       const token = app.jwt.sign({
         jti: uuidv7(),
-        id: user.id,
-        username: user.username,
+            id: user.id,
+        name: user.name,
         role: user.role,
       })
 
@@ -81,7 +81,7 @@ const authRoutes: FastifyPluginAsync = async (app) => {
       return reply.send({
         user: {
           id: user.id,
-          username: user.username,
+          name: user.name,
           email: user.email,
           role: user.role,
           lastLogin: now.toISOString(),
@@ -135,7 +135,7 @@ const authRoutes: FastifyPluginAsync = async (app) => {
     async (request) => {
       const payload = request.user as { id: string }
       const user = await app.db('users')
-        .select('id', 'username', 'email', 'role', 'is_active', 'last_login', 'created_at')
+        .select('id', 'name', 'email', 'role', 'is_active', 'last_login', 'created_at')
         .where({ id: payload.id })
         .first()
       return user

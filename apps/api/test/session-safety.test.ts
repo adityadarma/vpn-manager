@@ -41,7 +41,7 @@ describe('Session Safety', () => {
     // VPN identity is credential-scoped: users.vpn_ip no longer exists.
     await app.db('users').insert({
       id: userId,
-      username: 'disconnect_order_user',
+      name: 'Disconnect Order User',
       role: 'user',
       is_active: true,
     })
@@ -102,7 +102,7 @@ describe('Session Safety', () => {
     const userId = uuidv7()
     await app.db('users').insert({
       id: userId,
-      username: 'connect_txn_user',
+      name: 'Connect Transaction User',
       role: 'user',
       is_active: true,
     })
@@ -154,7 +154,7 @@ describe('Session Safety', () => {
     const userId = uuidv7()
     await app.db('users').insert({
       id: userId,
-      username: 'hb_dedup_user',
+      name: 'Heartbeat Dedup User',
       role: 'user',
       is_active: true,
     })

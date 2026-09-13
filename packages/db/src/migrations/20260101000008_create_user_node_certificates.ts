@@ -17,7 +17,7 @@ export async function up(knex: Knex): Promise<void> {
     table.string('revoked_by', 36).nullable().references('id').inTable('users')
     table.string('revoke_reason', 255).nullable()
     table.string('credential_name', 100).notNullable().defaultTo('default')
-    table.string('common_name', 32).nullable()
+    table.string('common_name', 80).nullable()
     table.string('vpn_ip', 45).nullable()
     table.string('group_id', 36).nullable().references('id').inTable('groups').onDelete('SET NULL')
     table.timestamp('last_vpn_connect').nullable()

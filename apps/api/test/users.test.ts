@@ -40,7 +40,7 @@ describe('Users API', () => {
       url: '/api/v1/users',
       headers: { Cookie: adminCookie },
       payload: {
-        username: 'testuser',
+        name: 'Test User',
         email: 'test@example.com',
         password: 'Password@123',
         role: 'user'
@@ -49,7 +49,7 @@ describe('Users API', () => {
 
     expect(res.statusCode).toBe(201)
     const json = res.json()
-    expect(json.username).toBe('testuser')
+    expect(json.name).toBe('Test User')
     expect(json.id).toBeDefined()
   })
 
@@ -57,7 +57,7 @@ describe('Users API', () => {
     const userId = uuidv7()
     const nodeId = uuidv7()
     const credentialId = uuidv7()
-    await app.db('users').insert({ id: userId, username: 'disable_user', role: 'user', is_active: true })
+    await app.db('users').insert({ id: userId, name: 'Disable User', role: 'user', is_active: true })
     await app.db('vpn_nodes').insert({ id: nodeId, hostname: 'disable-node', ip_address: '203.0.113.40', token: 'disable-node-token', status: 'online' })
     await app.db('user_node_certificates').insert({
       id: credentialId, user_id: userId, node_id: nodeId, credential_name: 'laptop', common_name: 'disable_user_laptop', vpn_ip: '10.8.0.10',
@@ -87,7 +87,7 @@ describe('Users API', () => {
     const nodeId = uuidv7()
     const certificateId = uuidv7()
     await app.db('groups').insert({ id: groupId, name: 'managed-dns-user-group' })
-    await app.db('users').insert({ id: userId, username: 'managed_dns_user', role: 'user', is_active: true })
+    await app.db('users').insert({ id: userId, name: 'Managed DNS User', role: 'user', is_active: true })
     await app.db('vpn_nodes').insert({
       id: nodeId, hostname: 'managed-dns-wg', ip_address: '203.0.113.20', token: 'managed-dns-wg-token', status: 'online',
       vpn_type: 'wireguard', public_key: 'server-public-key', managed_dns_enabled: true, dns_sync_status: 'healthy', dns_config_revision: 1, dns_servers: '9.9.9.9',
@@ -115,7 +115,7 @@ describe('Users API', () => {
     const userId = uuidv7()
     const nodeId = uuidv7()
     const certificateId = uuidv7()
-    await app.db('users').insert({ id: userId, username: 'split_tunnel_user', role: 'user', is_active: true })
+    await app.db('users').insert({ id: userId, name: 'Split Tunnel User', role: 'user', is_active: true })
     await app.db('vpn_nodes').insert({
       id: nodeId, hostname: 'split-tunnel-wg', ip_address: '203.0.113.21', token: 'split-tunnel-wg-token', status: 'online',
       vpn_type: 'wireguard', public_key: 'server-public-key', tunnel_mode: 'split', wireguard_allowed_ips: '10.50.0.0/16,172.31.0.0/20',

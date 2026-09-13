@@ -20,7 +20,7 @@ import { formatBrowserDateTime } from '@vpn/shared'
 interface Session {
   id: string
   user_id: string
-  username: string
+  name: string
   email?: string
   node_id: string
   node_hostname: string
@@ -70,12 +70,12 @@ function formatDuration(since: string, until?: string | null, durationSeconds?: 
 // ── KickDropdown ─────────────────────────────────────────────────────────────
 interface KickDropdownProps {
   sessionId: string
-  username: string
+  name: string
   onKick: (sessionId: string, permanent: boolean, blockDurationSeconds?: number) => void
   isPending: boolean
 }
 
-function KickDropdown({ sessionId, username, onKick, isPending }: KickDropdownProps) {
+function KickDropdown({ sessionId, name, onKick, isPending }: KickDropdownProps) {
   const [open, setOpen] = useState(false)
   const [menuPos, setMenuPos] = useState({ top: 0, right: 0 })
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -113,7 +113,7 @@ function KickDropdown({ sessionId, username, onKick, isPending }: KickDropdownPr
         {/* Main kick button */}
         <button
           onClick={() => {
-            if (confirm(`Block ${username} for 5 minutes?\n\nOpenVPN reconnects will be rejected and WireGuard access will be unavailable until the block expires.`)) {
+            if (confirm(`Block ${name} for 5 minutes?\n\nOpenVPN reconnects will be rejected and WireGuard access will be unavailable until the block expires.`)) {
               onKick(sessionId, false, 300)
             }
           }}
@@ -151,7 +151,7 @@ function KickDropdown({ sessionId, username, onKick, isPending }: KickDropdownPr
             className="w-full text-left p-2 rounded-lg hover:bg-muted/70 flex items-center gap-3 text-foreground transition-colors group"
             onClick={() => {
               setOpen(false)
-              if (confirm(`Block ${username} for 5 minutes?\n\nOpenVPN reconnects will be rejected and WireGuard access will be unavailable until the block expires.`)) {
+            if (confirm(`Block ${name} for 5 minutes?\n\nOpenVPN reconnects will be rejected and WireGuard access will be unavailable until the block expires.`)) {
                 onKick(sessionId, false, 300)
               }
             }}
@@ -171,7 +171,7 @@ function KickDropdown({ sessionId, username, onKick, isPending }: KickDropdownPr
             className="w-full text-left p-2 rounded-lg hover:bg-red-500/10 flex items-center gap-3 text-red-600 dark:text-red-400 transition-colors group"
             onClick={() => {
               setOpen(false)
-              if (confirm(`Block ${username} until Unkick?\n\nThe user cannot reconnect until an admin restores access.`)) {
+            if (confirm(`Block ${name} until Unkick?\n\nThe user cannot reconnect until an admin restores access.`)) {
                 onKick(sessionId, true)
               }
             }}
@@ -315,10 +315,10 @@ function SessionsPage() {
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
                           <div className="h-8 w-8 rounded-full bg-primary/10 text-primary font-semibold flex items-center justify-center text-xs shrink-0 border border-primary/20">
-                            {s.username.slice(0, 2).toUpperCase()}
+                            {s.name.slice(0, 2).toUpperCase()}
                           </div>
                           <div>
-                            <div className="font-semibold text-foreground text-sm tracking-tight">{s.username}</div>
+                            <div className="font-semibold text-foreground text-sm tracking-tight">{s.name}</div>
                             {s.real_ip && (
                               <div className="text-[11px] text-muted-foreground font-mono tracking-tight flex items-center gap-1 mt-0.5">
                                 <Globe className="h-3 w-3 opacity-60 shrink-0" />
@@ -384,7 +384,7 @@ function SessionsPage() {
                       <td className="px-5 py-4 text-right whitespace-nowrap">
                         <KickDropdown
                           sessionId={s.id}
-                          username={s.username}
+                          name={s.name}
                           onKick={handleKick}
                           isPending={kickMutation.isPending}
                         />
@@ -431,10 +431,10 @@ function SessionsPage() {
                         <td className="px-5 py-4 min-w-[11rem]">
                           <div className="flex items-center gap-3">
                             <div className="h-8 w-8 rounded-full bg-primary/10 text-primary font-semibold flex items-center justify-center text-xs shrink-0 border border-primary/20">
-                              {s.username.slice(0, 2).toUpperCase()}
+                              {s.name.slice(0, 2).toUpperCase()}
                             </div>
                             <div>
-                              <div className="font-semibold text-foreground text-sm tracking-tight">{s.username}</div>
+                              <div className="font-semibold text-foreground text-sm tracking-tight">{s.name}</div>
                               {s.real_ip && (
                                 <div className="text-[11px] text-muted-foreground font-mono tracking-tight flex items-center gap-1 mt-0.5">
                                   <Globe className="h-3 w-3 opacity-60 shrink-0" />
@@ -495,7 +495,7 @@ function SessionsPage() {
                             {s.disconnect_reason === 'admin_kick_permanent' && (
                               <button
                                 onClick={() => {
-                                  if (confirm(`Restore reconnect access for ${s.username}?\n\nThey will be able to connect to VPN again.`)) {
+                                  if (confirm(`Restore reconnect access for ${s.name}?\n\nThey will be able to connect to VPN again.`)) {
                                     unkickMutation.mutate(s.id)
                                   }
                                 }}

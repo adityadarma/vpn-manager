@@ -288,10 +288,10 @@ const networkRoutes: FastifyPluginAsync = async (app) => {
         await enqueueNodeDnsSync(app, node.id)
       }
 
-      const userObj = request.user as { id: string; username: string }
+      const userObj = request.user as { id: string; name: string }
       await logAudit(app, {
         userId: userObj.id,
-        username: userObj.username,
+        username: userObj.name,
         action: 'group_node_subnet_allocate',
         resourceType: 'group_node_allocation',
         resourceId: `${group.id}:${node.id}`,
@@ -329,10 +329,10 @@ const networkRoutes: FastifyPluginAsync = async (app) => {
           await enqueueNodeDnsSync(app, nodeId)
         }
 
-        const userObj = request.user as { id: string; username: string }
+        const userObj = request.user as { id: string; name: string }
         await logAudit(app, {
           userId: userObj.id,
-          username: userObj.username,
+          username: userObj.name,
           action: 'group_node_subnet_deallocate',
           resourceType: 'group_node_allocation',
           resourceId: `${groupId}:${nodeId}`,

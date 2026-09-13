@@ -45,7 +45,7 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
       const members = await app.db('user_groups as ug')
         .join('users as u', 'ug.user_id', 'u.id')
         .where('ug.group_id', request.params.id)
-        .select('u.id', 'u.username', 'u.email', 'u.role', 'u.is_active')
+        .select('u.id', 'u.name', 'u.email', 'u.role', 'u.is_active')
 
       const networks = await app.db('group_networks as gn')
         .join('networks as n', 'gn.network_id', 'n.id')
@@ -72,10 +72,10 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
       })
       const created = await app.db('groups').where({ id }).first()
 
-      const userObj = request.user as { id: string; username: string }
+      const userObj = request.user as { id: string; name: string }
       await logAudit(app, {
         userId: userObj.id,
-        username: userObj.username,
+        username: userObj.name,
         action: 'group_create',
         resourceType: 'group',
         resourceId: id,
@@ -106,10 +106,10 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
         })
       const updatedGroup = await app.db('groups').where({ id: request.params.id }).first()
 
-      const userObj = request.user as { id: string; username: string }
+      const userObj = request.user as { id: string; name: string }
       await logAudit(app, {
         userId: userObj.id,
-        username: userObj.username,
+        username: userObj.name,
         action: 'group_update',
         resourceType: 'group',
         resourceId: request.params.id,
@@ -129,10 +129,10 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
       const deleted = await app.db('groups').where({ id: request.params.id }).delete()
       if (!deleted) return reply.status(404).send({ error: 'Group not found' })
 
-      const userObj = request.user as { id: string; username: string }
+      const userObj = request.user as { id: string; name: string }
       await logAudit(app, {
         userId: userObj.id,
-        username: userObj.username,
+        username: userObj.name,
         action: 'group_delete',
         resourceType: 'group',
         resourceId: request.params.id,
@@ -177,10 +177,10 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
 
       await enqueueApplyPolicies(app)
 
-      const userObj = request.user as { id: string; username: string }
+      const userObj = request.user as { id: string; name: string }
       await logAudit(app, {
         userId: userObj.id,
-        username: userObj.username,
+        username: userObj.name,
         action: 'group_member_add',
         resourceType: 'group',
         resourceId: request.params.id,
@@ -208,10 +208,10 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
 
         await enqueueApplyPolicies(app)
 
-        const userObj = request.user as { id: string; username: string }
+        const userObj = request.user as { id: string; name: string }
         await logAudit(app, {
           userId: userObj.id,
-          username: userObj.username,
+          username: userObj.name,
           action: 'group_member_remove',
           resourceType: 'group',
           resourceId: groupId,
@@ -319,10 +319,10 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
       await enqueueNodeDnsSync(app, node.id)
       await enqueueApplyPolicies(app, node.id)
 
-      const userObj = request.user as { id: string; username: string }
+      const userObj = request.user as { id: string; name: string }
       await logAudit(app, {
         userId: userObj.id,
-        username: userObj.username,
+        username: userObj.name,
         action: 'group_node_dns_update',
         resourceType: 'group_node_dns_settings',
         resourceId: `${group.id}:${node.id}`,
@@ -347,10 +347,10 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
       // Re-enqueue CCD tasks so members get updated push routes
       await reenqueueGroupCcdTasks(app, request.params.id)
 
-      const userObj = request.user as { id: string; username: string }
+      const userObj = request.user as { id: string; name: string }
       await logAudit(app, {
         userId: userObj.id,
-        username: userObj.username,
+        username: userObj.name,
         action: 'group_network_add',
         resourceType: 'group',
         resourceId: request.params.id,
@@ -374,10 +374,10 @@ const groupRoutes: FastifyPluginAsync = async (app) => {
       // Re-enqueue CCD tasks so members lose the removed route
       await reenqueueGroupCcdTasks(app, request.params.id)
 
-      const userObj = request.user as { id: string; username: string }
+      const userObj = request.user as { id: string; name: string }
       await logAudit(app, {
         userId: userObj.id,
-        username: userObj.username,
+        username: userObj.name,
         action: 'group_network_remove',
         resourceType: 'group',
         resourceId: request.params.id,

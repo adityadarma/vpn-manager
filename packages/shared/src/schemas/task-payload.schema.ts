@@ -18,11 +18,11 @@ import type { TaskAction } from '../types/task'
 
 // ── Shared primitives ────────────────────────────────────────────────────────
 
-/** Mirrors CreateUserSchema and the agent's assertUsername. */
-export const UsernameSchema = z
+/** OpenVPN common names and WireGuard driver identifiers. */
+export const VpnIdentitySchema = z
   .string()
   .min(3)
-  .max(32)
+  .max(80)
   .regex(/^[a-zA-Z0-9_-]+$/, 'Username may only contain letters, numbers, underscore, hyphen')
 
 const Ipv4Schema = z.string().regex(/^(\d{1,3}\.){3}\d{1,3}$/, 'Must be an IPv4 address')
@@ -193,23 +193,23 @@ const CustomPushDirectivesSchema = z
 // ── Per-action payloads ──────────────────────────────────────────────────────
 
 const CreateVpnUserPayload = z.object({
-  username: UsernameSchema,
+  username: VpnIdentitySchema,
 })
 
 const RevokeVpnUserPayload = z.object({
-  username: UsernameSchema,
+  username: VpnIdentitySchema,
   client_cert: CertOrKeySchema.optional().nullable(),
 })
 
 const GenerateClientCertPayload = z.object({
-  username: UsernameSchema,
+  username: VpnIdentitySchema,
   // Reaches EasyRSA as an env var value only, never as argv or a shell word.
   password: z.string().min(1).max(200).optional().nullable(),
   validDays: z.number().int().min(0).max(36500).optional().nullable(),
 })
 
 const GenerateClientConfigPayload = z.object({
-  username: UsernameSchema,
+  username: VpnIdentitySchema,
   serverIp: safeLine({ min: 1, max: 253 }),
   serverPort: z.number().int().min(1).max(65535).optional(),
   protocol: ProtocolSchema.optional(),
@@ -221,7 +221,7 @@ const GenerateClientConfigPayload = z.object({
 })
 
 const KickVpnSessionPayload = z.object({
-  common_name: UsernameSchema,
+  common_name: VpnIdentitySchema,
   permanent: z.union([z.boolean(), z.literal('true'), z.literal('false')]).optional(),
   block_duration_seconds: z.number().int().min(1).max(3600).optional().nullable(),
   public_key: CertOrKeySchema.optional().nullable(),
@@ -229,14 +229,14 @@ const KickVpnSessionPayload = z.object({
 })
 
 const UnkickVpnSessionPayload = z.object({
-  common_name: UsernameSchema,
+  common_name: VpnIdentitySchema,
   public_key: CertOrKeySchema.optional().nullable(),
   vpn_ip: Ipv4Schema.optional().nullable(),
   netmask: Ipv4Schema.optional().nullable(),
 })
 
 const WriteClientCcdPayload = z.object({
-  username: UsernameSchema,
+  username: VpnIdentitySchema,
   vpn_ip: Ipv4Schema,
   netmask: Ipv4Schema.optional(),
   extra_lines: z.array(CcdExtraLineSchema).max(100).optional(),
@@ -244,7 +244,7 @@ const WriteClientCcdPayload = z.object({
 })
 
 const DeleteClientCcdPayload = z.object({
-  username: UsernameSchema,
+  username: VpnIdentitySchema,
   public_key: CertOrKeySchema.optional().nullable(),
 })
 

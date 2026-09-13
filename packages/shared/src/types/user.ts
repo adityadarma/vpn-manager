@@ -2,7 +2,7 @@ export type UserRole = 'admin' | 'user'
 
 export interface User {
   id: string
-  username: string
+  name: string
   email: string | null
   role: UserRole
   is_active: boolean

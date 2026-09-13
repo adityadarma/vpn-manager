@@ -52,7 +52,7 @@ describe('Token Revocation', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/v1/auth/login',
-        payload: { username: 'admin', password: 'Admin@1234!' },
+        payload: { email: 'admin@vpn.local', password: 'Admin@1234!' },
       })
       expect(res.statusCode).toBe(200)
       const cookie = res.headers['set-cookie']
@@ -90,7 +90,7 @@ describe('Token Revocation', () => {
     const loginRes = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/login',
-      payload: { username: 'admin', password: 'Admin@1234!' },
+        payload: { email: 'admin@vpn.local', password: 'Admin@1234!' },
     })
     const cookie = loginRes.headers['set-cookie']
     const cookieStr = Array.isArray(cookie) ? cookie[0]!.split(';')[0] : cookie!.split(';')[0]
@@ -103,7 +103,7 @@ describe('Token Revocation', () => {
 
     // user_id is audit-only, but it must actually be populated — it was
     // declared in the migration yet never written at first.
-    const adminUser = await app.db('users').where({ username: 'admin' }).first()
+    const adminUser = await app.db('users').where({ email: 'admin@vpn.local' }).first()
     const rows = await app.db('revoked_tokens').whereNotNull('user_id').select('user_id')
     expect(rows.length).toBeGreaterThan(0)
     expect(rows.some((r: { user_id: string }) => r.user_id === adminUser.id)).toBe(true)
@@ -208,7 +208,7 @@ describe('Token Revocation', () => {
     const loginRes = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/login',
-      payload: { username: 'admin', password: 'Admin@1234!' },
+        payload: { email: 'admin@vpn.local', password: 'Admin@1234!' },
     })
     expect(loginRes.statusCode).toBe(200)
 

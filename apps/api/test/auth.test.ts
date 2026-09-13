@@ -2,6 +2,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { buildApp } from '../src/app'
 import type { FastifyInstance } from 'fastify'
 import { loginAsAdmin } from './helpers'
+import bcrypt from 'bcryptjs'
+import { v7 as uuidv7 } from 'uuid'
 
 describe('Auth API', () => {
   let app: FastifyInstance
@@ -27,12 +29,12 @@ describe('Auth API', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/login',
-      payload: { username: 'admin', password: 'Admin@1234!' }
+      payload: { email: 'admin@vpn.local', password: 'Admin@1234!' }
     })
 
     expect(res.statusCode).toBe(200)
     const json = res.json()
-    expect(json.user.username).toBe('admin')
+    expect(json.user.name).toBe('Administrator')
     expect(json.user.role).toBe('admin')
     expect(res.headers['set-cookie']).toBeDefined()
   })
@@ -41,9 +43,26 @@ describe('Auth API', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/login',
-      payload: { username: 'admin', password: 'wrongpassword' }
+      payload: { email: 'admin@vpn.local', password: 'wrongpassword' }
     })
 
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('should reject Staff dashboard login', async () => {
+    await app.db('users').insert({
+      id: uuidv7(),
+      name: 'Staff Login Test',
+      email: 'staff@example.com',
+      password: await bcrypt.hash('Staff@1234!', 10),
+      role: 'user',
+      is_active: true,
+    })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: { email: 'staff@example.com', password: 'Staff@1234!' },
+    })
     expect(res.statusCode).toBe(401)
   })
 
@@ -55,6 +74,6 @@ describe('Auth API', () => {
     })
 
     expect(res.statusCode).toBe(200)
-    expect(res.json().username).toBe('admin')
+    expect(res.json().name).toBe('Administrator')
   })
 })
