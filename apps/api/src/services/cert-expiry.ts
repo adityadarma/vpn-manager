@@ -15,6 +15,7 @@ export interface RevocationResult {
  */
 export async function revokeExpiredCertificates(db: Knex): Promise<RevocationResult[]> {
   const results: RevocationResult[] = []
+  const now = new Date()
 
   try {
     const expiredCerts = await db('user_node_certificates as c')
@@ -22,7 +23,7 @@ export async function revokeExpiredCertificates(db: Knex): Promise<RevocationRes
       .join('vpn_nodes as n', 'c.node_id', 'n.id')
       .where('c.is_revoked', false)
       .whereNotNull('c.expires_at')
-      .where('c.expires_at', '<=', db.fn.now())
+      .where('c.expires_at', '<=', now)
       .where('n.status', 'online')
       .select(
         'c.id as cert_id',

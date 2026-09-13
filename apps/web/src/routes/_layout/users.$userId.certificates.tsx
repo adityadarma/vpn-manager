@@ -25,10 +25,17 @@ function UserCertificatesPage() {
 
   const generate = useMutation({
     mutationFn: () => {
-      const validDays = form.expirationDate
-        ? Math.max(1, Math.ceil((new Date(`${form.expirationDate}T23:59:59`).getTime() - Date.now()) / 86_400_000))
+      const { expirationDate, ...credential } = form
+      const [year, month, day] = expirationDate.split('-').map(Number)
+      const expiresAt = expirationDate
+        ? new Date(year, month - 1, day, 23, 59, 59, 999).getTime()
         : null
-      return api.post(`/api/v1/users/${userId}/generate-cert`, { ...form, credentialName: form.credentialName.trim(), password: form.passwordProtected ? form.password : undefined, validDays })
+      return api.post(`/api/v1/users/${userId}/generate-cert`, {
+        ...credential,
+        credentialName: credential.credentialName.trim(),
+        password: credential.passwordProtected ? credential.password : undefined,
+        expiresAt,
+      })
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['user-certificates', userId] }); setShowForm(false); setForm({ nodeId: '', credentialName: '', passwordProtected: false, password: '', expirationDate: '' }); toast.success('Certificate generated') },
     onError: (e: Error) => toast.error(e.message),

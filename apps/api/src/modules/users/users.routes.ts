@@ -12,7 +12,9 @@ function getCertificateExpiry(
   validDays: number | null | undefined,
   issuedAt: Date,
   driverExpiresAt: string | null | undefined,
+  requestedExpiresAt?: Date | null,
 ): Date | null {
+  if (requestedExpiresAt) return requestedExpiresAt
   if (vpnType !== 'wireguard') return driverExpiresAt ? new Date(driverExpiresAt) : null
   if (validDays === null || validDays === undefined || validDays === 0) return null
 
@@ -288,7 +290,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
   )
 
   // POST /api/v1/users/:id/generate-cert
-  app.post<{ Params: { id: string }; Body: { nodeId: string; credentialName: string; password?: string; passwordProtected?: boolean; validDays?: number | null } }>(
+  app.post<{ Params: { id: string }; Body: { nodeId: string; credentialName: string; password?: string; passwordProtected?: boolean; validDays?: number | null; expiresAt?: number | null } }>(
     '/users/:id/generate-cert',
     {
       onRequest: [app.authenticate],
@@ -304,14 +306,26 @@ const userRoutes: FastifyPluginAsync = async (app) => {
             credentialName: { type: 'string', minLength: 1, maxLength: 100, description: 'Unique device label for this credential on the node' },
             password: { type: 'string', description: 'Password to encrypt private key (optional)' },
             passwordProtected: { type: 'boolean', description: 'Whether to password-protect the key', default: false },
-            validDays: { type: ['number', 'null'], description: 'Certificate validity in days (null = unlimited)', default: null }
+            validDays: { type: ['number', 'null'], description: 'Certificate validity in days (null = unlimited)', default: null },
+            expiresAt: { type: ['number', 'null'], description: 'Expiry as Unix epoch milliseconds (null = unlimited)', default: null }
           }
         }
       }
     },
     async (request, reply) => {
       const { id } = request.params
-      const { nodeId, credentialName, password, passwordProtected, validDays = null } = request.body
+      const { nodeId, credentialName, password, passwordProtected, validDays = null, expiresAt = null } = request.body
+
+      let requestedExpiresAt: Date | null = null
+      if (expiresAt !== null) {
+        if (!Number.isSafeInteger(expiresAt)) {
+          return reply.status(400).send({ error: 'Bad Request', message: 'expiresAt must be a Unix epoch timestamp in milliseconds' })
+        }
+        requestedExpiresAt = new Date(expiresAt)
+        if (requestedExpiresAt.getTime() <= Date.now()) {
+          return reply.status(400).send({ error: 'Bad Request', message: 'Expiry must be in the future' })
+        }
+      }
 
       const authUser = request.user as { id: string; role: string }
       if (authUser.role !== 'admin') {
@@ -339,6 +353,10 @@ const userRoutes: FastifyPluginAsync = async (app) => {
       if (existingCredential) {
         return reply.status(409).send({ error: 'Conflict', message: 'An active credential with this name already exists on the node' })
       }
+
+      const effectiveValidDays = requestedExpiresAt
+        ? Math.max(1, Math.ceil((requestedExpiresAt.getTime() - Date.now()) / 86_400_000))
+        : validDays
 
       let pool: string
       try {
@@ -375,7 +393,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         payload: JSON.stringify({
           username: commonName,
           password: passwordProtected ? password : undefined,
-          validDays: validDays
+          validDays: effectiveValidDays
         }),
         status: 'pending',
         created_at: new Date(),
@@ -400,7 +418,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         if (task.status === 'done') {
           const result = JSON.parse(task.result || '{}')
           const issuedAt = new Date()
-          const expiresAt = getCertificateExpiry(node.vpn_type, validDays, issuedAt, result.expiresAt)
+          const certificateExpiresAt = getCertificateExpiry(node.vpn_type, effectiveValidDays, issuedAt, result.expiresAt, requestedExpiresAt)
           
           await app.db('user_node_certificates').insert({
             id: credentialId,
@@ -414,7 +432,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
             client_key: result.clientKey,
             password_protected: result.passwordProtected,
             generated_at: issuedAt,
-            expires_at: expiresAt,
+            expires_at: certificateExpiresAt,
             is_revoked: false,
             created_at: new Date(),
             updated_at: new Date(),
@@ -427,7 +445,7 @@ const userRoutes: FastifyPluginAsync = async (app) => {
             credentialId,
             commonName,
             vpnIp,
-            expiresAt: expiresAt?.toISOString() ?? null,
+            expiresAt: certificateExpiresAt?.toISOString() ?? null,
             passwordProtected: result.passwordProtected
           })
         }
