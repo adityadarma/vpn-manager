@@ -116,24 +116,28 @@ function policyTemplates(group: DnsGroup): string[] {
 
   for (const policy of policies) {
     if (policy.action === 'allow') continue
-    const isInternal = policy.scope === 'internal'
-    // A scope=internal policy has nothing to scope to without a declared
-    // internal zone. Skip it rather than emit a template with an empty zone
-    // argument, which CoreDNS would treat as "no restriction" — the opposite
-    // of what an unscoped internal policy should do.
-    if (isInternal && internalZoneNames.length === 0) continue
     const pattern = policyPattern(policy.domain_pattern)
+    const appliesToPublic = policy.scope === 'public' || policy.scope === 'any'
+    const appliesToInternal = policy.scope === 'internal' || policy.scope === 'any'
+    // An internal-only policy has nothing to scope to without a declared zone.
+    // Do not emit an unscoped template, which would affect public lookups too.
+    if (appliesToInternal && internalZoneNames.length === 0 && !appliesToPublic) continue
+
     if (policy.action === 'sinkhole') {
       if (!policy.sinkhole_ipv4) {
         throw new Error(`Group ${group.id} has a sinkhole policy without sinkhole_ipv4`)
       }
-      const map = isInternal ? internalSinkholed : publicSinkholed
-      const existing = map.get(policy.sinkhole_ipv4) ?? []
-      existing.push(pattern)
-      map.set(policy.sinkhole_ipv4, existing)
+      for (const map of [
+        ...(appliesToPublic ? [publicSinkholed] : []),
+        ...(appliesToInternal && internalZoneNames.length > 0 ? [internalSinkholed] : []),
+      ]) {
+        const existing = map.get(policy.sinkhole_ipv4) ?? []
+        existing.push(pattern)
+        map.set(policy.sinkhole_ipv4, existing)
+      }
     } else {
-      const list = isInternal ? internalBlocked : publicBlocked
-      list.push(pattern)
+      if (appliesToPublic) publicBlocked.push(pattern)
+      if (appliesToInternal && internalZoneNames.length > 0) internalBlocked.push(pattern)
     }
   }
 

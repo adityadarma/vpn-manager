@@ -158,4 +158,17 @@ describe('sync_group_dns handler', () => {
     expect(corefile).toMatch(/template IN A corp\.internal \{/)
     expect(corefile).toContain('match ^(?:blocked\\.corp\\.internal)\\.$')
   })
+
+  it('applies an any-scope DNS policy to public and private zone queries', async () => {
+    const { root, env } = await fixture()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }))
+    const scoped = structuredClone(payload)
+    scoped.groups[0]!.policies = [
+      { domain_pattern: 'blocked.corp.internal', action: 'block', scope: 'any', priority: 0, sinkhole_ipv4: null },
+    ]
+    await handleSyncGroupDns(scoped, {} as VpnDriver, env)
+    const corefile = await fs.readFile(path.join(root, 'Corefile'), 'utf8')
+    expect(corefile).toMatch(/template IN A \{[\s\S]*match \^\(\?:blocked\\\.corp\\\.internal\)\\\.\$/)
+    expect(corefile).toMatch(/template IN A corp\.internal \{[\s\S]*match \^\(\?:blocked\\\.corp\\\.internal\)\\\.\$/)
+  })
 })
