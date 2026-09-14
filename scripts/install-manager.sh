@@ -40,7 +40,7 @@ done
 
 CHANNEL="${CHANNEL:-latest}"
 case "$CHANNEL" in
-    latest) IMAGE_VERSION="latest" ;;
+    latest) IMAGE_VERSION="2" ;;
     beta) IMAGE_VERSION="beta" ;;
     *) error "CHANNEL must be latest or beta (received: $CHANNEL)"; exit 1 ;;
 esac
