@@ -1,6 +1,6 @@
 import React from 'react'
 
-type Status = 'online' | 'offline' | 'unknown' | 'active' | 'revoked' | 'pending' | 'done' | 'failed' | 'running'
+type Status = 'online' | 'offline' | 'unknown' | 'active' | 'revoked' | 'pending' | 'done' | 'failed' | 'running' | 'decommissioned'
 
 const STATUS_STYLES: Record<Status, { bg: string; text: string; dot: string }> = {
   online:  { bg: 'bg-emerald-100', text: 'text-emerald-800', dot: 'bg-emerald-500' },
@@ -12,6 +12,7 @@ const STATUS_STYLES: Record<Status, { bg: string; text: string; dot: string }> =
   unknown: { bg: 'bg-gray-100',    text: 'text-gray-800',    dot: 'bg-gray-400' },
   pending: { bg: 'bg-yellow-100',  text: 'text-yellow-800',  dot: 'bg-yellow-500' },
   running: { bg: 'bg-blue-100',    text: 'text-blue-800',    dot: 'bg-blue-500' },
+  decommissioned: { bg: 'bg-amber-100', text: 'text-amber-800', dot: 'bg-amber-500' },
 }
 
 interface StatusBadgeProps {
