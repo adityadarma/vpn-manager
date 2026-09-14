@@ -322,6 +322,33 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
 
       await app.db('vpn_nodes').where({ id: request.params.id }).update(updates)
 
+      // OpenVPN pushes node DNS globally from server.conf. Refresh it when
+      // Managed DNS changes so public resolvers cannot bypass group listeners.
+      if (request.body.managed_dns_enabled !== undefined) {
+        const groupSubnets = await app.db('group_node_dns_settings')
+          .where({ node_id: request.params.id })
+          .whereNotNull('vpn_subnet')
+          .pluck('vpn_subnet') as string[]
+        const current = await app.db('vpn_nodes').where({ id: request.params.id }).first()
+        await app.db('tasks').insert({
+          id: uuidv7(),
+          node_id: current.id,
+          action: 'update_server_config',
+          payload: JSON.stringify({
+            port: current.port, protocol: current.protocol, tunnel_mode: current.tunnel_mode,
+            vpn_network: current.vpn_network, vpn_netmask: current.vpn_netmask,
+            dns_servers: current.dns_servers, push_routes: current.push_routes,
+            compression: current.compression, cipher: current.cipher,
+            keepalive_ping: current.keepalive_ping, keepalive_timeout: current.keepalive_timeout,
+            custom_push_directives: current.custom_push_directives,
+            group_subnets: groupSubnets,
+            managed_dns_enabled: Boolean(current.managed_dns_enabled),
+          }),
+          status: 'pending',
+          created_at: new Date(),
+        })
+      }
+
       const updated = await app.db('vpn_nodes').where({ id: request.params.id }).first()
       const { token: _token, private_key: _pk, ca_cert: _ca, ta_key: _ta, ...safeNode } = updated
 
@@ -421,6 +448,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       const validation = validateTaskPayload('update_server_config', {
         ...request.body,
         group_subnets: managedSubnets,
+        managed_dns_enabled: Boolean(node.managed_dns_enabled),
       })
       if (!validation.ok) {
         app.log.warn(
@@ -726,6 +754,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       // Get current node status
       const currentNode = await app.db('vpn_nodes').where({ id: nodeId }).first()
       const wasOffline = currentNode?.status === 'offline'
+      const activatingManagedDns = Boolean(dns?.enabled && dns?.capable && dns?.status === 'healthy' && !currentNode?.managed_dns_enabled)
       
       const updates: any = { status: 'online', last_seen: new Date() }
       if (caCert) updates.ca_cert = caCert
@@ -765,6 +794,30 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         updates.dns_last_sync_error = null
       }
       await app.db('vpn_nodes').where({ id: nodeId }).update(updates)
+
+      if (activatingManagedDns) {
+        const groupSubnets = await app.db('group_node_dns_settings')
+          .where({ node_id: nodeId })
+          .whereNotNull('vpn_subnet')
+          .pluck('vpn_subnet') as string[]
+        await app.db('tasks').insert({
+          id: uuidv7(),
+          node_id: nodeId,
+          action: 'update_server_config',
+          payload: JSON.stringify({
+            port: currentNode.port, protocol: currentNode.protocol, tunnel_mode: currentNode.tunnel_mode,
+            vpn_network: currentNode.vpn_network, vpn_netmask: currentNode.vpn_netmask,
+            dns_servers: currentNode.dns_servers, push_routes: currentNode.push_routes,
+            compression: currentNode.compression, cipher: currentNode.cipher,
+            keepalive_ping: currentNode.keepalive_ping, keepalive_timeout: currentNode.keepalive_timeout,
+            custom_push_directives: currentNode.custom_push_directives,
+            group_subnets: groupSubnets,
+            managed_dns_enabled: true,
+          }),
+          status: 'pending',
+          created_at: new Date(),
+        })
+      }
 
       if (startup) {
         await enqueueApplyPolicies(app, nodeId)

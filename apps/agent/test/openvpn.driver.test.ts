@@ -97,6 +97,14 @@ describe('OpenVpnDriver Unit Tests (Mock Socket)', () => {
     expect(config.tunnelMode).toBe('split')
   })
 
+  it('parses every server-pushed DNS resolver so Managed DNS can replace them', () => {
+    const config = (driver as any)._parseServerConfig(
+      'push "dhcp-option DNS 8.8.8.8"\npush "dhcp-option DNS 1.1.1.1"\n',
+    )
+
+    expect(config.dnsServers).toBe('8.8.8.8,1.1.1.1')
+  })
+
   it('parses getClients output correctly', async () => {
     await driver.connect()
     const clients = await driver.getClients()

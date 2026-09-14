@@ -127,6 +127,8 @@ export interface ServerConfigParams {
   keepalive_timeout: number
   group_subnets?: string[]
   custom_push_directives?: string
+  /** Managed DNS pushes resolvers per credential, never as a server-wide default. */
+  managed_dns_enabled?: boolean
 }
 
 // ── Main driver interface ─────────────────────────────────────────────────────

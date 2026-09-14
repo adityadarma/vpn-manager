@@ -75,6 +75,12 @@ describe('Nodes API', () => {
     })
     expect(enable.statusCode).toBe(200)
 
+    const configTask = await app.db('tasks')
+      .where({ node_id: nodeId, action: 'update_server_config', status: 'pending' })
+      .orderBy('created_at', 'desc')
+      .first()
+    expect(JSON.parse(configTask.payload).managed_dns_enabled).toBe(true)
+
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/nodes/heartbeat',

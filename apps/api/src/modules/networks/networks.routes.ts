@@ -471,6 +471,7 @@ async function triggerNodeConfigUpdate(app: any, nodeId: string): Promise<void> 
     keepalive_timeout: node.keepalive_timeout,
     custom_push_directives: node.custom_push_directives,
     group_subnets: allSubnets,
+    managed_dns_enabled: Boolean(node.managed_dns_enabled),
   }
 
   await app.db('tasks').insert({
