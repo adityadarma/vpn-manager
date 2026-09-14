@@ -4,6 +4,79 @@ All notable changes to VPN Manager are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-09-14
+
+### Added
+
+- Added native Linux Agent distribution as Bun-compiled `amd64` and `arm64` binaries, published with SHA-256 checksums in GitHub Releases.
+- Added native Agent installation, update, logging, restart, and uninstall support through systemd; native nodes no longer require Docker or Node.js.
+- Added native CoreDNS installation and `vpn-coredns.service` for Managed DNS nodes, with verified pinned CoreDNS downloads.
+- Added `scripts/update-node.sh` to update existing native and Docker Agent installations without replacing node credentials in `/opt/vpn-agent/.env`.
+- Added API support and dashboard controls for retrying failed Agent tasks.
+
+### Changed
+
+- Preserved Docker Compose Agent deployments during updates while making native systemd deployment the default for new nodes.
+- Made Managed DNS Corefile deployment and rollback atomic, so CoreDNS only reads complete configurations.
+- Improved Agent environment loading so Docker, systemd, and manual execution share the same validated `process.env` configuration path.
+
+### Fixed
+
+- Fixed Manager node decommissioning during uninstall by submitting a valid JSON request to the authenticated Agent endpoint.
+
+## [2.2.0] - 2026-09-14
+
+### Added
+
+- Added Managed DNS with group-scoped CoreDNS listeners, private zones, DNS records, sinkhole/block policies, DNS revision health reporting, and dashboard administration.
+- Added managed DNS synchronization, CoreDNS configuration generation, DNS listener lifecycle management, and firewall enforcement for supported engines.
+- Added Managed DNS unit, integration, and full-loop VPN tests.
+
+### Changed
+
+- Expanded group network policies to each member credential and improved certificate policy management in the dashboard.
+- Updated node configuration synchronization and Agent installation behavior for Managed DNS.
+
+## [2.1.0] - 2026-09-14
+
+### Added
+
+- Added node decommissioning and restoration flows that revoke node credentials, close active sessions, cancel pending tasks, and retain node history.
+- Added a decommissioned node status in the dashboard.
+
+### Changed
+
+- Updated Agent uninstall handling to decommission the node on the Manager before local cleanup.
+
+## [2.0.0] - 2026-09-14
+
+### Breaking Changes
+
+- Reworked database schema and removed legacy tables and columns. Existing installations must back up their database and run the v2 migrations before deployment; rolling back to a v1 application against a migrated v2 database is unsupported.
+- Replaced user `username` with `name` and standardized authentication on email addresses. Integrations and API clients must submit `email` where they previously submitted `username`.
+- Replaced the legacy VPN identity model with credential-scoped identities. Existing automation that assumes one certificate or identity per user must use the credential-specific API data.
+- Standardized the stable Agent image channel to `ghcr.io/adityadarma/vpn-agent:2`. Update custom deployment manifests that pin the previous stable image tag.
+
+### Added
+
+- Added credential-scoped VPN identities, credential naming, certificate expiry monitoring, automatic expiry revocation, and improved certificate renewal/revocation flows.
+- Added tunnel-mode validation, dynamic VPN subnet handling, Manager credential discovery for local Agent installation, and beta release channels for installers.
+- Added Agent task retries, pagination for user and task management, improved node/session visibility, and responsive dashboard updates.
+- Added group-aware network routing, allocation management, and expanded policy application for member credentials.
+- Added Managed DNS foundations: data model, zone/policy synchronization, Agent DNS listener and firewall enforcement, dashboard administration, CoreDNS lifecycle support, and end-to-end coverage.
+
+### Changed
+
+- Simplified deployment around SQLite and reduced Manager and Agent image size by removing unnecessary runtime files and dependencies.
+- Updated Agent, Manager, installer, uninstaller, release workflow, and documentation behavior for versioned stable/beta channels.
+- Removed GeoIP session fields and obsolete database tests, tables, and configuration.
+- Improved API error handling, authentication wording, node selection, certificate UI, and network-management workflows.
+
+### Fixed
+
+- Improved Agent registration error reporting, CoreDNS image/version handling, DNS sync status handling, and concurrent DNS revision queueing.
+- Improved OpenVPN and WireGuard installation, cleanup, firewall handling, and Agent live-test coverage across supported distributions.
+
 ## [1.1.7] - 2026-09-07
 
 ### Added
