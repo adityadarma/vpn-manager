@@ -118,7 +118,7 @@ function KickDropdown({ sessionId, name, onKick, isPending }: KickDropdownProps)
             }
           }}
           disabled={isPending}
-          title="Block reconnects for 5 minutes"
+          title="Block for 5 minutes"
           className="h-8 px-2.5 flex items-center gap-1.5 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-xs font-medium transition-colors disabled:opacity-50"
         >
           {isPending ? (
@@ -160,8 +160,8 @@ function KickDropdown({ sessionId, name, onKick, isPending }: KickDropdownProps)
               <UserX className="h-4 w-4" />
             </div>
             <div>
-              <div className="font-medium text-xs text-foreground">Block for 5 minutes</div>
-              <div className="text-[11px] text-muted-foreground/80">Disconnect and restore automatically</div>
+              <div className="font-medium text-xs text-foreground">5 minutes</div>
+              <div className="text-[11px] text-muted-foreground/80">Restores automatically</div>
             </div>
           </button>
 
@@ -180,8 +180,8 @@ function KickDropdown({ sessionId, name, onKick, isPending }: KickDropdownProps)
               <ShieldOff className="h-4 w-4" />
             </div>
             <div>
-              <div className="font-semibold text-xs text-red-600 dark:text-red-400">Block until Unkick</div>
-              <div className="text-[11px] text-red-500/70">Disconnect + require admin restore</div>
+              <div className="font-semibold text-xs text-red-600 dark:text-red-400">Permanent</div>
+              <div className="text-[11px] text-red-500/70">Until admin restores access</div>
             </div>
           </button>
         </div>
