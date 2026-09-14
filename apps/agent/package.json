@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsup",
+    "build:binary": "bun build src/index.ts --compile --target=bun-linux-x64-baseline --outfile dist/vpn-agent-linux-amd64 && bun build src/index.ts --compile --target=bun-linux-arm64 --outfile dist/vpn-agent-linux-arm64",
     "start": "node dist/index.js",
     "test": "vitest run --exclude 'test/*.live.test.ts'",
     "test:live": "vitest run test/openvpn.live.test.ts test/wireguard.live.test.ts test/firewall.live.test.ts test/firewall.distro.live.test.ts",

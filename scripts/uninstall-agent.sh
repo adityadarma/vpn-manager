@@ -154,7 +154,9 @@ notify_manager_node_deleted() {
     local response http_code body
 
     response=$(curl -sS -m 12 -w "\n%{http_code}" -X POST "$endpoint" \
-        -H "Authorization: Bearer ${secret_token}" 2>/dev/null || true)
+        -H "Authorization: Bearer ${secret_token}" \
+        -H "Content-Type: application/json" \
+        -d '{}' 2>/dev/null || true)
 
     http_code=$(echo "$response" | tail -n1)
     body=$(echo "$response" | sed '$d')
@@ -228,12 +230,24 @@ echo "Stopping services..."
 # Stop agent
 if [ -d "/opt/vpn-agent" ]; then
     cd /opt/vpn-agent
-    docker compose --profile dns down --volumes --remove-orphans 2>/dev/null || true
-    ok "Agent and CoreDNS stopped"
+    if systemctl list-unit-files vpn-agent.service >/dev/null 2>&1; then
+        systemctl disable --now vpn-agent.service 2>/dev/null || true
+        rm -f /etc/systemd/system/vpn-agent.service
+        systemctl disable --now vpn-coredns.service 2>/dev/null || true
+        rm -f /etc/systemd/system/vpn-coredns.service
+        systemctl daemon-reload
+        ok "Native Agent and CoreDNS stopped"
+    fi
+    if [ -f docker-compose.yml ] && command -v docker >/dev/null 2>&1; then
+        docker compose --profile dns down --volumes --remove-orphans 2>/dev/null || true
+        ok "Docker Agent and CoreDNS stopped"
+    fi
 fi
-cleanup_coredns
-ok "CoreDNS container and managed DNS volume removed"
-remove_agent_images
+if command -v docker >/dev/null 2>&1; then
+    cleanup_coredns
+    ok "CoreDNS container and managed DNS volume removed"
+    remove_agent_images
+fi
 
 if [ "$VPN_TYPE" = "openvpn" ] || [ "$VPN_TYPE" = "both" ]; then
     VPN_CIDR=""

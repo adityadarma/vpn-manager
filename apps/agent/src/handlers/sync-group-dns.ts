@@ -4,7 +4,10 @@ import { validateTaskPayload } from '@vpn/shared'
 import type { AgentEnv } from '../config/env'
 import type { VpnDriver } from '../drivers'
 import { applyManagedDnsFirewall } from '../services/managed-dns-firewall'
-import { currentDnsListenerAddresses, ensureDnsListenerAddresses } from '../services/managed-dns-listener'
+import {
+  currentDnsListenerAddresses,
+  ensureDnsListenerAddresses,
+} from '../services/managed-dns-listener'
 
 type DnsRecord = { name: string; type: 'A' | 'AAAA' | 'CNAME' | 'TXT'; value: string; ttl: number }
 type DnsZone = { name: string; records: DnsRecord[] }
@@ -26,7 +29,19 @@ type DnsGroup = {
   policies: DnsPolicy[]
 }
 
-const TEMPLATE_TYPES = ['A', 'AAAA', 'CNAME', 'HTTPS', 'MX', 'NAPTR', 'NS', 'PTR', 'SRV', 'SVCB', 'TXT']
+const TEMPLATE_TYPES = [
+  'A',
+  'AAAA',
+  'CNAME',
+  'HTTPS',
+  'MX',
+  'NAPTR',
+  'NS',
+  'PTR',
+  'SRV',
+  'SVCB',
+  'TXT',
+]
 
 /** Keeps a generated `match` line readable instead of one unbounded regex. */
 const PATTERNS_PER_TEMPLATE = 40
@@ -60,7 +75,12 @@ function chunk<T>(items: T[], size: number): T[][] {
  * only applies within those CoreDNS zones (used for `scope=internal`)
  * instead of the enclosing server block's full zone set.
  */
-function emitSinkholeBlock(templates: string[], sinkholeIp: string, patterns: string[], zoneArgs: string): void {
+function emitSinkholeBlock(
+  templates: string[],
+  sinkholeIp: string,
+  patterns: string[],
+  zoneArgs: string,
+): void {
   const match = matchExpression(patterns)
   const zonePart = zoneArgs ? `${zoneArgs} ` : ''
   templates.push(`    template IN A ${zonePart}{`)
@@ -112,7 +132,9 @@ function policyTemplates(group: DnsGroup): string[] {
   const publicSinkholed = new Map<string, string[]>()
   const internalSinkholed = new Map<string, string[]>()
   const internalZoneNames = group.zones.map((zone) => zone.name)
-  const policies = [...group.policies].sort((a, b) => b.priority - a.priority || a.domain_pattern.localeCompare(b.domain_pattern))
+  const policies = [...group.policies].sort(
+    (a, b) => b.priority - a.priority || a.domain_pattern.localeCompare(b.domain_pattern),
+  )
 
   for (const policy of policies) {
     if (policy.action === 'allow') continue
@@ -146,13 +168,17 @@ function policyTemplates(group: DnsGroup): string[] {
 
   // Sinkhole first: an A answer is more specific than a blanket NXDOMAIN.
   for (const [sinkholeIp, patterns] of publicSinkholed) {
-    for (const batch of chunk(patterns, PATTERNS_PER_TEMPLATE)) emitSinkholeBlock(templates, sinkholeIp, batch, '')
+    for (const batch of chunk(patterns, PATTERNS_PER_TEMPLATE))
+      emitSinkholeBlock(templates, sinkholeIp, batch, '')
   }
   for (const [sinkholeIp, patterns] of internalSinkholed) {
-    for (const batch of chunk(patterns, PATTERNS_PER_TEMPLATE)) emitSinkholeBlock(templates, sinkholeIp, batch, internalZoneArgs)
+    for (const batch of chunk(patterns, PATTERNS_PER_TEMPLATE))
+      emitSinkholeBlock(templates, sinkholeIp, batch, internalZoneArgs)
   }
-  for (const batch of chunk(publicBlocked, PATTERNS_PER_TEMPLATE)) emitBlockedBlock(templates, batch, '')
-  for (const batch of chunk(internalBlocked, PATTERNS_PER_TEMPLATE)) emitBlockedBlock(templates, batch, internalZoneArgs)
+  for (const batch of chunk(publicBlocked, PATTERNS_PER_TEMPLATE))
+    emitBlockedBlock(templates, batch, '')
+  for (const batch of chunk(internalBlocked, PATTERNS_PER_TEMPLATE))
+    emitBlockedBlock(templates, batch, internalZoneArgs)
 
   return templates
 }
@@ -207,7 +233,8 @@ function buildGroupBlocks(group: DnsGroup, includeHealth: boolean): string[] {
   const zoneFiles = group.zones.map(
     (zone) => `    file /etc/coredns/active/groups/${group.id}/zones/${zone.name}.db ${zone.name}`,
   )
-  const forwardLine = group.upstreams.length > 0 ? `    forward . ${group.upstreams.join(' ')}` : null
+  const forwardLine =
+    group.upstreams.length > 0 ? `    forward . ${group.upstreams.join(' ')}` : null
 
   if (group.public_default_action === 'allow') {
     const blocks: string[] = []
@@ -230,7 +257,9 @@ function buildGroupBlocks(group: DnsGroup, includeHealth: boolean): string[] {
 
   // Whitelist mode: permittedZones is every name this listener may forward
   // for. Anything outside it lands on the second, always-NXDOMAIN block.
-  const allowedZoneNames = group.policies.filter((policy) => policy.action === 'allow').map((policy) => zoneNameFromPattern(policy.domain_pattern))
+  const allowedZoneNames = group.policies
+    .filter((policy) => policy.action === 'allow')
+    .map((policy) => zoneNameFromPattern(policy.domain_pattern))
   const internalZoneNames = group.zones.map((zone) => zone.name)
   const permittedZones = [...new Set([...internalZoneNames, ...allowedZoneNames])]
 
@@ -287,6 +316,12 @@ async function replaceSymlink(target: string, link: string): Promise<void> {
   await fs.rename(temp, link)
 }
 
+async function replaceFile(contents: string, file: string): Promise<void> {
+  const temp = `${file}.next`
+  await fs.writeFile(temp, contents, { mode: 0o644 })
+  await fs.rename(temp, file)
+}
+
 /**
  * Serialises DNS syncs within this Agent process.
  *
@@ -323,7 +358,11 @@ async function applySyncGroupDns(
   if (!env.DNS_ENABLED) throw new Error('Managed DNS is disabled on this Agent')
   const validated = validateTaskPayload('sync_group_dns', payload)
   if (!validated.ok) throw new Error(validated.error)
-  const { revision, config_hash, groups } = validated.payload as unknown as { revision: number; config_hash: string; groups: DnsGroup[] }
+  const { revision, config_hash, groups } = validated.payload as unknown as {
+    revision: number
+    config_hash: string
+    groups: DnsGroup[]
+  }
   if (groups.length === 0) throw new Error('Managed DNS sync has no enabled groups')
 
   const root = path.resolve(env.COREDNS_CONFIG_DIR)
@@ -348,7 +387,11 @@ async function applySyncGroupDns(
       }
       // Preserve policy desired state for the next enforcement step without
       // accepting any executable CoreDNS directives from the Manager.
-      await fs.writeFile(path.join(staging, 'groups', group.id, 'policies.json'), JSON.stringify(group.policies), { mode: 0o600 })
+      await fs.writeFile(
+        path.join(staging, 'groups', group.id, 'policies.json'),
+        JSON.stringify(group.policies),
+        { mode: 0o600 },
+      )
     }
     const generatedCorefile = corefile(groups)
     await fs.writeFile(path.join(staging, 'Corefile'), generatedCorefile, { mode: 0o644 })
@@ -362,18 +405,23 @@ async function applySyncGroupDns(
     await ensureDnsListenerAddresses(groups.map((group) => group.listener_ip))
 
     await replaceSymlink(`revisions/${revision}`, active)
-    await fs.writeFile(`${rootCorefile}.next`, generatedCorefile, { mode: 0o644 })
-    await fs.rename(`${rootCorefile}.next`, rootCorefile)
+    await replaceFile(generatedCorefile, rootCorefile)
 
     // CoreDNS reload checks its Corefile every two seconds. Wait for the first
     // reload window before accepting the new revision as healthy.
     await new Promise((resolve) => setTimeout(resolve, 2_500))
     await health(env.COREDNS_HEALTH_URL)
-    await applyManagedDnsFirewall(groups, String(payload['firewall_engine'] ?? env.FIREWALL_ENGINE), String(payload['vpn_type'] ?? env.VPN_TYPE), env.DNS_BLOCK_DOT)
+    await applyManagedDnsFirewall(
+      groups,
+      String(payload['firewall_engine'] ?? env.FIREWALL_ENGINE),
+      String(payload['vpn_type'] ?? env.VPN_TYPE),
+      env.DNS_BLOCK_DOT,
+    )
   } catch (error) {
     if (previous) await replaceSymlink(previous, active).catch(() => undefined)
     else await fs.rm(active, { force: true }).catch(() => undefined)
-    if (previousCorefile !== null) await fs.writeFile(rootCorefile, previousCorefile, { mode: 0o644 }).catch(() => undefined)
+    if (previousCorefile !== null)
+      await replaceFile(previousCorefile, rootCorefile).catch(() => undefined)
     else await fs.rm(rootCorefile, { force: true }).catch(() => undefined)
     // Restore the listener set that belonged to the revision being rolled back
     // to, so a failed sync never leaves an address the config no longer uses.
@@ -382,7 +430,20 @@ async function applySyncGroupDns(
   }
 
   const entries = await fs.readdir(revisions, { withFileTypes: true })
-  const old = entries.filter((entry) => entry.isDirectory() && /^\d+$/.test(entry.name)).map((entry) => Number(entry.name)).sort((a, b) => b - a).slice(6)
-  await Promise.all(old.map((oldRevision) => fs.rm(path.join(revisions, String(oldRevision)), { recursive: true, force: true })))
-  return { revision, config_hash, status: 'healthy', listeners: groups.map((group) => `${group.listener_ip}:${group.listener_port}`) }
+  const old = entries
+    .filter((entry) => entry.isDirectory() && /^\d+$/.test(entry.name))
+    .map((entry) => Number(entry.name))
+    .sort((a, b) => b - a)
+    .slice(6)
+  await Promise.all(
+    old.map((oldRevision) =>
+      fs.rm(path.join(revisions, String(oldRevision)), { recursive: true, force: true }),
+    ),
+  )
+  return {
+    revision,
+    config_hash,
+    status: 'healthy',
+    listeners: groups.map((group) => `${group.listener_ip}:${group.listener_port}`),
+  }
 }

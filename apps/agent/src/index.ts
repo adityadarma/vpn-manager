@@ -1,10 +1,11 @@
 import dotenv from 'dotenv'
-import path from 'path'
-import { fileURLToPath } from 'url'
 
-// Load .env from monorepo root (walk up from apps/agent/src/)
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-dotenv.config({ path: path.resolve(__dirname, '../../../.env'), quiet: true })
+// Systemd supplies EnvironmentFile directly. This fallback keeps manual runs
+// convenient while allowing the compiled binary to use /opt/vpn-agent/.env.
+dotenv.config({
+  path: '.env',
+  quiet: true,
+})
 
 import { loadAgentEnv } from './config/env'
 import { startPoller } from './core/poller'
@@ -23,10 +24,10 @@ function createVpnDriver(env: ReturnType<typeof loadAgentEnv>): VpnDriver {
   switch (env.VPN_TYPE) {
     case 'openvpn':
       return new OpenVpnDriver()
-    
+
     case 'wireguard':
       return new WireGuardDriver()
-    
+
     default:
       throw new Error(`Unsupported VPN type: ${env.VPN_TYPE}`)
   }
@@ -39,7 +40,7 @@ async function checkCertificatesSync(env: ReturnType<typeof loadAgentEnv>): Prom
   try {
     const response = await fetch(`${env.AGENT_MANAGER_URL}/api/v1/nodes/me`, {
       headers: {
-        'Authorization': `Bearer ${env.AGENT_SECRET_TOKEN}`,
+        Authorization: `Bearer ${env.AGENT_SECRET_TOKEN}`,
       },
     })
 
@@ -48,7 +49,13 @@ async function checkCertificatesSync(env: ReturnType<typeof loadAgentEnv>): Prom
       return false
     }
 
-    const node = await response.json() as { ca_cert?: string; ta_key?: string; vpn_type?: string; public_key?: string; private_key?: string }
+    const node = (await response.json()) as {
+      ca_cert?: string
+      ta_key?: string
+      vpn_type?: string
+      public_key?: string
+      private_key?: string
+    }
     if (node.vpn_type === 'wireguard') {
       return !!(node.public_key && node.private_key)
     }
@@ -64,7 +71,7 @@ async function checkCertificatesSync(env: ReturnType<typeof loadAgentEnv>): Prom
  */
 async function syncCertificatesOnStartup(driver: VpnDriver): Promise<void> {
   console.log('[startup] Syncing certificates with database...')
-  
+
   try {
     await handleSyncCertificates({}, driver)
     console.log('[startup] ✓ Certificates synced successfully')
@@ -85,7 +92,7 @@ async function syncServerConfigOnStartup(driver: VpnDriver): Promise<void> {
   }
 
   console.log('[startup] Syncing server configuration...')
-  
+
   try {
     await handleSyncServerConfig({}, driver)
     console.log('[startup] ✓ Server config synced successfully')
@@ -121,7 +128,10 @@ async function main() {
     await driver.connect()
     console.log(`✓ Connected to ${env.VPN_TYPE.toUpperCase()} management interface`)
   } catch (err) {
-    console.error(`✗ Failed to connect to ${env.VPN_TYPE.toUpperCase()} management interface:`, (err as Error).message)
+    console.error(
+      `✗ Failed to connect to ${env.VPN_TYPE.toUpperCase()} management interface:`,
+      (err as Error).message,
+    )
     console.warn(`  Agent will continue but VPN monitoring will be unavailable`)
   }
 
@@ -134,7 +144,7 @@ async function main() {
   // Start services
   startHeartbeat(env, driver)
   startPoller(env, driver)
-  
+
   if (env.VPN_TYPE === 'openvpn') {
     // OpenVPN supports rich realtime events via Management Interface (includes Device Info from IV_PLAT)
     startEventMonitor(env, driver)

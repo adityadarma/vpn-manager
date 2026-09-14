@@ -7,54 +7,56 @@ Store `.env` files with restrictive permissions and never commit them to Git. Ro
 
 ## Manager
 
-| Variable | Default | Description |
-| --- | --- | --- |
-| `NODE_ENV` | `development` | `development`, `production`, or `test` |
-| `PORT` | `3000` | Manager HTTP port |
-| `HOST` | `0.0.0.0` | Application bind address |
-| `JWT_SECRET` | required | At least 32 characters; secret for session tokens |
-| `JWT_EXPIRES_IN` | `7d` | JWT lifetime |
-| `WEB_URL` | optional | Dashboard URL for CORS in local development |
-| `NODE_REGISTRATION_KEY` | not validated by API env | Secret for node auto-registration; consumed by the registration route |
-| `VPN_TOKEN` | not validated by API env | `X-VPN-Token` secret for VPN hooks and registration |
-| `ADMIN_PASSWORD` | empty | Used only for the first admin seed; empty generates and prints a random password once |
+| Variable                | Default                  | Description                                                                           |
+| ----------------------- | ------------------------ | ------------------------------------------------------------------------------------- |
+| `NODE_ENV`              | `development`            | `development`, `production`, or `test`                                                |
+| `PORT`                  | `3000`                   | Manager HTTP port                                                                     |
+| `HOST`                  | `0.0.0.0`                | Application bind address                                                              |
+| `JWT_SECRET`            | required                 | At least 32 characters; secret for session tokens                                     |
+| `JWT_EXPIRES_IN`        | `7d`                     | JWT lifetime                                                                          |
+| `WEB_URL`               | optional                 | Dashboard URL for CORS in local development                                           |
+| `NODE_REGISTRATION_KEY` | not validated by API env | Secret for node auto-registration; consumed by the registration route                 |
+| `VPN_TOKEN`             | not validated by API env | `X-VPN-Token` secret for VPN hooks and registration                                   |
+| `ADMIN_PASSWORD`        | empty                    | Used only for the first admin seed; empty generates and prints a random password once |
 
 `VITE_API_URL` and `WEB_URL` in `.env.example` are for local development. Production serves the dashboard and API from the same origin, so they are normally unnecessary.
 
 ## Agent
 
-| Variable | Default | Description |
-| --- | --- | --- |
-| `AGENT_PORT` | `3002` | Agent internal port |
-| `AGENT_MANAGER_URL` | required | Valid Manager URL reachable from the node |
-| `AGENT_NODE_ID` | required | Node ID after registration; at least 36 characters |
-| `AGENT_SECRET_TOKEN` | required | Agent authentication bearer token |
-| `VPN_TOKEN` | required | VPN event reporting token |
-| `VPN_TYPE` | `openvpn` | `openvpn` or `wireguard` |
-| `FIREWALL_ENGINE` | `auto` | `auto`, `iptables`, `nftables`, `ufw`, `firewalld`, or `none` |
-| `AGENT_POLL_INTERVAL_MS` | `5000` | Task polling interval in milliseconds |
-| `AGENT_HEARTBEAT_INTERVAL_MS` | `30000` | Heartbeat interval in milliseconds |
-| `DNS_ENABLED` | `false` | Starts the optional CoreDNS profile and accepts Manager-provided Managed DNS configuration |
-| `DNS_BLOCK_DOT` | `false` | Blocks DNS-over-TLS on port `853` for managed groups; it does not block DNS-over-HTTPS on port `443` |
-| `COREDNS_HEALTH_URL` | `http://127.0.0.1:8181/health` | CoreDNS health endpoint checked by the Agent when Managed DNS is enabled |
+| Variable                      | Default                        | Description                                                                                          |
+| ----------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `AGENT_PORT`                  | `3002`                         | Agent internal port                                                                                  |
+| `AGENT_MANAGER_URL`           | required                       | Valid Manager URL reachable from the node                                                            |
+| `AGENT_NODE_ID`               | required                       | Node ID after registration; at least 36 characters                                                   |
+| `AGENT_SECRET_TOKEN`          | required                       | Agent authentication bearer token                                                                    |
+| `VPN_TOKEN`                   | required                       | VPN event reporting token                                                                            |
+| `VPN_TYPE`                    | `openvpn`                      | `openvpn` or `wireguard`                                                                             |
+| `FIREWALL_ENGINE`             | `auto`                         | `auto`, `iptables`, `nftables`, `ufw`, `firewalld`, or `none`                                        |
+| `AGENT_POLL_INTERVAL_MS`      | `5000`                         | Task polling interval in milliseconds                                                                |
+| `AGENT_HEARTBEAT_INTERVAL_MS` | `30000`                        | Heartbeat interval in milliseconds                                                                   |
+| `DNS_ENABLED`                 | `false`                        | Starts the optional CoreDNS profile and accepts Manager-provided Managed DNS configuration           |
+| `DNS_BLOCK_DOT`               | `false`                        | Blocks DNS-over-TLS on port `853` for managed groups; it does not block DNS-over-HTTPS on port `443` |
+| `COREDNS_HEALTH_URL`          | `http://127.0.0.1:8181/health` | CoreDNS health endpoint checked by the Agent when Managed DNS is enabled                             |
 
-With the Agent Compose deployment, every Manager connection credential and `VPN_TOKEN` must be set. Do not use `localhost` for `AGENT_MANAGER_URL` when the Manager runs on a different host; from a host-network container, `localhost` refers to the node itself.
+Every Manager connection credential and `VPN_TOKEN` must be set. Do not use `localhost` for `AGENT_MANAGER_URL` when the Manager runs on a different host.
 
 ## Installer-only settings
 
 These values are consumed by `scripts/install-agent.sh` while it provisions or registers a node. They are not persistent Agent environment variables unless the installer writes an equivalent setting to `/opt/vpn-agent/.env`.
 
-| Variable | Default | Description |
-| --- | --- | --- |
-| `VPN_SUBNET` | Manager-assigned | Requested CIDR for a new node, such as `10.8.1.0/24`. It must not overlap LAN, Docker, other VPN, or common client networks. |
-| `TUNNEL_MODE` | `full` | `full` routes client internet traffic through the VPN. `split` routes only configured internal CIDRs. |
-| `REG_KEY` | none | Alias for `NODE_REGISTRATION_KEY` during automatic node registration. |
-| `CHANNEL` | `latest` | Image channel: `latest` for stable releases or `beta` for prereleases. |
+| Variable      | Default          | Description                                                                                                                  |
+| ------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `VPN_SUBNET`  | Manager-assigned | Requested CIDR for a new node, such as `10.8.1.0/24`. It must not overlap LAN, Docker, other VPN, or common client networks. |
+| `TUNNEL_MODE` | `full`           | `full` routes client internet traffic through the VPN. `split` routes only configured internal CIDRs.                        |
+| `REG_KEY`     | none             | Alias for `NODE_REGISTRATION_KEY` during automatic node registration.                                                        |
+| `CHANNEL`     | `latest`         | Image channel: `latest` for stable releases or `beta` for prereleases.                                                       |
 
 Set `DNS_ENABLED=true` during installation to enable Managed DNS. The installer creates the required DNS Compose profile and host configuration. `DNS_BLOCK_DOT=true` adds the supported firewall restrictions for DNS-over-TLS; it cannot reliably prevent DNS-over-HTTPS.
 
 ## Compatibility
 
-The production Manager and Agent are designed for Linux hosts running Docker Engine with Docker Compose v2. The development workspace requires Node.js 24 or newer and pnpm 10 or newer.
+The production Manager requires Docker Engine with Docker Compose v2. The Agent runs on Linux either as the default native Bun binary managed by systemd or in Docker Compose when installed with `AGENT_INSTALL_MODE=docker`. The development workspace requires Node.js 24 or newer and pnpm 10 or newer.
 
-The Agent uses host networking, `NET_ADMIN`, and `NET_RAW`; it is unsuitable for restricted container platforms that cannot grant these capabilities. OpenVPN nodes require the host's OpenVPN service, configuration, runtime socket, and logs to be mounted. WireGuard nodes require the host's WireGuard interface and `/etc/wireguard` mount. Test a distribution, firewall engine, kernel, and VPN-engine version in staging before production rollout. macOS and Windows are supported for dashboard development only, not as VPN Node hosts.
+The Agent needs root access to manage firewall and VPN state. OpenVPN nodes require the host's OpenVPN service, configuration, runtime socket, and logs. WireGuard nodes require the host's WireGuard interface and `/etc/wireguard`. Test a distribution, firewall engine, kernel, and VPN-engine version in staging before production rollout. macOS and Windows are supported for dashboard development only, not as VPN Node hosts.
+
+When `DNS_ENABLED=true`, the native installer downloads the pinned CoreDNS binary and runs it as `vpn-coredns.service`. It uses the same `/etc/vpn-manager/coredns` configuration directory as the Agent.

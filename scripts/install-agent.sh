@@ -33,7 +33,8 @@
 #     sudo -E bash install-agent.sh
 #
 # Environment Variables (Auto-registration):
-#   CHANNEL - Image and source channel: latest (default) or beta
+#   CHANNEL - Release channel: latest (default) or beta
+#   AGENT_INSTALL_MODE - native (default) or docker
 #   MANAGER_URL or AGENT_API_MANAGER_URL - Manager API URL
 #   VPN_TOKEN - VPN authentication token
 #   REG_KEY or NODE_REGISTRATION_KEY - Registration key
@@ -52,6 +53,8 @@
 # ============================================================
 
 set -e
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 # Colors
 G='\033[0;32m'; Y='\033[1;33m'; B='\033[0;34m'; R='\033[0;31m'; NC='\033[0m'
@@ -215,10 +218,17 @@ case "$CHANNEL" in
     *) error "CHANNEL must be latest or beta (received: $CHANNEL)"; exit 1 ;;
 esac
 
+AGENT_INSTALL_MODE_SET="${AGENT_INSTALL_MODE:+true}"
+AGENT_INSTALL_MODE="${AGENT_INSTALL_MODE:-native}"
+case "$AGENT_INSTALL_MODE" in
+    native|docker) ;;
+    *) error "AGENT_INSTALL_MODE must be native or docker (received: $AGENT_INSTALL_MODE)"; exit 1 ;;
+esac
+
 echo -e "${B}============================================================"
 echo "  VPN Manager - Node Installation/Update"
 echo "============================================================${NC}"
-info "Installation channel: ${CHANNEL} (Agent image: ${IMAGE_VERSION})"
+info "Installation channel: ${CHANNEL} (Agent mode: ${AGENT_INSTALL_MODE})"
 echo ""
 
 # Show environment variable support
@@ -244,8 +254,13 @@ if systemctl is-active --quiet wg-quick@wg0 2>/dev/null || [ -f /etc/wireguard/w
     ok "WireGuard is already installed"
 fi
 
-if [ -d "$INSTALL_DIR" ] && [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
+if [ -d "$INSTALL_DIR" ] && { [ -f "$INSTALL_DIR/docker-compose.yml" ] || [ -f "$INSTALL_DIR/vpn-agent" ]; }; then
     AGENT_INSTALLED=true
+    # Preserve existing Docker deployments unless an administrator explicitly
+    # selects native mode as a migration.
+    if [ -z "$AGENT_INSTALL_MODE_SET" ] && [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
+        AGENT_INSTALL_MODE="docker"
+    fi
     ok "Agent is already installed"
 fi
 
@@ -830,11 +845,161 @@ EOF
     fi
 }
 
+native_agent_asset_url() {
+    local asset="$1"
+    local repository="adityadarma/vpn-manager"
+
+    if [ -n "${AGENT_VERSION:-}" ]; then
+        printf 'https://github.com/%s/releases/download/v%s/%s\n' "$repository" "$AGENT_VERSION" "$asset"
+    elif [ "$CHANNEL" = "latest" ]; then
+        printf 'https://github.com/%s/releases/latest/download/%s\n' "$repository" "$asset"
+    else
+        curl -fsSL "https://api.github.com/repos/${repository}/releases?per_page=100" | \
+            jq -r --arg asset "$asset" '[.[] | select(.prerelease)][0].assets[] | select(.name == $asset) | .browser_download_url' | \
+            head -n1
+    fi
+}
+
+native_dns_enabled() {
+    if [ "${ENV_DNS_ENABLED:-}" = "true" ] || [ "${DNS_ENABLED:-}" = "true" ]; then
+        return 0
+    fi
+
+    [ -f "$INSTALL_DIR/.env" ] && grep -q '^DNS_ENABLED=true$' "$INSTALL_DIR/.env"
+}
+
+install_native_coredns() {
+    local machine version="1.14.7" asset base_url tmp_dir expected
+
+    case "$(uname -m)" in
+        x86_64|amd64) machine="amd64" ;;
+        aarch64|arm64) machine="arm64" ;;
+        *) error "Unsupported CoreDNS architecture: $(uname -m)"; return 1 ;;
+    esac
+
+    command -v tar >/dev/null 2>&1 || { error "tar is required to install CoreDNS"; return 1; }
+    asset="coredns_${version}_linux_${machine}.tgz"
+    base_url="https://github.com/coredns/coredns/releases/download/v${version}"
+    tmp_dir=$(mktemp -d)
+
+    info "Downloading CoreDNS ${version} for linux/${machine}..."
+    curl -fsSL "${base_url}/${asset}" -o "$tmp_dir/$asset" || { rm -rf "$tmp_dir"; return 1; }
+    curl -fsSL "${base_url}/${asset}.sha256" -o "$tmp_dir/$asset.sha256" || { rm -rf "$tmp_dir"; return 1; }
+    expected=$(awk '{print $1}' "$tmp_dir/$asset.sha256")
+    [ -n "$expected" ] || { rm -rf "$tmp_dir"; error "CoreDNS checksum not found"; return 1; }
+    [ "$(sha256sum "$tmp_dir/$asset" | awk '{print $1}')" = "$expected" ] || { rm -rf "$tmp_dir"; error "CoreDNS checksum verification failed"; return 1; }
+    tar -xzf "$tmp_dir/$asset" -C "$tmp_dir" coredns || { rm -rf "$tmp_dir"; return 1; }
+
+    install -m 0755 "$tmp_dir/coredns" "$INSTALL_DIR/coredns.new"
+    mv "$INSTALL_DIR/coredns.new" "$INSTALL_DIR/coredns"
+    mkdir -p /etc/vpn-manager/coredns
+    rm -rf "$tmp_dir"
+
+    cat > /etc/systemd/system/vpn-coredns.service <<'EOF'
+[Unit]
+Description=VPN Manager CoreDNS
+After=network-online.target vpn-agent.service
+Wants=network-online.target
+Requires=vpn-agent.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=/opt/vpn-agent/coredns -conf /etc/vpn-manager/coredns/Corefile
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    chmod 0644 /etc/systemd/system/vpn-coredns.service
+    systemctl daemon-reload
+    systemctl enable vpn-coredns.service
+    systemctl restart vpn-coredns.service
+    ok "Native CoreDNS installed and started"
+}
+
+install_native_agent() {
+    local machine asset asset_url checksum_url tmp_dir
+
+    case "$(uname -m)" in
+        x86_64|amd64) machine="amd64" ;;
+        aarch64|arm64) machine="arm64" ;;
+        *) error "Unsupported native Agent architecture: $(uname -m)"; return 1 ;;
+    esac
+
+    command -v curl >/dev/null 2>&1 || { error "curl is required to download the Agent"; return 1; }
+    if [ "$CHANNEL" = "beta" ] && [ -z "${AGENT_VERSION:-}" ] && ! command -v jq >/dev/null 2>&1; then
+        error "jq is required for CHANNEL=beta native Agent releases"
+        return 1
+    fi
+
+    asset="vpn-agent-linux-${machine}"
+    asset_url=$(native_agent_asset_url "$asset")
+    if [ -z "$asset_url" ] || [ "$asset_url" = "null" ]; then
+        error "Native Agent artifact not found for channel ${CHANNEL}"
+        return 1
+    fi
+
+    tmp_dir=$(mktemp -d)
+    info "Downloading native Agent for linux/${machine}..."
+    curl -fsSL "$asset_url" -o "$tmp_dir/$asset" || { rm -rf "$tmp_dir"; return 1; }
+    checksum_url="${asset_url}.sha256"
+    curl -fsSL "$checksum_url" -o "$tmp_dir/$asset.sha256" || { rm -rf "$tmp_dir"; return 1; }
+    (cd "$tmp_dir" && sha256sum -c "$asset.sha256") || { rm -rf "$tmp_dir"; error "Agent checksum verification failed"; return 1; }
+
+    install -m 0755 "$tmp_dir/$asset" "$INSTALL_DIR/vpn-agent.new"
+    mv "$INSTALL_DIR/vpn-agent.new" "$INSTALL_DIR/vpn-agent"
+    cat > /etc/systemd/system/vpn-agent.service <<'EOF'
+[Unit]
+Description=VPN Manager Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/vpn-agent
+EnvironmentFile=/opt/vpn-agent/.env
+Environment=NODE_ENV=production
+ExecStart=/opt/vpn-agent/vpn-agent
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    chmod 0644 /etc/systemd/system/vpn-agent.service
+    rm -rf "$tmp_dir"
+    systemctl daemon-reload
+    systemctl enable vpn-agent.service
+    systemctl restart vpn-agent.service
+    ok "Native Agent installed and started"
+
+    if native_dns_enabled; then
+        install_native_coredns
+    elif systemctl list-unit-files vpn-coredns.service >/dev/null 2>&1; then
+        systemctl disable --now vpn-coredns.service 2>/dev/null || true
+        rm -f /etc/systemd/system/vpn-coredns.service
+        systemctl daemon-reload
+    fi
+}
+
 install_agent() {
     info "Installing Agent..."
+
+    # Native updates replace only the executable. Keep .env intact so a node
+    # retains its identity and registration token across every update.
+    if [ "$AGENT_INSTALL_MODE" = "native" ] && [ -f "$INSTALL_DIR/.env" ] && \
+       grep -q '^AGENT_NODE_ID=.' "$INSTALL_DIR/.env" && grep -q '^AGENT_SECRET_TOKEN=.' "$INSTALL_DIR/.env"; then
+        mkdir -p "$INSTALL_DIR"
+        install_native_agent
+        return
+    fi
     
-    # Check Docker
-    if ! command -v docker &> /dev/null; then
+    # Docker is only required when the explicit Compose mode is selected.
+    if [ "$AGENT_INSTALL_MODE" = "docker" ] && ! command -v docker &> /dev/null; then
         error "Docker not installed"
         info "Install: https://docs.docker.com/engine/install/"
         exit 1
@@ -844,63 +1009,70 @@ install_agent() {
     mkdir -p "$INSTALL_DIR"
     cd "$INSTALL_DIR"
     
-    # Refresh the managed Compose file from the selected channel. The local
-    # .env and docker-compose.override.yml carry node credentials/mounts and
-    # are never replaced by this update. Preserve a timestamped copy first in
-    # case an administrator also made direct edits to the base Compose file.
-    if [ -f "docker-compose.yml" ]; then
-        backup="docker-compose.yml.backup-$(date +%Y%m%d-%H%M%S)"
-        cp docker-compose.yml "$backup"
-        info "Backed up existing docker-compose.yml to $backup"
-    fi
-    info "Downloading docker-compose.yml..."
-    REPO_URL="https://raw.githubusercontent.com/adityadarma/vpn-manager/main"
-    if curl -fsSL "$REPO_URL/docker-compose.agent.yml" -o docker-compose.yml; then
-        ok "Downloaded docker-compose.yml"
+    # Native installations use systemd and a release binary. Docker mode keeps
+    # the previous Compose behavior for existing deployments.
+    if [ "$AGENT_INSTALL_MODE" = "native" ]; then
+        mkdir -p "$INSTALL_DIR"
+        cd "$INSTALL_DIR"
     else
-        error "Failed to download docker-compose.agent.yml from channel ${CHANNEL}"
-        return 1
-    fi
+        # Refresh the managed Compose file from the selected channel. The local
+        # .env and docker-compose.override.yml carry node credentials/mounts and
+        # are never replaced by this update. Preserve a timestamped copy first in
+        # case an administrator also made direct edits to the base Compose file.
+        if [ -f "docker-compose.yml" ]; then
+            backup="docker-compose.yml.backup-$(date +%Y%m%d-%H%M%S)"
+            cp docker-compose.yml "$backup"
+            info "Backed up existing docker-compose.yml to $backup"
+        fi
+        info "Downloading docker-compose.yml..."
+        REPO_URL="https://raw.githubusercontent.com/adityadarma/vpn-manager/main"
+        if curl -fsSL "$REPO_URL/docker-compose.agent.yml" -o docker-compose.yml; then
+            ok "Downloaded docker-compose.yml"
+        else
+            error "Failed to download docker-compose.agent.yml from channel ${CHANNEL}"
+            return 1
+        fi
 
-    # Build host-specific mounts in a Compose override so updates never mutate
-    # the downloaded base Compose file. On updates, use the saved settings when
-    # the installer was not given a VPN type or firewall selection.
-    AGENT_VPN_TYPE="${VPN_TYPE:-}"
-    if [ -z "$AGENT_VPN_TYPE" ] && [ -f .env ]; then
-        AGENT_VPN_TYPE=$(grep -e '^VPN_TYPE=' .env | cut -d '=' -f2 | tr -d '"' | tr -d "'" || true)
-    fi
-    AGENT_VPN_TYPE="${AGENT_VPN_TYPE:-openvpn}"
-    AGENT_FIREWALL_ENGINE="${FIREWALL_ENGINE:-}"
-    if { [ -z "$AGENT_FIREWALL_ENGINE" ] || [ "$AGENT_FIREWALL_ENGINE" = "auto" ]; } && [ -f .env ]; then
-        AGENT_FIREWALL_ENGINE=$(grep -e '^FIREWALL_ENGINE=' .env | cut -d '=' -f2 | tr -d '"' | tr -d "'" || true)
-    fi
+        # Build host-specific mounts in a Compose override so updates never mutate
+        # the downloaded base Compose file. On updates, use the saved settings when
+        # the installer was not given a VPN type or firewall selection.
+        AGENT_VPN_TYPE="${VPN_TYPE:-}"
+        if [ -z "$AGENT_VPN_TYPE" ] && [ -f .env ]; then
+            AGENT_VPN_TYPE=$(grep -e '^VPN_TYPE=' .env | cut -d '=' -f2 | tr -d '"' | tr -d "'" || true)
+        fi
+        AGENT_VPN_TYPE="${AGENT_VPN_TYPE:-openvpn}"
+        AGENT_FIREWALL_ENGINE="${FIREWALL_ENGINE:-}"
+        if { [ -z "$AGENT_FIREWALL_ENGINE" ] || [ "$AGENT_FIREWALL_ENGINE" = "auto" ]; } && [ -f .env ]; then
+            AGENT_FIREWALL_ENGINE=$(grep -e '^FIREWALL_ENGINE=' .env | cut -d '=' -f2 | tr -d '"' | tr -d "'" || true)
+        fi
 
-    cat > docker-compose.override.yml <<'EOF'
+        cat > docker-compose.override.yml <<'EOF'
 services:
   agent:
     volumes:
 EOF
-    if [ "$AGENT_VPN_TYPE" = "wireguard" ]; then
-        cat >> docker-compose.override.yml <<'EOF'
+        if [ "$AGENT_VPN_TYPE" = "wireguard" ]; then
+            cat >> docker-compose.override.yml <<'EOF'
       - /etc/wireguard:/etc/wireguard
 EOF
-    else
-        cat >> docker-compose.override.yml <<'EOF'
+        else
+            cat >> docker-compose.override.yml <<'EOF'
       - /run/openvpn:/run/openvpn
       - /etc/openvpn:/etc/openvpn
       - /var/log/openvpn:/var/log/openvpn:ro
 EOF
-    fi
-    if [ "$AGENT_FIREWALL_ENGINE" = "firewalld" ]; then
-        cat >> docker-compose.override.yml <<'EOF'
+        fi
+        if [ "$AGENT_FIREWALL_ENGINE" = "firewalld" ]; then
+            cat >> docker-compose.override.yml <<'EOF'
       - /run/dbus/system_bus_socket:/run/dbus/system_bus_socket
 EOF
+        fi
+        ok "Created host volume configuration for ${AGENT_VPN_TYPE}/${AGENT_FIREWALL_ENGINE:-auto}"
     fi
-    ok "Created host volume configuration for ${AGENT_VPN_TYPE}/${AGENT_FIREWALL_ENGINE:-auto}"
 
     # An existing registered agent has credentials that must never be replaced
     # by an update run. Pull and restart its current configuration instead.
-    if [ -f .env ] && grep -q '^AGENT_NODE_ID=.' .env && grep -q '^AGENT_SECRET_TOKEN=.' .env; then
+    if [ "$AGENT_INSTALL_MODE" = "docker" ] && [ -f .env ] && grep -q '^AGENT_NODE_ID=.' .env && grep -q '^AGENT_SECRET_TOKEN=.' .env; then
         info "Existing registered agent found; preserving its configuration"
         if grep -q '^IMAGE_VERSION=' .env; then
             sed -i "s|^IMAGE_VERSION=.*|IMAGE_VERSION=${IMAGE_VERSION}|" .env
@@ -1086,6 +1258,7 @@ EOF
         else
             echo "VPN_TYPE=openvpn" >> .env
         fi
+        chmod 600 .env
         
         # Register node
         info "Registering node with Manager..."
@@ -1176,18 +1349,25 @@ EOF
         else
             echo "VPN_TYPE=openvpn" >> .env
         fi
+        chmod 600 .env
         ok "Configuration saved with provided credentials"
     fi
     
     # Start agent
     info "Starting agent..."
-    set_compose_dns_profile
-    docker compose pull
-    docker compose up -d
+    if [ "$AGENT_INSTALL_MODE" = "native" ]; then
+        install_native_agent
+    else
+        set_compose_dns_profile
+        docker compose pull
+        docker compose up -d
+    fi
     
     sleep 3
     
-    if docker ps --filter name=vpn-agent --format '{{.Status}}' | grep -q "Up"; then
+    if [ "$AGENT_INSTALL_MODE" = "native" ] && systemctl is-active --quiet vpn-agent.service; then
+        ok "Agent started successfully"
+    elif [ "$AGENT_INSTALL_MODE" = "docker" ] && docker ps --filter name=vpn-agent --format '{{.Status}}' | grep -q "Up"; then
         ok "Agent started successfully"
     else
         warn "Agent may not be running properly"
@@ -1196,6 +1376,13 @@ EOF
     
     ok "Agent installation complete"
 }
+
+# update-node.sh sets this after it identifies an existing installation. Do not
+# reconfigure VPN services or prompt for registration when only upgrading Agent.
+if [ "${UPDATE_ONLY:-false}" = "true" ]; then
+    install_agent
+    exit 0
+fi
 
 # Execute based on mode. WireGuard and OpenVPN have different menus when the
 # VPN service is already installed, so dispatch them separately.
@@ -1264,7 +1451,11 @@ if [ "$ENV_VPN_TYPE" = "wireguard" ]; then
 else
     echo "OpenVPN: $(systemctl is-active openvpn-server@server 2>/dev/null || systemctl is-active openvpn@server 2>/dev/null || echo 'not running')"
 fi
-echo "Agent: $(docker ps --filter name=vpn-agent --format '{{.Status}}' 2>/dev/null || echo 'not running')"
+if [ "$AGENT_INSTALL_MODE" = "native" ]; then
+    echo "Agent: $(systemctl is-active vpn-agent.service 2>/dev/null || echo 'not running')"
+else
+    echo "Agent: $(docker ps --filter name=vpn-agent --format '{{.Status}}' 2>/dev/null || echo 'not running')"
+fi
 if [ "${ENV_DNS_ENABLED:-false}" = "true" ]; then
     echo "Managed DNS: enabled (DNS_BLOCK_DOT=${ENV_DNS_BLOCK_DOT})"
     echo "CoreDNS: $(docker ps --filter name=coredns --format '{{.Status}}' 2>/dev/null || echo 'not running')"
@@ -1280,8 +1471,13 @@ else
     echo "  OpenVPN logs: tail -f /var/log/openvpn/openvpn.log"
     echo "  Restart OpenVPN: systemctl restart openvpn-server@server"
 fi
-echo "  Agent logs: docker logs -f vpn-agent"
-echo "  Restart Agent: cd $INSTALL_DIR && docker compose restart"
+if [ "$AGENT_INSTALL_MODE" = "native" ]; then
+    echo "  Agent logs: journalctl -fu vpn-agent"
+    echo "  Restart Agent: systemctl restart vpn-agent"
+else
+    echo "  Agent logs: docker logs -f vpn-agent"
+    echo "  Restart Agent: cd $INSTALL_DIR && docker compose restart"
+fi
 echo ""
 echo "============================================================"
 echo ""

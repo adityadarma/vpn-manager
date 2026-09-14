@@ -10,7 +10,15 @@ Managed DNS runs CoreDNS next to the Node Agent. It is optional. Nodes without t
 1. Enable Managed DNS for the node in the Nodes administration page or API.
 2. Configure a group-node allocation. The group subnet must be inside that node's own VPN pool.
 3. Configure a DNS listener IP inside the group allocation, for example `10.20.10.53`.
-4. Start the DNS Compose profile on the VPN node:
+4. Install or update the node with `DNS_ENABLED=true`. Native mode is the default and runs CoreDNS under systemd:
+
+```sh
+DNS_ENABLED=true curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-agent.sh | sudo bash
+```
+
+The native installer downloads the pinned CoreDNS release, verifies its SHA-256 checksum, and runs it as `vpn-coredns.service`. The Agent writes configuration at `/etc/vpn-manager/coredns`, which the service reads directly.
+
+Docker deployments can instead start the DNS Compose profile:
 
 ```sh
 DNS_ENABLED=true docker compose -f docker-compose.agent.yml --profile dns up -d
@@ -22,7 +30,7 @@ The regular Agent deployment does not start CoreDNS:
 docker compose -f docker-compose.agent.yml up -d
 ```
 
-The Agent and CoreDNS share the `managed-dns` Docker volume. The Agent writes configuration at `/etc/vpn-manager/coredns`; CoreDNS reads the same files at `/etc/coredns` with a read-only mount.
+Docker deployments share the `managed-dns` volume. The Agent writes configuration at `/etc/vpn-manager/coredns`; CoreDNS reads the same files at `/etc/coredns` with a read-only mount.
 
 ## DNS Resolution
 
@@ -76,6 +84,11 @@ GET /api/v1/nodes/:id/dns/status
 Useful checks on the node:
 
 ```sh
+# Native installation
+systemctl status vpn-coredns
+journalctl -fu vpn-coredns
+
+# Docker installation
 docker compose -f docker-compose.agent.yml --profile dns ps
 docker compose -f docker-compose.agent.yml --profile dns logs coredns
 ```

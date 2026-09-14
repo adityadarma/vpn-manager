@@ -294,6 +294,23 @@ jobs:
           node-version: '24'
           cache: 'pnpm'
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.9'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Agent binaries
+        run: pnpm --filter @vpn/agent build:binary
+
+      - name: Create Agent checksums
+        run: |
+          cd apps/agent/dist
+          sha256sum vpn-agent-linux-amd64 > vpn-agent-linux-amd64.sha256
+          sha256sum vpn-agent-linux-arm64 > vpn-agent-linux-arm64.sha256
+
       - name: Extract version from tag
         id: version
         run: |
@@ -350,6 +367,11 @@ jobs:
           prerelease: ${{ contains(steps.version.outputs.version, '-') }}
           generate_release_notes: true
           append_body: true
+          files: |
+            apps/agent/dist/vpn-agent-linux-amd64
+            apps/agent/dist/vpn-agent-linux-amd64.sha256
+            apps/agent/dist/vpn-agent-linux-arm64
+            apps/agent/dist/vpn-agent-linux-arm64.sha256
           body: |
             ## Docker Images
 
@@ -371,3 +393,10 @@ jobs:
             # Update Node Agent
             curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/update-node.sh | sudo bash
             ```
+
+            ### Native Agent
+
+            Linux nodes can run the Agent without Docker or Node.js. The
+            installer downloads the matching Bun binary and creates a systemd
+            service. Existing native installs are updated in place while their
+            `/opt/vpn-agent/.env` credentials are preserved.
