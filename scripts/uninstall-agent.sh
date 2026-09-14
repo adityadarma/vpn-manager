@@ -18,6 +18,7 @@ warn() { echo -e "${Y}⚠ $1${NC}"; }
 VPN_MANAGER_IP_FORWARD_MARKER="# vpn-manager-ip-forward"
 COMPOSE_PROJECT="vpn-agent"
 AGENT_IMAGE="ghcr.io/adityadarma/vpn-agent"
+COREDNS_IMAGE="coredns/coredns:1.14.7"
 
 cleanup_coredns() {
     docker ps -aq --filter "label=com.docker.compose.project=${COMPOSE_PROJECT}" | \
@@ -29,18 +30,19 @@ cleanup_coredns() {
 }
 
 remove_agent_images() {
-    read -p "Remove local Agent Docker images? (yes/no) [default: yes]: " remove_images < /dev/tty
+    read -p "Remove local Agent and CoreDNS Docker images? (yes/no) [default: yes]: " remove_images < /dev/tty
     remove_images=${remove_images:-yes}
 
     if [ "$remove_images" != "yes" ]; then
-        warn "Keeping local Agent Docker images"
+        warn "Keeping local Agent and CoreDNS Docker images"
         return
     fi
 
     # Remove every cached Agent tag, including beta and stable semantic tags.
     docker image ls --format '{{.Repository}}:{{.Tag}}' "$AGENT_IMAGE" | \
         grep -v ':<none>$' | sort -u | xargs -r docker image rm 2>/dev/null || true
-    ok "Agent Docker images removed"
+    docker image rm "$COREDNS_IMAGE" 2>/dev/null || true
+    ok "Agent and CoreDNS Docker images removed"
 }
 
 neutralize_legacy_openvpn_nat_execstop() {
@@ -152,8 +154,7 @@ notify_manager_node_deleted() {
     local response http_code body
 
     response=$(curl -sS -m 12 -w "\n%{http_code}" -X DELETE "$endpoint" \
-        -H "Authorization: Bearer ${secret_token}" \
-        -H "Content-Type: application/json" 2>/dev/null || true)
+        -H "Authorization: Bearer ${secret_token}" 2>/dev/null || true)
 
     http_code=$(echo "$response" | tail -n1)
     body=$(echo "$response" | sed '$d')
