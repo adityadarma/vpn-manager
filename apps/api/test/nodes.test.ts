@@ -320,4 +320,67 @@ describe('Nodes API', () => {
       expect(Number(countAfter?.n)).toBe(Number(countBefore?.n))
     })
   })
+
+  describe('node decommission lifecycle', () => {
+    let lifecycleNodeId: string
+    let lifecycleToken: string
+    let adminId: string
+
+    beforeAll(async () => {
+      const registered = await app.inject({
+        method: 'POST',
+        url: '/api/v1/nodes/register',
+        headers: { Cookie: adminCookie },
+        payload: { hostname: 'Lifecycle Node', ip: '203.0.113.201', port: 1194 },
+      })
+      lifecycleNodeId = registered.json().id
+      lifecycleToken = registered.json().token
+      adminId = (await app.db('users').where({ email: 'admin@vpn.local' }).first()).id
+      await app.db('user_node_certificates').insert({
+        id: 'lifecycle-certificate', user_id: adminId, node_id: lifecycleNodeId,
+        credential_name: 'default', common_name: 'lifecycle-user', vpn_ip: '10.8.99.2',
+        client_cert: 'lifecycle-certificate-data', is_revoked: false,
+      })
+      await app.db('vpn_sessions').insert({
+        id: 'lifecycle-session', user_id: adminId, node_id: lifecycleNodeId,
+        vpn_ip: '10.8.99.2', connected_at: new Date(),
+      })
+      await app.db('tasks').insert({
+        id: 'lifecycle-task', node_id: lifecycleNodeId, action: 'reload_openvpn',
+        payload: JSON.stringify({}), status: 'pending', created_at: new Date(),
+      })
+    })
+
+    it('decommissions a node, revokes credentials, closes sessions, and rejects its old token', async () => {
+      const res = await app.inject({
+        method: 'POST', url: `/api/v1/nodes/${lifecycleNodeId}/decommission`, headers: { Cookie: adminCookie },
+      })
+      expect(res.statusCode).toBe(204)
+
+      const node = await app.db('vpn_nodes').where({ id: lifecycleNodeId }).first()
+      expect(node.decommissioned_at).toBeTruthy()
+      expect(node.token_revoked_at).toBeTruthy()
+      expect(node.private_key).toBeNull()
+      expect((await app.db('user_node_certificates').where({ id: 'lifecycle-certificate' }).first()).is_revoked).toBe(1)
+      expect((await app.db('vpn_sessions').where({ id: 'lifecycle-session' }).first()).disconnect_reason).toBe('node_decommissioned')
+      expect((await app.db('tasks').where({ id: 'lifecycle-task' }).first()).status).toBe('failed')
+      expect((await app.inject({ method: 'GET', url: '/api/v1/nodes/me', headers: { Authorization: `Bearer ${lifecycleToken}` } })).statusCode).toBe(401)
+    })
+
+    it('restores a node with a new token but leaves old credentials revoked', async () => {
+      const res = await app.inject({ method: 'POST', url: `/api/v1/nodes/${lifecycleNodeId}/restore`, headers: { Cookie: adminCookie } })
+      expect(res.statusCode).toBe(200)
+      expect(res.json().token).toBeTruthy()
+      expect(res.json().token).not.toBe(lifecycleToken)
+      expect((await app.db('vpn_nodes').where({ id: lifecycleNodeId }).first()).decommissioned_at).toBeNull()
+      expect((await app.db('user_node_certificates').where({ id: 'lifecycle-certificate' }).first()).is_revoked).toBe(1)
+    })
+
+    it('only permanently deletes a decommissioned node', async () => {
+      expect((await app.inject({ method: 'DELETE', url: `/api/v1/nodes/${lifecycleNodeId}`, headers: { Cookie: adminCookie } })).statusCode).toBe(409)
+      await app.inject({ method: 'POST', url: `/api/v1/nodes/${lifecycleNodeId}/decommission`, headers: { Cookie: adminCookie } })
+      expect((await app.inject({ method: 'DELETE', url: `/api/v1/nodes/${lifecycleNodeId}`, headers: { Cookie: adminCookie } })).statusCode).toBe(204)
+      expect(await app.db('vpn_nodes').where({ id: lifecycleNodeId }).first()).toBeUndefined()
+    })
+  })
 })

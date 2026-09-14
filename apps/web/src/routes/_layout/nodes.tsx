@@ -8,7 +8,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
-import { Plus, Trash2, MapPin, Clock, Activity, Server, X, Copy, CheckCircle2, Settings, RefreshCw, Edit, Shield, CalendarDays } from 'lucide-react'
+import { Plus, Trash2, MapPin, Clock, Activity, Server, X, Copy, CheckCircle2, Settings, RefreshCw, Edit, Shield, CalendarDays, Archive, RotateCcw } from 'lucide-react'
 import { formatBrowserDateTime, type VpnNode } from '@vpn/shared'
 import { Button } from '@/components/ui/button'
 
@@ -50,6 +50,7 @@ function NodesPage() {
   const [form, setForm] = useState<NodeForm>({ hostname: '', ipAddress: '', region: '' })
   const [registeredNode, setRegisteredNode] = useState<{ id: string; token: string } | null>(null)
   const [copied, setCopied] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<'active' | 'decommissioned' | 'all'>('active')
   const [configNode, setConfigNode] = useState<VpnNode | null>(null)
   const [editNode, setEditNode] = useState<VpnNode | null>(null)
   const [viewFirewallNode, setViewFirewallNode] = useState<VpnNode | null>(null)
@@ -113,11 +114,30 @@ function NodesPage() {
     setForm({ hostname: '', ipAddress: '', region: '' })
   }
 
+  const decommissionMutation = useMutation({
+    mutationFn: (id: string) => api.post(`/api/v1/nodes/${id}/decommission`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['nodes'] })
+      toast.success('Node decommissioned and access revoked')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const restoreMutation = useMutation({
+    mutationFn: (id: string) => api.post<RegisterResponse>(`/api/v1/nodes/${id}/restore`),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['nodes'] })
+      if (data.id && data.token) setRegisteredNode({ id: data.id, token: data.token })
+      toast.success('Node restored. Use the new agent token.')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/api/v1/nodes/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['nodes'] })
-      toast.success('Node removed')
+      toast.success('Node permanently deleted')
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -191,6 +211,9 @@ function NodesPage() {
   }
 
   const onlineCount = nodes.filter(n => n.status === 'online').length
+  const visibleNodes = nodes.filter((node) =>
+    statusFilter === 'all' || (statusFilter === 'active' ? node.status !== 'decommissioned' : node.status === 'decommissioned'),
+  )
 
   return (
     <div className="space-y-6">
@@ -203,6 +226,16 @@ function NodesPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
+            className="h-9 rounded-md border border-border bg-background px-2 text-sm"
+            aria-label="Filter nodes by status"
+          >
+            <option value="active">Active nodes</option>
+            <option value="decommissioned">Decommissioned</option>
+            <option value="all">All nodes</option>
+          </select>
           <Button
             id="btn-add-node"
             className="bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -216,7 +249,7 @@ function NodesPage() {
       {/* Grid */}
       {isLoading ? (
         <div className="text-center py-12 text-muted-foreground/70">Loading nodes...</div>
-      ) : nodes.length === 0 ? (
+      ) : visibleNodes.length === 0 ? (
         <div className="bg-card text-card-foreground rounded-xl border border-dashed border-border p-12 text-center">
           <Server className="h-10 w-10 text-gray-200 mx-auto mb-3" />
           <p className="font-medium text-foreground">No nodes registered</p>
@@ -224,7 +257,7 @@ function NodesPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {nodes.map((node) => (
+          {visibleNodes.map((node) => (
             <div
               key={node.id}
               className="bg-card text-card-foreground rounded-xl border border-border shadow-sm p-4 sm:p-5 flex flex-col justify-between transition-all hover:border-border/80"
@@ -238,6 +271,8 @@ function NodesPage() {
                         className={`w-2 h-2 rounded-full shrink-0 ${
                           node.status === 'online'
                             ? 'bg-emerald-500 shadow-sm shadow-emerald-200'
+                            : node.status === 'decommissioned'
+                              ? 'bg-amber-500'
                             : 'bg-gray-400 dark:bg-gray-600'
                         }`}
                       />
@@ -309,6 +344,28 @@ function NodesPage() {
 
                 {/* Actions */}
                 <div className="mt-4 pt-3 border-t border-border/50 flex items-center justify-end gap-1">
+                  {node.status === 'decommissioned' ? (
+                    <>
+                      <button
+                        onClick={() => restoreMutation.mutate(node.id)}
+                        disabled={restoreMutation.isPending}
+                        className="p-2 text-muted-foreground hover:text-emerald-600 hover:bg-emerald-500/10 rounded-lg transition-colors disabled:opacity-40"
+                        title="Restore Node and issue a new token"
+                      >
+                        <RotateCcw className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirm(`Permanently delete archived node "${node.hostname}" and its related history? This cannot be undone.`)) deleteMutation.mutate(node.id)
+                        }}
+                        disabled={deleteMutation.isPending}
+                        className="p-2 text-muted-foreground hover:text-red-600 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-40"
+                        title="Permanently Delete Node"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </>
+                  ) : <>
                   <button
                     onClick={() => syncCertsMutation.mutate(node.id)}
                     disabled={syncCertsMutation.isPending || node.status === 'offline'}
@@ -340,16 +397,15 @@ function NodesPage() {
                   </button>
                   <button
                     onClick={() => {
-                      if (confirm(`Delete node "${node.hostname}"?`)) {
-                        deleteMutation.mutate(node.id)
-                      }
+                      if (confirm(`Decommission node "${node.hostname}"? Its agent token and VPN credentials will be revoked. Configuration and history will be retained.`)) decommissionMutation.mutate(node.id)
                     }}
-                    disabled={deleteMutation.isPending}
-                    className="p-2 text-muted-foreground hover:text-red-600 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                    title="Delete Node"
+                    disabled={decommissionMutation.isPending}
+                    className="p-2 text-muted-foreground hover:text-amber-600 hover:bg-amber-500/10 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="Decommission Node"
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Archive className="h-4 w-4" />
                   </button>
+                  </>}
                 </div>
               </div>
             ))}

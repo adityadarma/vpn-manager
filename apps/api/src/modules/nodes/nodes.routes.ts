@@ -34,6 +34,79 @@ interface NodeConfig {
 // endpoint here and in tasks.routes.ts.
 
 const nodeRoutes: FastifyPluginAsync = async (app) => {
+  async function decommissionNode(
+    node: Record<string, any>,
+    options: { userId?: string; username: string; reason: string; ipAddress?: string },
+  ) {
+    if (node.decommissioned_at) return
+
+    const now = new Date()
+    await app.db.transaction(async (trx) => {
+      await trx('user_node_certificates')
+        .where({ node_id: node.id })
+        .where((query) => query.whereNull('is_revoked').orWhere('is_revoked', false))
+        .update({
+          is_revoked: true,
+          revoked_at: now,
+          revoked_by: options.userId ?? null,
+          revoke_reason: 'node_decommissioned',
+        })
+
+      const certificates = await trx('user_node_certificates')
+        .where({ node_id: node.id })
+        .whereNotNull('client_cert')
+        .select('id', 'user_id', 'client_cert')
+      for (const certificate of certificates) {
+        const existing = await trx('cert_revocations')
+          .where({ node_id: node.id, revoked_cert: certificate.client_cert })
+          .first()
+        if (!existing) {
+          await trx('cert_revocations').insert({
+            id: uuidv7(),
+            user_id: certificate.user_id,
+            node_id: node.id,
+            revoked_cert: certificate.client_cert,
+            reason: 'node_decommissioned',
+            revoked_by: options.userId ?? null,
+            revoked_at: now,
+          })
+        }
+      }
+
+      await trx('vpn_sessions').where({ node_id: node.id }).whereNull('disconnected_at').update({
+        disconnected_at: now,
+        disconnect_reason: 'node_decommissioned',
+      })
+      await trx('tasks').where({ node_id: node.id }).whereIn('status', ['pending', 'running']).update({
+        status: 'failed',
+        error_message: 'Cancelled because node was decommissioned',
+        completed_at: now,
+      })
+      await trx('vpn_nodes').where({ id: node.id }).update({
+        status: 'offline',
+        decommissioned_at: now,
+        decommissioned_by: options.userId ?? null,
+        decommission_reason: options.reason,
+        token_revoked_at: now,
+        // Replace the original agent token and remove private key material.
+        token: crypto.randomBytes(32).toString('hex'),
+        ca_cert: null,
+        ta_key: null,
+        private_key: null,
+      })
+    })
+
+    await logAudit(app, {
+      userId: options.userId,
+      username: options.username,
+      action: 'node_decommissioned',
+      resourceType: 'node',
+      resourceId: node.id,
+      ipAddress: options.ipAddress,
+      metadata: { reason: options.reason },
+    })
+  }
+
   // GET /api/v1/nodes
   app.get(
     '/nodes',
@@ -41,7 +114,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
     async () => {
       // Get all nodes
       const nodes = await app.db('vpn_nodes')
-        .select('id', 'hostname', 'ip_address', 'port', 'region', 'status', 'version', 'last_seen', 'created_at', 'vpn_type', 'public_key', 'endpoint_port', 'firewall_rules_dump', 'managed_dns_enabled', 'managed_dns_capable', 'dns_config_revision', 'dns_sync_status', 'dns_last_sync_error', 'dns_last_synced_at', 'dns_config_hash')
+        .select('id', 'hostname', 'ip_address', 'port', 'region', 'status', 'version', 'last_seen', 'created_at', 'vpn_type', 'public_key', 'endpoint_port', 'firewall_rules_dump', 'managed_dns_enabled', 'managed_dns_capable', 'dns_config_revision', 'dns_sync_status', 'dns_last_sync_error', 'dns_last_synced_at', 'dns_config_hash', 'decommissioned_at', 'decommission_reason', 'token_revoked_at')
       
       // Get active sessions count for each node
       const sessionCounts = await app.db('vpn_sessions')
@@ -59,6 +132,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       // Add active_sessions to each node
       return nodes.map(node => ({
         ...node,
+        status: node.decommissioned_at ? 'decommissioned' : node.status,
         dns_last_sync_error: node.dns_last_sync_error === 'MANUAL_OVERRIDE_DISABLED' ? null : node.dns_last_sync_error,
         active_sessions: sessionCountMap.get(node.id) || 0
       }))
@@ -79,20 +153,32 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
     },
   )
 
-  // DELETE /api/v1/nodes/me (called by node uninstall script)
-  app.delete(
-    '/nodes/me',
-    { schema: { tags: ['nodes'], summary: 'Delete current node (agent auth)', security: [{ bearerAuth: [] }] } },
+  // POST /api/v1/nodes/me/decommission (called by node uninstall script)
+  app.post(
+    '/nodes/me/decommission',
+    { schema: { tags: ['nodes'], summary: 'Decommission current node (agent auth)', security: [{ bearerAuth: [] }] } },
     async (request, reply) => {
       const node = await app.authenticateNodeToken(request, reply)
       if (!node) return
 
-      const deleted = await app.db('vpn_nodes').where({ id: node.id }).delete()
-      if (!deleted) {
-        return reply.status(404).send({ error: 'Not Found', message: 'Node not found' })
-      }
+      await decommissionNode(node, {
+        username: `node:${node.hostname}`,
+        reason: 'agent_uninstall',
+        ipAddress: getClientIp(request),
+      })
+      app.log.info(`[node-self-decommission] Node ${node.id} decommissioned via node token`)
+      return reply.status(204).send()
+    },
+  )
 
-      app.log.info(`[node-self-delete] Node ${node.id} deleted via node token`)
+  // Kept for uninstaller versions released before the decommission endpoint.
+  app.delete(
+    '/nodes/me',
+    { schema: { tags: ['nodes'], summary: 'Decommission current node (legacy agent auth)', security: [{ bearerAuth: [] }] } },
+    async (request, reply) => {
+      const node = await app.authenticateNodeToken(request, reply)
+      if (!node) return
+      await decommissionNode(node, { username: `node:${node.hostname}`, reason: 'agent_uninstall', ipAddress: getClientIp(request) })
       return reply.status(204).send()
     },
   )
@@ -1036,19 +1122,74 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
     },
   )
 
-  // DELETE /api/v1/nodes/:id
+  app.post<{ Params: { id: string }; Body: { reason?: string } }>(
+    '/nodes/:id/decommission',
+    { onRequest: [app.authenticateAdmin], schema: { tags: ['nodes'], summary: 'Decommission a VPN node', security: [{ bearerAuth: [] }] } },
+    async (request, reply) => {
+      const node = await app.db('vpn_nodes').where({ id: request.params.id }).first()
+      if (!node) return reply.status(404).send({ error: 'Not Found', message: 'Node not found' })
+
+      const user = request.user as { id: string; name: string }
+      await decommissionNode(node, {
+        userId: user.id,
+        username: user.name,
+        reason: request.body?.reason?.trim() || 'admin_decommission',
+        ipAddress: getClientIp(request),
+      })
+      return reply.status(204).send()
+    },
+  )
+
+  app.post<{ Params: { id: string } }>(
+    '/nodes/:id/restore',
+    { onRequest: [app.authenticateAdmin], schema: { tags: ['nodes'], summary: 'Restore a decommissioned node with a new agent token', security: [{ bearerAuth: [] }] } },
+    async (request, reply) => {
+      const node = await app.db('vpn_nodes').where({ id: request.params.id }).first()
+      if (!node) return reply.status(404).send({ error: 'Not Found', message: 'Node not found' })
+      if (!node.decommissioned_at) {
+        return reply.status(409).send({ error: 'Conflict', message: 'Only decommissioned nodes can be restored' })
+      }
+
+      const token = crypto.randomBytes(32).toString('hex')
+      await app.db('vpn_nodes').where({ id: node.id }).update({
+        status: 'offline',
+        token,
+        token_revoked_at: null,
+        decommissioned_at: null,
+        decommissioned_by: null,
+        decommission_reason: null,
+      })
+
+      const user = request.user as { id: string; name: string }
+      await logAudit(app, {
+        userId: user.id,
+        username: user.name,
+        action: 'node_restored',
+        resourceType: 'node',
+        resourceId: node.id,
+        ipAddress: getClientIp(request),
+      })
+      return { id: node.id, token, message: 'Node restored. Install the agent with this new token.' }
+    },
+  )
+
+  // DELETE /api/v1/nodes/:id permanently removes an already decommissioned node.
   app.delete<{ Params: { id: string } }>(
     '/nodes/:id',
-    { onRequest: [app.authenticateAdmin], schema: { tags: ['nodes'], summary: 'Remove a VPN node', security: [{ bearerAuth: [] }] } },
+    { onRequest: [app.authenticateAdmin], schema: { tags: ['nodes'], summary: 'Permanently remove a decommissioned VPN node', security: [{ bearerAuth: [] }] } },
     async (request, reply) => {
-      const deleted = await app.db('vpn_nodes').where({ id: request.params.id }).delete()
-      if (!deleted) return reply.status(404).send({ error: 'Not Found', message: 'Node not found' })
+      const node = await app.db('vpn_nodes').where({ id: request.params.id }).first()
+      if (!node) return reply.status(404).send({ error: 'Not Found', message: 'Node not found' })
+      if (!node.decommissioned_at) {
+        return reply.status(409).send({ error: 'Conflict', message: 'Decommission the node before permanently deleting it' })
+      }
+      await app.db('vpn_nodes').where({ id: node.id }).delete()
 
       const userObj = request.user as { id: string; name: string }
       await logAudit(app, {
         userId: userObj.id,
         username: userObj.name,
-        action: 'node_delete',
+        action: 'node_permanent_delete',
         resourceType: 'node',
         resourceId: request.params.id,
         ipAddress: getClientIp(request),

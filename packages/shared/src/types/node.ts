@@ -1,4 +1,4 @@
-export type NodeStatus = 'online' | 'offline'
+export type NodeStatus = 'online' | 'offline' | 'decommissioned'
 
 export interface VpnNode {
   id: string
@@ -23,4 +23,7 @@ export interface VpnNode {
   dns_last_sync_error?: string | null
   dns_last_synced_at?: string | null
   dns_config_hash?: string | null
+  decommissioned_at?: string | null
+  decommission_reason?: string | null
+  token_revoked_at?: string | null
 }

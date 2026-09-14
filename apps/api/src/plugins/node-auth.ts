@@ -57,6 +57,11 @@ export default fp(async (app) => {
         return null
       }
 
+      if (node.decommissioned_at || node.token_revoked_at) {
+        reply.status(401).send({ error: 'Unauthorized', message: 'Node has been decommissioned' })
+        return null
+      }
+
       return node
     },
   )

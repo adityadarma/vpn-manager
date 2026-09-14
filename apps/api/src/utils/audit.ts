@@ -36,7 +36,7 @@ export function getClientIp(request: FastifyRequest): string {
 export async function logAudit(
   app: FastifyInstance,
   options: {
-    userId: string
+    userId?: string | null
     username: string
     action: string
     resourceType: string
@@ -47,8 +47,8 @@ export async function logAudit(
   }
 ) {
   try {
-    // Skip if user_id doesn't exist (stale JWT token after DB reset, etc.)
-    const userExists = await app.db('users').where({ id: options.userId }).first()
+    // Skip stale user references, but retain system and node lifecycle events.
+    const userExists = options.userId ? await app.db('users').where({ id: options.userId }).first() : true
     if (!userExists) {
       app.log.warn(`[audit] Skipping audit log — user_id '${options.userId}' not found in users table`)
       return
@@ -56,7 +56,7 @@ export async function logAudit(
 
     await app.db('audit_logs').insert({
       id: uuidv7(),
-      user_id: options.userId,
+      user_id: options.userId || null,
       username: options.username,
       action: options.action,
       resource_type: options.resourceType,

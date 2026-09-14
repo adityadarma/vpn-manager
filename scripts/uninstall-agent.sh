@@ -150,10 +150,10 @@ notify_manager_node_deleted() {
         return 0
     fi
 
-    local endpoint="${manager_url%/}/api/v1/nodes/me"
+    local endpoint="${manager_url%/}/api/v1/nodes/me/decommission"
     local response http_code body
 
-    response=$(curl -sS -m 12 -w "\n%{http_code}" -X DELETE "$endpoint" \
+    response=$(curl -sS -m 12 -w "\n%{http_code}" -X POST "$endpoint" \
         -H "Authorization: Bearer ${secret_token}" 2>/dev/null || true)
 
     http_code=$(echo "$response" | tail -n1)
