@@ -109,4 +109,32 @@ describe('Policies API', () => {
     expect(groupPolicy).toBeDefined()
     expect(groupPolicy.group_subnet).toBe('10.50.10.0/24')
   })
+
+  it('expands a group policy to member credentials when no group subnet is allocated', async () => {
+    const { enqueueApplyPolicies } = await import('../src/modules/policies/policies.routes')
+    const { v7: uuidv7 } = await import('uuid')
+    const nodeId = uuidv7()
+    const groupId = uuidv7()
+
+    await app.db('vpn_nodes').insert({
+      id: nodeId, hostname: 'credential-scope-test', ip_address: '198.51.100.2',
+      status: 'online', token: 'credential-scope-token', vpn_type: 'openvpn',
+    })
+    await app.db('groups').insert({ id: groupId, name: 'credential-scope-group' })
+    await app.db('user_groups').insert({ user_id: userId, group_id: groupId })
+    await app.db('user_node_certificates').insert({
+      id: uuidv7(), user_id: userId, node_id: nodeId, credential_name: 'policy-client',
+      common_name: 'policy-client', vpn_ip: '10.51.0.10', is_revoked: false,
+    })
+    await app.db('vpn_policies').insert({
+      id: uuidv7(), group_id: groupId, target_network: '172.16.1.10/32',
+      protocol: 'tcp', target_port: '3306', action: 'deny', priority: 10,
+    })
+
+    await enqueueApplyPolicies(app, nodeId)
+    const task = await app.db('tasks').where({ node_id: nodeId, action: 'apply_network_policy' }).orderBy('created_at', 'desc').first()
+    const policy = JSON.parse(task.payload).policies.find((p: any) => p.group_id === groupId)
+    expect(policy.user_ip).toBe('10.51.0.10')
+    expect(policy.group_subnet).toBeUndefined()
+  })
 })

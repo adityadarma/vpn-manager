@@ -177,6 +177,19 @@ export async function enqueueApplyPolicies(app: any, affectedNodeId?: string | n
           .first('vpn_subnet')
         if (allocation?.vpn_subnet) {
           nodePolicies.push({ ...policy, group_subnet: allocation.vpn_subnet })
+          continue
+        }
+
+        // A group can have member credentials before it receives a dedicated
+        // subnet allocation. Preserve the policy by expanding it per member.
+        const credentials = await app.db('user_node_certificates as c')
+          .join('user_groups as ug', 'c.user_id', 'ug.user_id')
+          .where({ 'ug.group_id': policy.group_id, 'c.node_id': node.id, 'c.is_revoked': false })
+          .whereNotNull('c.vpn_ip')
+          .distinct('c.vpn_ip')
+          .select('c.vpn_ip')
+        for (const credential of credentials) {
+          nodePolicies.push({ ...policy, user_ip: credential.vpn_ip })
         }
         continue
       }
