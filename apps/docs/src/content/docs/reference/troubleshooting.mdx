@@ -17,6 +17,11 @@ Check `PORT`, Compose port mappings, the host firewall, DNS, and reverse proxy. 
 ## Agent is offline or registration fails
 
 ```bash
+# Native Agent
+systemctl status vpn-agent
+journalctl -u vpn-agent -n 100 --no-pager
+
+# Docker Agent
 docker logs vpn-agent
 docker exec vpn-agent env
 ```
@@ -34,7 +39,17 @@ systemctl status wg-quick@wg0
 wg show
 ```
 
-The OpenVPN Agent requires `/run/openvpn/server.sock` plus mounts for `/etc/openvpn`, `/run/openvpn`, and `/var/log/openvpn`. The WireGuard Agent requires the `/etc/wireguard` mount. Verify container mounts before treating an Agent failure as an API issue.
+The OpenVPN Agent requires `/run/openvpn/server.sock`; the WireGuard Agent requires `/etc/wireguard`. For Docker deployments, also verify the corresponding container mounts before treating an Agent failure as an API issue.
+
+## Managed DNS is unavailable
+
+```bash
+systemctl status vpn-coredns
+journalctl -u vpn-coredns -n 100 --no-pager
+curl -f http://127.0.0.1:8181/health
+```
+
+For Docker deployments, use `docker compose --profile dns ps` and `docker compose --profile dns logs coredns`. Check that `DNS_ENABLED=true`, that the node has a group allocation and listener IP, and that the Agent reports a healthy DNS revision before distributing client configuration.
 
 ## VPN connects but the LAN is unreachable
 

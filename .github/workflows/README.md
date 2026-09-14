@@ -1,13 +1,15 @@
 # GitHub Actions Workflows
 
-## Docker Build and Push
+## Release Artifacts
 
-Builds and pushes Docker images for VPN Manager.
+Builds Docker images and native Agent release artifacts for VPN Manager.
 
 ### Images
 
 - `ghcr.io/adityadarma/vpn-manager:latest` - Manager (web + api)
 - `ghcr.io/adityadarma/vpn-agent:latest` - Agent
+- `vpn-agent-linux-amd64` and `vpn-agent-linux-arm64` - Bun-compiled native Agent binaries attached to GitHub Releases
+- `vpn-agent-linux-amd64.sha256` and `vpn-agent-linux-arm64.sha256` - release artifact checksums
 
 ### Triggers
 
@@ -24,7 +26,7 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
-Automatically builds and pushes both images with version tags.
+Automatically builds and pushes both images with version tags, then attaches native Agent binaries and checksums to the GitHub Release.
 
 **3. Changes merged or pushed to main or beta**
 

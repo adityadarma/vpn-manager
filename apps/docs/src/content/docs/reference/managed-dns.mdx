@@ -32,6 +32,8 @@ docker compose -f docker-compose.agent.yml up -d
 
 Docker deployments share the `managed-dns` volume. The Agent writes configuration at `/etc/vpn-manager/coredns`; CoreDNS reads the same files at `/etc/coredns` with a read-only mount.
 
+The Agent writes each DNS revision in a staging directory and atomically swaps the active `Corefile`. If CoreDNS health validation fails, it atomically restores the previous revision and listener addresses, so CoreDNS never reads a partially written configuration.
+
 ## DNS Resolution
 
 Default public upstreams are:

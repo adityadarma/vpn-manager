@@ -5,7 +5,7 @@ description: Install OpenVPN or WireGuard and the Agent on a node host.
 
 ## Prerequisites and security
 
-The node must be a Linux host with `root` or `sudo`, Docker Engine, Docker Compose v2, and connectivity to the Manager. The Agent uses host networking plus `NET_ADMIN` and `NET_RAW` capabilities; use a dedicated host or restrict its administrative access.
+The node must be a Linux host with `root` or `sudo` and connectivity to the Manager. The default native installation does not require Docker or Node.js. Docker Engine with Docker Compose v2 is only required when using `AGENT_INSTALL_MODE=docker`.
 
 The script can install OpenVPN or WireGuard. Ensure UDP `1194` is reachable for OpenVPN or UDP `51820` for WireGuard unless the node port is configured differently. Host firewalls and cloud security groups must allow the selected port.
 
@@ -23,7 +23,9 @@ curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/script
 
 For WireGuard, use `VPN_TYPE=wireguard`. The optional `VPN_SUBNET=10.8.1.0/24` requests a specific subnet; without it, the Manager can allocate a network. Avoid subnets that overlap the LAN, Docker networks, or other nodes.
 
-The script creates `/opt/vpn-agent/.env`, registers the node at `/api/v1/nodes/register`, receives the Node ID and secret token, then starts the `vpn-agent` container. Once credentials exist, rerunning the script updates the image without overwriting the registered Agent configuration.
+The script creates `/opt/vpn-agent/.env`, registers the node at `/api/v1/nodes/register`, receives the Node ID and secret token, then downloads and starts the native `vpn-agent` systemd service. Once credentials exist, rerunning the script updates the Agent binary without overwriting the registered Agent configuration.
+
+The native installer downloads the matching `linux-amd64` or `linux-arm64` Bun binary from GitHub Releases and verifies its SHA-256 checksum. It stores the binary in `/opt/vpn-agent/vpn-agent`; systemd loads credentials from `/opt/vpn-agent/.env`.
 
 ### Release channels
 
@@ -38,9 +40,18 @@ curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/script
   VPN_TYPE=openvpn
 ```
 
-The installer writes `IMAGE_VERSION=beta` to `/opt/vpn-agent/.env`, so later installer updates stay on beta. The release workflow publishes `ghcr.io/adityadarma/vpn-agent:beta` whenever a beta prerelease tag (such as `v1.1.8-beta.1`) is pushed. Beta is intended for testing only; omit `CHANNEL=beta` for stable production deployments.
+The release workflow publishes both binary artifacts and Docker images for every release. Native stable installs use the latest GitHub Release; native beta installs resolve the newest prerelease. Docker beta installs use `IMAGE_VERSION=beta` in `/opt/vpn-agent/.env`. Beta is intended for testing only; omit `CHANNEL=beta` for stable production deployments.
 
-To switch an existing Agent back to the stable channel, rerun the installer with the same registration settings and `CHANNEL=latest`. The installer preserves the Agent ID and secret token while updating `IMAGE_VERSION` in `/opt/vpn-agent/.env`.
+To switch an existing Agent back to the stable channel, rerun the installer with `CHANNEL=latest`. The installer preserves the Agent ID and secret token. Docker deployments also update `IMAGE_VERSION` in `/opt/vpn-agent/.env`.
+
+### Docker mode
+
+Native mode is the default. Use Docker explicitly when required by local operational policy:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/install-agent.sh | \
+  sudo AGENT_INSTALL_MODE=docker bash
+```
 
 The base `/opt/vpn-agent/docker-compose.yml` remains generic. The installer writes host-specific mounts to `/opt/vpn-agent/docker-compose.override.yml`, which Docker Compose loads automatically:
 
@@ -53,6 +64,16 @@ The base `/opt/vpn-agent/docker-compose.yml` remains generic. The installer writ
 The script detects the active firewall and offers `iptables`, `nftables`, `ufw`, `firewalld`, or `none`. Keep the firewall already active on the host unless you understand the consequences of conflicting rules.
 
 The script enables `net.ipv4.ip_forward=1`, creates forwarding rules, and configures NAT for non-LAN traffic. For the detected LAN, it attempts to preserve the VPN client source address. With `none`, the administrator must configure forwarding, NAT, and port rules manually.
+
+## Update the Agent
+
+Update an existing Agent without re-registering the node or replacing `/opt/vpn-agent/.env`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/update-node.sh | sudo bash
+```
+
+The updater detects native systemd and Docker Compose installations. Native updates replace `/opt/vpn-agent/vpn-agent` after checksum verification; Docker updates refresh the managed Compose file, pull the image, and recreate the container. It preserves the Docker override file and the Agent credentials.
 
 ## Manual registration
 
@@ -69,11 +90,16 @@ AGENT_POLL_INTERVAL_MS=5000
 AGENT_HEARTBEAT_INTERVAL_MS=30000
 ```
 
-Copy `docker-compose.agent.yml` to `/opt/vpn-agent/docker-compose.yml`, then create `/opt/vpn-agent/docker-compose.override.yml` for the host-specific mounts above. When `FIREWALL_ENGINE=firewalld`, also mount `/run/dbus/system_bus_socket` into the Agent. Run `docker compose up -d` from that directory.
+For native mode, run the installer with the credentials above; it creates `vpn-agent.service`. For Docker mode, copy `docker-compose.agent.yml` to `/opt/vpn-agent/docker-compose.yml`, then create `/opt/vpn-agent/docker-compose.override.yml` for the host-specific mounts above. When `FIREWALL_ENGINE=firewalld`, also mount `/run/dbus/system_bus_socket` into the Agent. Run `docker compose up -d` from that directory.
 
 ## Verify the node
 
 ```bash
+# Native Agent
+systemctl status vpn-agent
+journalctl -fu vpn-agent
+
+# Docker Agent
 docker logs -f vpn-agent
 systemctl status openvpn-server@server
 systemctl status wg-quick@wg0
