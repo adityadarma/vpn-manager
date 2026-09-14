@@ -390,6 +390,9 @@ jobs:
             # Install Manager
             curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install-manager.sh | sudo bash
 
+            # Update Manager
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/update-manager.sh | sudo bash
+
             # Update Node Agent
             curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/update-node.sh | sudo bash
             ```

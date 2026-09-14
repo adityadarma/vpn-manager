@@ -39,6 +39,21 @@ On a new interactive install, the script asks for the initial `admin` password w
 
 The Manager serves the Web UI and API from one public origin, not separate URLs. For example, when the application URL is `https://vpn.example.com`, the dashboard is at `https://vpn.example.com` and the API is at `https://vpn.example.com/api/v1/...`. The installer only asks for the Manager HTTP port; domain, DNS, reverse-proxy, and TLS configuration remain under the administrator's control. Point a reverse proxy at `http://127.0.0.1:<PORT>` and terminate TLS there. Runtime deployment uses `PORT`; production is same-origin, so `WEB_URL` is not required for API/UI communication.
 
+## Update the Manager
+
+Update an existing installation without replacing `/opt/vpn-manager/.env` or the `manager_data` volume:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/update-manager.sh | sudo bash
+```
+
+The updater preserves the current stable or beta channel, downloads the current managed Compose file, pulls the selected image, recreates the Manager container, and waits for `/api/v1/health`. Back up the Manager database before updating. To explicitly change channel, set `CHANNEL=latest` or `CHANNEL=beta`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/adityadarma/vpn-manager/main/scripts/update-manager.sh | \
+  sudo bash -s -- CHANNEL=beta
+```
+
 ## Access and TLS
 
 The container serves HTTP on `PORT`, `3000` by default. For public access, terminate TLS at Nginx, Caddy, Traefik, Cloudflare Tunnel, or another reverse proxy, then forward traffic to `http://manager:3000` or host port `3000`. Ensure the proxy forwards `X-Forwarded-*` headers; the application trusts proxy headers for client identity.

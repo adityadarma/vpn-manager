@@ -87,7 +87,7 @@ Do not run `docker compose down -v` in production unless data is intentionally b
 
 ## Updates and uninstalling
 
-Before updating, create a backup, record the release or image version, and check node status. Update the Manager with `docker compose pull && docker compose up -d`. Update nodes with `scripts/update-node.sh`; it detects native systemd and Docker Compose deployments while retaining `/opt/vpn-agent/.env` credentials. Use `scripts/uninstall-manager.sh` or `scripts/uninstall-agent.sh` only after verifying their impact and creating a backup.
+Before updating, create a backup, record the release or image version, and check node status. Update the Manager with `scripts/update-manager.sh`; it preserves `/opt/vpn-manager/.env`, the selected release channel, and the database volume. Update nodes with `scripts/update-node.sh`; it detects native systemd and Docker Compose deployments while retaining `/opt/vpn-agent/.env` credentials. Use `scripts/uninstall-manager.sh` or `scripts/uninstall-agent.sh` only after verifying their impact and creating a backup.
 
 ## Failed tasks
 

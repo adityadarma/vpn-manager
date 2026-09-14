@@ -12,6 +12,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Added native Agent installation, update, logging, restart, and uninstall support through systemd; native nodes no longer require Docker or Node.js.
 - Added native CoreDNS installation and `vpn-coredns.service` for Managed DNS nodes, with verified pinned CoreDNS downloads.
 - Added `scripts/update-node.sh` to update existing native and Docker Agent installations without replacing node credentials in `/opt/vpn-agent/.env`.
+- Added `scripts/update-manager.sh` to update the Manager while retaining its `.env`, release channel, and database volume.
 - Added API support and dashboard controls for retrying failed Agent tasks.
 
 ### Changed
