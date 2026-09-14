@@ -35,6 +35,24 @@ describe('Tasks API', () => {
     expect(Array.isArray(res.json())).toBe(true)
   })
 
+  it('retries a failed task once and reuses the queued retry', async () => {
+    const nodeId = uuidv7()
+    const taskId = uuidv7()
+    await app.db('vpn_nodes').insert({ id: nodeId, hostname: 'retry-node', ip_address: '203.0.113.11', port: 1194, token: 'retry-node-token', status: 'online', vpn_type: 'openvpn' })
+    await app.db('tasks').insert({
+      id: taskId, node_id: nodeId, action: 'reload_openvpn', payload: JSON.stringify({}),
+      status: 'failed', error_message: 'Transient failure', created_at: new Date(), completed_at: new Date(),
+    })
+
+    const first = await app.inject({ method: 'POST', url: `/api/v1/tasks/${taskId}/retry`, headers: { Cookie: adminCookie } })
+    expect(first.statusCode).toBe(201)
+    expect(first.json()).toMatchObject({ status: 'pending', reused: false })
+
+    const second = await app.inject({ method: 'POST', url: `/api/v1/tasks/${taskId}/retry`, headers: { Cookie: adminCookie } })
+    expect(second.statusCode).toBe(200)
+    expect(second.json()).toMatchObject({ id: first.json().id, reused: true })
+  })
+
   describe('POST /tasks action whitelist + payload validation', () => {
     let nodeId: string
 

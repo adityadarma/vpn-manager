@@ -124,6 +124,49 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
     },
   )
 
+  // POST /api/v1/tasks/:id/retry — retry failed work without stacking copies.
+  app.post<{ Params: { id: string } }>(
+    '/tasks/:id/retry',
+    { onRequest: [app.authenticateAdmin], schema: { tags: ['tasks'], summary: 'Retry a failed task', security: [{ bearerAuth: [] }] } },
+    async (request, reply) => {
+      const task = await app.db('tasks').where({ id: request.params.id }).first()
+      if (!task) return reply.status(404).send({ error: 'Not Found', message: 'Task not found' })
+      if (task.status !== 'failed') return reply.status(409).send({ error: 'Conflict', message: 'Only failed tasks can be retried' })
+
+      let payload: Record<string, unknown>
+      try {
+        payload = typeof task.payload === 'string' ? JSON.parse(task.payload) : task.payload
+      } catch {
+        return reply.status(409).send({ error: 'Conflict', message: 'Task payload is no longer available for retry' })
+      }
+      const validation = validateTaskPayload(task.action, payload)
+      if (!validation.ok) return reply.status(409).send({ error: 'Conflict', message: `Task cannot be retried: ${validation.error}` })
+      const normalizedPayload = JSON.stringify(validation.payload)
+
+      const retry = await app.db.transaction(async (trx) => {
+        const existing = await trx('tasks')
+          .where({ node_id: task.node_id, action: validation.action, payload: normalizedPayload })
+          .whereIn('status', ['pending', 'running'])
+          .orderBy('created_at', 'desc')
+          .first()
+        if (existing) return { task: existing, reused: true }
+
+        const created = {
+          id: uuidv7(), node_id: task.node_id, action: validation.action,
+          payload: normalizedPayload, status: 'pending', result: null,
+          error_message: null, created_at: new Date(), completed_at: null,
+        }
+        await trx('tasks').insert(created)
+        return { task: created, reused: false }
+      })
+
+      return reply.status(retry.reused ? 200 : 201).send({
+        id: retry.task.id, node_id: retry.task.node_id, action: retry.task.action,
+        status: retry.task.status, reused: retry.reused,
+      })
+    },
+  )
+
   // POST /api/v1/tasks/:id/result  (called by agent)
   app.post<{ Params: { id: string } }>(
     '/tasks/:id/result',

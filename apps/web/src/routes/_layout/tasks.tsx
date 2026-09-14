@@ -5,14 +5,15 @@ export const Route = createFileRoute('/_layout/tasks')({
 })
 
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { Clock, CheckCircle, XCircle, AlertCircle, Server, Search, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Clock, CheckCircle, XCircle, AlertCircle, Server, Search, ChevronDown, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { formatBrowserDateTime } from '@vpn/shared'
+import { toast } from 'sonner'
 
 interface Task {
   id: string
@@ -37,6 +38,7 @@ function formatDuration(start: string, end: string | null) {
 }
 
 function TasksPage() {
+  const qc = useQueryClient()
   const [searchQuery, setSearchQuery] = useState('')
   const [page, setPage] = useState(1)
   const [activeTab, setActiveTab] = useState<'pending' | 'done' | 'failed'>('pending')
@@ -56,6 +58,14 @@ function TasksPage() {
   const doneCount = statusCounts.done ?? 0
   const failedCount = statusCounts.failed ?? 0
   const totalTasks = pendingCount + doneCount + failedCount
+  const retryTask = useMutation({
+    mutationFn: (taskId: string) => api.post<{ reused: boolean }>(`/api/v1/tasks/${taskId}/retry`),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ['tasks'] })
+      toast.success(result.reused ? 'An equivalent task is already queued' : 'Task queued for retry')
+    },
+    onError: (error: Error) => toast.error(error.message),
+  })
 
   // Search filter
   const filterTasks = (taskList: Task[]) => {
@@ -127,7 +137,7 @@ function TasksPage() {
           </div>
         </summary>
 
-        {details && (
+        {(details || task.status === 'failed') && (
           <div className="border-t border-border/60 px-4 py-3 sm:px-5 bg-muted/20 space-y-3">
             <div className="sm:hidden flex items-center gap-4 text-xs text-muted-foreground tabular-nums">
               <span>Created: {formatBrowserDateTime(task.created_at)}</span>
@@ -143,6 +153,14 @@ function TasksPage() {
               <pre className="p-3 bg-background border border-border/60 rounded-lg text-xs overflow-x-auto text-muted-foreground font-mono leading-relaxed max-h-64">
                 {JSON.stringify(JSON.parse(task.result), null, 2)}
               </pre>
+            )}
+            {task.status === 'failed' && (
+              <div className="flex justify-end border-t border-border/60 pt-3">
+                <Button size="sm" variant="outline" onClick={() => retryTask.mutate(task.id)} disabled={retryTask.isPending}>
+                  <RefreshCw className={`mr-2 h-4 w-4 ${retryTask.isPending ? 'animate-spin' : ''}`} />
+                  Retry task
+                </Button>
+              </div>
             )}
           </div>
         )}
