@@ -320,7 +320,13 @@ jobs:
       - name: Generate changelog
         run: |
           TAG="${{ steps.version.outputs.tag }}"
-          PREV_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]' | sed -n '2p')
+          # Compare a stable release only with the preceding stable release.
+          # A v2.0.0-beta.* tag must not shrink v2.0.0's changelog to the
+          # handful of commits since that prerelease.
+          PREV_TAG=$(git tag --merged "$TAG" --sort=-version:refname \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+            | grep -Fxv "$TAG" \
+            | head -1 || true)
 
           if [ -n "$PREV_TAG" ]; then
             RANGE="${PREV_TAG}..${TAG}"
@@ -328,23 +334,8 @@ jobs:
             RANGE="HEAD"
           fi
 
-          FEATURES=$(git log $RANGE --pretty=format:"- %s (%h)" --no-merges | grep -iE "^- feat" | head -20 || true)
-          FIXES=$(git log $RANGE --pretty=format:"- %s (%h)" --no-merges | grep -iE "^- fix" | head -20 || true)
-          SECURITY=$(git log $RANGE --pretty=format:"- %s (%h)" --no-merges | grep -iE "^- (sec|security)" | head -20 || true)
-          BREAKING=$(git log $RANGE --pretty=format:"- %s (%h)" --no-merges | grep -iE "BREAKING CHANGE|^- (feat|fix)!:" | head -10 || true)
-          OTHER=$(git log $RANGE --pretty=format:"- %s (%h)" --no-merges | grep -ivE "^- (feat|fix|chore|docs|style|refactor|test|ci|sec)" | head -10 || true)
-
-          BODY=""
-          [ -n "$BREAKING" ] && BODY="${BODY}### ⚠️ Breaking Changes\n${BREAKING}\n\n"
-          [ -n "$SECURITY" ] && BODY="${BODY}### 🔒 Security\n${SECURITY}\n\n"
-          [ -n "$FEATURES" ] && BODY="${BODY}### ✨ Features\n${FEATURES}\n\n"
-          [ -n "$FIXES"    ] && BODY="${BODY}### 🐛 Bug Fixes\n${FIXES}\n\n"
-          [ -n "$OTHER"    ] && BODY="${BODY}### 🔧 Other Changes\n${OTHER}\n\n"
-
-          if [ -z "$BODY" ]; then
-            ALL=$(git log $RANGE --pretty=format:"- %s (%h)" --no-merges | head -20 || true)
-            BODY="### Changes\n${ALL}\n\n"
-          fi
+          COMMITS=$(git log "$RANGE" --pretty=format:"- %s (%h)" --no-merges)
+          BODY="### Changes\n${COMMITS}\n\n"
 
           printf "$BODY" > /tmp/changelog.md
           cat /tmp/changelog.md
