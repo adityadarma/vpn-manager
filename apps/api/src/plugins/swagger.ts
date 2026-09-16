@@ -15,7 +15,7 @@ export default fp(async (app, options: SwaggerPluginOptions) => {
       info: {
         title: 'VPN Manager API',
         description: 'VPN Management API',
-        version: '2.3.2',
+        version: '2.3.3',
       },
       tags: [
         { name: 'auth', description: 'Authentication' },

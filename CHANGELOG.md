@@ -6,9 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.3.3] - 2026-09-16
+
 ### Fixed
 
 - Prevented `update-node.sh` from prompting for VPN engine, tunnel, firewall, or Managed DNS settings; updates now preserve the existing Agent configuration.
+- Fixed archiving a node from the dashboard by sending the required JSON request body to the decommission endpoint.
+- Allowed a new Agent registration on the same hostname and IP to issue a new token for an existing offline node while preserving its configuration and history.
+
+### Added
+
+- Detected an Agent node's country name during registration from public IP geolocation, with AWS, GCP, or Azure region metadata fallback and a `NODE_REGION` override.
 
 ## [2.3.2] - 2026-09-16
 
