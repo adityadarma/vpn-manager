@@ -40,6 +40,8 @@
 #   REG_KEY or NODE_REGISTRATION_KEY - Registration key
 #   VPN_SUBNET - VPN network CIDR (e.g. 10.8.0.0/16, default: auto-assigned by manager)
 #   VPN_TYPE - VPN engine: openvpn (default) or wireguard
+#   NODE_REGION - Optional location label. When omitted, the installer detects
+#                 the public IP country during registration.
 #   TUNNEL_MODE - Client traffic routing: full (default) or split
 #   FIREWALL_ENGINE - Firewall: iptables (default), nftables, ufw, firewalld, none
 #   DNS_ENABLED - Enable Managed DNS (CoreDNS) on this node: true or false (default)
@@ -96,6 +98,43 @@ set_compose_dns_profile() {
     else
         unset COMPOSE_PROFILES
     fi
+}
+
+detect_node_region() {
+    if [ -n "${NODE_REGION:-}" ]; then
+        printf '%s' "$NODE_REGION" | tr -d '\r\n'
+        return
+    fi
+
+    # Use a country name for a clear dashboard label independent of the cloud
+    # provider's region-code naming. Cloud metadata remains a no-egress fallback.
+    local region
+    region=$(curl -fsS --connect-timeout 2 --max-time 4 "https://ipapi.co/${SERVER_IP}/country_name/" 2>/dev/null | tr -d '\r\n') || true
+    if [ -n "$region" ]; then printf '%s' "$region"; return; fi
+
+    region=$(curl -fsS --connect-timeout 1 --max-time 2 \
+        -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' \
+        -X PUT 'http://169.254.169.254/latest/api/token' 2>/dev/null | \
+        xargs -I {} curl -fsS --connect-timeout 1 --max-time 2 \
+            -H "X-aws-ec2-metadata-token: {}" \
+            'http://169.254.169.254/latest/meta-data/placement/region' 2>/dev/null) || true
+    if [ -n "$region" ]; then printf '%s' "$region" | tr -d '\r\n'; return; fi
+
+    region=$(curl -fsS --connect-timeout 1 --max-time 2 \
+        -H 'Metadata-Flavor: Google' \
+        'http://metadata.google.internal/computeMetadata/v1/instance/zone' 2>/dev/null | \
+        awk -F/ '{print $NF}' | sed 's/-[a-z]$//') || true
+    if [ -n "$region" ]; then printf '%s' "$region" | tr -d '\r\n'; return; fi
+
+    region=$(curl -fsS --connect-timeout 1 --max-time 2 \
+        -H 'Metadata: true' \
+        'http://169.254.169.254/metadata/instance/compute/location?api-version=2021-02-01&format=text' 2>/dev/null) || true
+    if [ -n "$region" ]; then printf '%s' "$region" | tr -d '\r\n'; return; fi
+
+}
+
+json_escape() {
+    printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
 }
 
 mask_to_prefix() {
@@ -1260,6 +1299,12 @@ EOF
     # Get server info
     SERVER_IP=$(curl -s ifconfig.me || hostname -I | awk '{print $1}')
     HOSTNAME=$(hostname)
+    NODE_REGION=$(detect_node_region)
+    if [ -n "$NODE_REGION" ]; then
+        info "Node location: ${NODE_REGION}"
+    else
+        warn "Could not detect node location; set NODE_REGION to provide one manually"
+    fi
     
     # Create .env file
     if [ "$AUTO_REGISTER" = true ]; then
@@ -1298,6 +1343,9 @@ EOF
         fi
 
         JSON_PAYLOAD="{\"hostname\":\"$HOSTNAME\",\"ip\":\"$SERVER_IP\",\"port\":$port,\"version\":\"auto\",\"registrationKey\":\"$ENV_REG_KEY\",\"managedDnsEnabled\":${ENV_DNS_ENABLED}"
+        if [ -n "$NODE_REGION" ]; then
+            JSON_PAYLOAD="$JSON_PAYLOAD, \"region\":\"$(json_escape "$NODE_REGION")\""
+        fi
         if [ "$ENV_VPN_TYPE" = "wireguard" ]; then
             JSON_PAYLOAD="$JSON_PAYLOAD, \"vpnType\":\"wireguard\", \"publicKey\":\"$wg_pub\", \"privateKey\":\"$wg_priv\""
         fi

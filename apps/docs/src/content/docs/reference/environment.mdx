@@ -49,6 +49,7 @@ These values are consumed by `scripts/install-agent.sh` while it provisions or r
 | `VPN_SUBNET`  | Manager-assigned | Requested CIDR for a new node, such as `10.8.1.0/24`. It must not overlap LAN, Docker, other VPN, or common client networks. |
 | `TUNNEL_MODE` | `full`           | `full` routes client internet traffic through the VPN. `split` routes only configured internal CIDRs.                        |
 | `REG_KEY`     | none             | Alias for `NODE_REGISTRATION_KEY` during automatic node registration.                                                        |
+| `NODE_REGION` | country name     | Overrides the node location sent at registration. The installer detects the public IP country name, then falls back to AWS, GCP, or Azure region metadata when geolocation is unavailable. |
 | `CHANNEL`     | `latest`         | Image channel: `latest` for stable releases or `beta` for prereleases.                                                       |
 
 Set `DNS_ENABLED=true` during installation to enable Managed DNS. The installer creates the required DNS Compose profile and host configuration. `DNS_BLOCK_DOT=true` adds the supported firewall restrictions for DNS-over-TLS; it cannot reliably prevent DNS-over-HTTPS.

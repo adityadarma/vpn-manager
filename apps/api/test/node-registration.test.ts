@@ -52,6 +52,34 @@ describe('Node Registration Security', () => {
     expect(res.statusCode).toBe(201)
   })
 
+  it('re-registers an offline node with the same hostname and IP', async () => {
+    process.env.NODE_REGISTRATION_KEY = 'correct-key-12345'
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/v1/nodes/register',
+      payload: {
+        hostname: 'offline-reregister-node',
+        ip: '192.168.1.120',
+        registrationKey: 'correct-key-12345',
+      },
+    })
+    expect(first.statusCode).toBe(201)
+
+    const retry = await app.inject({
+      method: 'POST',
+      url: '/api/v1/nodes/register',
+      payload: {
+        hostname: 'offline-reregister-node',
+        ip: '192.168.1.120',
+        registrationKey: 'correct-key-12345',
+      },
+    })
+
+    expect(retry.statusCode).toBe(200)
+    expect(retry.json()).toMatchObject({ id: first.json().id, message: 'Offline node re-registered successfully' })
+    expect(retry.json().token).not.toBe(first.json().token)
+  })
+
   it('enables Managed DNS when an auto-registering Agent requested it', async () => {
     process.env.NODE_REGISTRATION_KEY = 'correct-key-12345'
 

@@ -55,6 +55,28 @@ describe('Nodes API', () => {
     expect(json.some((n: any) => n.id === nodeId)).toBe(true)
   })
 
+  it('decommissions a node when no optional reason is supplied', async () => {
+    const archivedNode = await app.inject({
+      method: 'POST',
+      url: '/api/v1/nodes/register',
+      headers: { Cookie: adminCookie },
+      payload: { hostname: 'Archived Test Node', ip: '10.0.0.2', port: 1194, region: 'us-east', version: '1.0.0' },
+    })
+    expect(archivedNode.statusCode).toBe(201)
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/v1/nodes/${archivedNode.json().id}/decommission`,
+      headers: { Cookie: adminCookie, 'Content-Type': 'application/json' },
+      payload: {},
+    })
+
+    expect(res.statusCode).toBe(204)
+    const node = await app.db('vpn_nodes').where({ id: archivedNode.json().id }).first()
+    expect(node.decommissioned_at).toBeTruthy()
+    expect(node.token_revoked_at).toBeTruthy()
+  })
+
   it('should handle node heartbeat with node token', async () => {
     const res = await app.inject({
       method: 'POST',

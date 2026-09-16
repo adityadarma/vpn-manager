@@ -821,9 +821,35 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         .orWhere({ ip_address: ip })
         .first()
       if (existing) {
+        if (
+          existing.hostname === hostname &&
+          existing.ip_address === ip &&
+          existing.status === 'offline' &&
+          !existing.decommissioned_at
+        ) {
+          const token = crypto.randomBytes(32).toString('hex')
+          await app.db('vpn_nodes').where({ id: existing.id }).update({
+            token,
+            token_revoked_at: null,
+            last_seen: new Date(),
+            version: version ?? existing.version,
+            ...(region !== undefined ? { region } : {}),
+            ...(vpnType ? { vpn_type: vpnType } : {}),
+            ...(publicKey !== undefined ? { public_key: publicKey } : {}),
+            ...(privateKey !== undefined ? { private_key: privateKey } : {}),
+            ...(endpointPort !== undefined ? { endpoint_port: endpointPort } : {}),
+          })
+          return reply.status(200).send({
+            id: existing.id,
+            token,
+            message: 'Offline node re-registered successfully',
+          })
+        }
         return reply.status(409).send({
           error: 'Conflict',
-          message: 'Node with this hostname or IP already exists',
+          message: existing.decommissioned_at
+            ? 'Node with this hostname or IP is decommissioned; restore it from the dashboard instead'
+            : 'Node with this hostname or IP already exists',
         })
       }
 

@@ -140,7 +140,7 @@ function NodesPage() {
   }
 
   const decommissionMutation = useMutation({
-    mutationFn: (id: string) => api.post(`/api/v1/nodes/${id}/decommission`),
+    mutationFn: (id: string) => api.post(`/api/v1/nodes/${id}/decommission`, {}),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['nodes'] })
       toast.success('Node decommissioned and access revoked')
