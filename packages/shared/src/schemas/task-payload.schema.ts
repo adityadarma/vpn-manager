@@ -136,19 +136,16 @@ export const FirewallEngineSchema = configToken('firewall_engine')
  * cidrsToPushRoutes in the API's ip-pool service), so we allow exactly that
  * plus a small set of harmless client directives.
  */
-const CcdExtraLineSchema = SafeLine.refine(
-  (line) => {
-    const v = line.trim()
-    if (v.length === 0 || v.length > 200) return false
-    return (
-      /^push\s+"route\s+(\d{1,3}\.){3}\d{1,3}\s+(\d{1,3}\.){3}\d{1,3}"$/.test(v) ||
-      /^push\s+"dhcp-option\s+(DNS|DOMAIN)\s+[A-Za-z0-9._-]+"$/.test(v) ||
-      /^ifconfig-push\s+(\d{1,3}\.){3}\d{1,3}\s+(\d{1,3}\.){3}\d{1,3}$/.test(v) ||
-      v === 'disable'
-    )
-  },
-  'Unsupported CCD directive',
-)
+const CcdExtraLineSchema = SafeLine.refine((line) => {
+  const v = line.trim()
+  if (v.length === 0 || v.length > 200) return false
+  return (
+    /^push\s+"route\s+(\d{1,3}\.){3}\d{1,3}\s+(\d{1,3}\.){3}\d{1,3}"$/.test(v) ||
+    /^push\s+"dhcp-option\s+(DNS|DOMAIN)\s+[A-Za-z0-9._-]+"$/.test(v) ||
+    /^ifconfig-push\s+(\d{1,3}\.){3}\d{1,3}\s+(\d{1,3}\.){3}\d{1,3}$/.test(v) ||
+    v === 'disable'
+  )
+}, 'Unsupported CCD directive')
 
 /**
  * `custom_push_directives` for the server config.
@@ -304,6 +301,7 @@ const UpdateServerConfigPayload = z
     group_subnets: z.array(Ipv4OrCidrSchema).max(200).optional(),
     custom_push_directives: CustomPushDirectivesSchema.optional().nullable(),
     firewall_engine: FirewallEngineSchema.optional(),
+    allow_client_to_client: z.boolean().default(false),
   })
   // The agent overrides firewall_engine/vpn_type from its own env, and callers
   // sometimes include extra descriptive fields. Strip unknown keys rather than
@@ -337,35 +335,60 @@ const ApplyNetworkPolicyPayload = z.object({
 })
 
 const DnsRecordPayload = z.object({
-  name: z.string().max(253).regex(/^(?:@|[a-z0-9][a-z0-9.-]*)$/),
+  name: z
+    .string()
+    .max(253)
+    .regex(/^(?:@|[a-z0-9][a-z0-9.-]*)$/),
   type: z.enum(['A', 'AAAA', 'CNAME', 'TXT']),
-  value: z.string().min(1).max(1024).refine((value) => !/[\r\n\u0000]/.test(value)),
+  value: z
+    .string()
+    .min(1)
+    .max(1024)
+    .refine((value) => !/[\r\n\u0000]/.test(value)),
   ttl: z.number().int().min(30).max(86400),
 })
 
 const SyncGroupDnsPayload = z.object({
   revision: z.number().int().min(1),
   config_hash: z.string().regex(/^sha256:[a-f0-9]{64}$/),
-  groups: z.array(z.object({
-    id: z.string().uuid(),
-    name: z.string().min(1).max(100),
-    vpn_subnet: Ipv4OrCidrSchema,
-    listener_ip: Ipv4Schema,
-    listener_port: z.number().int().min(1).max(65535),
-    public_default_action: z.enum(['allow', 'deny']),
-    upstreams: z.array(Ipv4Schema).max(5),
-    zones: z.array(z.object({
-      name: z.string().max(253).regex(/^[a-z0-9][a-z0-9.-]*$/),
-      records: z.array(DnsRecordPayload).max(10000),
-    })).max(100),
-    policies: z.array(z.object({
-      domain_pattern: z.string().max(253).regex(/^(?:\*\.)?[a-z0-9][a-z0-9.-]*$/),
-      action: z.enum(['allow', 'block', 'sinkhole']),
-      scope: z.enum(['public', 'internal', 'any']),
-      priority: z.number().int().min(-10000).max(10000),
-      sinkhole_ipv4: Ipv4Schema.nullable(),
-    })).max(1000),
-  })).max(200),
+  groups: z
+    .array(
+      z.object({
+        id: z.string().uuid(),
+        name: z.string().min(1).max(100),
+        vpn_subnet: Ipv4OrCidrSchema,
+        listener_ip: Ipv4Schema,
+        listener_port: z.number().int().min(1).max(65535),
+        public_default_action: z.enum(['allow', 'deny']),
+        upstreams: z.array(Ipv4Schema).max(5),
+        zones: z
+          .array(
+            z.object({
+              name: z
+                .string()
+                .max(253)
+                .regex(/^[a-z0-9][a-z0-9.-]*$/),
+              records: z.array(DnsRecordPayload).max(10000),
+            }),
+          )
+          .max(100),
+        policies: z
+          .array(
+            z.object({
+              domain_pattern: z
+                .string()
+                .max(253)
+                .regex(/^(?:\*\.)?[a-z0-9][a-z0-9.-]*$/),
+              action: z.enum(['allow', 'block', 'sinkhole']),
+              scope: z.enum(['public', 'internal', 'any']),
+              priority: z.number().int().min(-10000).max(10000),
+              sinkhole_ipv4: Ipv4Schema.nullable(),
+            }),
+          )
+          .max(1000),
+      }),
+    )
+    .max(200),
 })
 
 /** Actions that legitimately carry no parameters. */
@@ -402,8 +425,7 @@ export function isKnownTaskAction(action: unknown): action is TaskAction {
 }
 
 export type TaskPayloadValidationResult =
-  | { ok: true; action: TaskAction; payload: Record<string, unknown> }
-  | { ok: false; error: string }
+  { ok: true; action: TaskAction; payload: Record<string, unknown> } | { ok: false; error: string }
 
 /**
  * Validates an action name and its payload together.

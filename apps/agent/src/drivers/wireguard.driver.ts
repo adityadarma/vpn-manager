@@ -18,6 +18,7 @@ import type {
   ServerConfigParams,
 } from './vpn-driver.interface'
 import { assertWgKey, assertIpv4, assertPortNumber } from '../core/net-validate'
+import { applyClientIsolation } from '../services/client-isolation'
 
 const execFileAsync = promisify(execFile)
 const INTERFACE_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,14}$/
@@ -32,13 +33,13 @@ interface PeerState {
 
 /**
  * WireGuard Driver
- * 
+ *
  * Communicates with WireGuard via wg command-line tool
- * 
+ *
  * Requirements:
  * - WireGuard installed (wg command available)
  * - Proper permissions to run wg commands
- * 
+ *
  * Reference:
  * - https://www.wireguard.com/
  */
@@ -72,7 +73,9 @@ export class WireGuardDriver extends EventEmitter implements VpnDriver {
       console.log(`[wireguard-driver] Connected to interface ${this.interfaceName}`)
       this.emit('connected')
     } catch (err) {
-      throw new Error(`Failed to connect to WireGuard interface ${this.interfaceName}: ${(err as Error).message}`)
+      throw new Error(
+        `Failed to connect to WireGuard interface ${this.interfaceName}: ${(err as Error).message}`,
+      )
     }
   }
 
@@ -118,7 +121,7 @@ export class WireGuardDriver extends EventEmitter implements VpnDriver {
     // Skip first line (interface info)
     for (let i = 1; i < lines.length; i++) {
       const parts = lines[i].split('\t')
-      
+
       if (parts.length >= 8) {
         // WireGuard dump format:
         // 0: public-key
@@ -139,7 +142,7 @@ export class WireGuardDriver extends EventEmitter implements VpnDriver {
 
         // Only include active clients (handshake within last 3 minutes)
         const now = Math.floor(Date.now() / 1000)
-        if (lastHandshake > 0 && (now - lastHandshake) < 180) {
+        if (lastHandshake > 0 && now - lastHandshake < 180) {
           clients.push({
             commonName: publicKey.substring(0, 16), // Use first 16 chars of public key as identifier
             realAddress: endpoint,
@@ -201,17 +204,16 @@ export class WireGuardDriver extends EventEmitter implements VpnDriver {
       const publicKey = await this.resolvePeerPublicKey(commonName)
       this.cancelPendingRestore(publicKey)
       await this.run('wg', ['set', this.interfaceName, 'peer', publicKey, 'remove'])
-      console.log(`[wireguard-driver] Removed peer ${publicKey.substring(0, 16)}... from ${this.interfaceName}`)
+      console.log(
+        `[wireguard-driver] Removed peer ${publicKey.substring(0, 16)}... from ${this.interfaceName}`,
+      )
     } catch (err) {
       throw new Error(`Failed to disconnect client ${commonName}: ${(err as Error).message}`)
     }
   }
 
   async getStatus(): Promise<VpnStatus> {
-    const [serverInfo, clients] = await Promise.all([
-      this.getServerInfo(),
-      this.getClients(),
-    ])
+    const [serverInfo, clients] = await Promise.all([this.getServerInfo(), this.getClients()])
 
     return {
       state: this.connected ? 'connected' : 'disconnected',
@@ -240,7 +242,7 @@ export class WireGuardDriver extends EventEmitter implements VpnDriver {
       if (/\0|\r|\n/.test(command)) throw new Error('control characters are not allowed')
       const args = command.trim().split(/\s+/).filter(Boolean)
       if (args.length === 0 || args.length > 64) throw new Error('invalid argument count')
-      if (args.some(arg => arg.length > 512 || !WG_COMMAND_ARG_RE.test(arg))) {
+      if (args.some((arg) => arg.length > 512 || !WG_COMMAND_ARG_RE.test(arg))) {
         throw new Error('unsupported command argument')
       }
       return await this.run('wg', args)
@@ -254,7 +256,9 @@ export class WireGuardDriver extends EventEmitter implements VpnDriver {
   async createUser(_username: string): Promise<Record<string, unknown>> {
     // WireGuard does not require server-side user creation.
     // Key generation is handled by generateClientCert; peer injection by writeClientConfig.
-    console.log(`[wireguard] createUser: no-op for WireGuard (use generateClientCert + writeClientConfig)`)
+    console.log(
+      `[wireguard] createUser: no-op for WireGuard (use generateClientCert + writeClientConfig)`,
+    )
     return { success: true, note: 'wireguard_no_op' }
   }
 
@@ -272,18 +276,22 @@ export class WireGuardDriver extends EventEmitter implements VpnDriver {
     }
   }
 
-  async generateClientCert(_username: string, _options: ClientCertOptions = {}): Promise<ClientCertResult> {
+  async generateClientCert(
+    _username: string,
+    _options: ClientCertOptions = {},
+  ): Promise<ClientCertResult> {
     const privateKey = this.runSync('wg', ['genkey']).trim()
-    const publicKey  = this.runSync('wg', ['pubkey'], privateKey + '\n').trim()
-    return { clientCert: publicKey, clientKey: privateKey, passwordProtected: false, expiresAt: null }
+    const publicKey = this.runSync('wg', ['pubkey'], privateKey + '\n').trim()
+    return {
+      clientCert: publicKey,
+      clientKey: privateKey,
+      passwordProtected: false,
+      expiresAt: null,
+    }
   }
 
   async generateClientConfig(username: string, options: ClientConfigOptions): Promise<string> {
-    const {
-      serverIp, serverPort = 51820,
-      clientPrivateKey, clientVpnIp,
-      dns = '1.1.1.1',
-    } = options
+    const { serverIp, serverPort = 51820, clientPrivateKey, clientVpnIp, dns = '1.1.1.1' } = options
 
     if (!serverIp) throw new Error('Missing serverIp')
     if (!clientPrivateKey) throw new Error('Missing clientPrivateKey for WireGuard config')
@@ -309,11 +317,17 @@ PersistentKeepalive = 25`
 
   // ── Session management ──────────────────────────────────────────────────────
 
-  async kickSession(commonName: string, options: KickSessionOptions = {}): Promise<KickSessionResult> {
+  async kickSession(
+    commonName: string,
+    options: KickSessionOptions = {},
+  ): Promise<KickSessionResult> {
     const { permanent = false, blockDurationSeconds, publicKey, vpnIp } = options
     const result: KickSessionResult = {
-      kicked: false, common_name: commonName, permanent,
-      kill_method: null, kill_response: null,
+      kicked: false,
+      common_name: commonName,
+      permanent,
+      kill_method: null,
+      kill_response: null,
     }
 
     if (!publicKey) {
@@ -337,14 +351,19 @@ PersistentKeepalive = 25`
       this.cancelPendingRestore(publicKey)
       const peerState = this.readPeerState(publicKey, vpnIp)
       this.runSync('wg', ['set', this.interfaceName, 'peer', publicKey, 'remove'])
-      const timer = setTimeout(() => {
-        if (this.pendingRestores.get(publicKey) !== timer) return
-        this.pendingRestores.delete(publicKey)
-        try {
-          this.restorePeer(publicKey, peerState)
-          console.log(`[wireguard] ✓ Peer ${commonName} restored after temp kick`)
-        } catch (e: any) { console.error(`[wireguard] Failed to restore peer:`, e.message) }
-      }, (blockDurationSeconds ?? 2) * 1000)
+      const timer = setTimeout(
+        () => {
+          if (this.pendingRestores.get(publicKey) !== timer) return
+          this.pendingRestores.delete(publicKey)
+          try {
+            this.restorePeer(publicKey, peerState)
+            console.log(`[wireguard] ✓ Peer ${commonName} restored after temp kick`)
+          } catch (e: any) {
+            console.error(`[wireguard] Failed to restore peer:`, e.message)
+          }
+        },
+        (blockDurationSeconds ?? 2) * 1000,
+      )
       this.pendingRestores.set(publicKey, timer)
       result.kicked = true
       result.kill_method = 'wg_temp_remove'
@@ -354,7 +373,10 @@ PersistentKeepalive = 25`
     return result
   }
 
-  async unkickSession(commonName: string, options: UnkickSessionOptions = {}): Promise<Record<string, unknown>> {
+  async unkickSession(
+    commonName: string,
+    options: UnkickSessionOptions = {},
+  ): Promise<Record<string, unknown>> {
     const { publicKey, vpnIp } = options
     if (!publicKey || !vpnIp) {
       throw new Error(`Missing publicKey or vpnIp for WireGuard unkick: ${commonName}`)
@@ -382,16 +404,17 @@ PersistentKeepalive = 25`
 
   async syncCertificates(): Promise<Record<string, unknown>> {
     const MANAGER_URL = process.env.AGENT_MANAGER_URL
-    const NODE_TOKEN  = process.env.AGENT_SECRET_TOKEN
-    if (!MANAGER_URL || !NODE_TOKEN) throw new Error('AGENT_MANAGER_URL and AGENT_SECRET_TOKEN must be set')
+    const NODE_TOKEN = process.env.AGENT_SECRET_TOKEN
+    if (!MANAGER_URL || !NODE_TOKEN)
+      throw new Error('AGENT_MANAGER_URL and AGENT_SECRET_TOKEN must be set')
 
-    const WG_PUB_PATH  = '/etc/wireguard/publickey'
+    const WG_PUB_PATH = '/etc/wireguard/publickey'
     const WG_PRIV_PATH = '/etc/wireguard/privatekey'
     if (!existsSync(WG_PUB_PATH) || !existsSync(WG_PRIV_PATH)) {
       throw new Error(`WireGuard keys not found at ${WG_PUB_PATH} or ${WG_PRIV_PATH}`)
     }
 
-    const pubKey  = readFileSync(WG_PUB_PATH, 'utf-8').trim()
+    const pubKey = readFileSync(WG_PUB_PATH, 'utf-8').trim()
     const privKey = readFileSync(WG_PRIV_PATH, 'utf-8').trim()
 
     const response = await fetch(`${MANAGER_URL}/api/v1/nodes/sync-certs`, {
@@ -399,17 +422,21 @@ PersistentKeepalive = 25`
       headers: { Authorization: `Bearer ${NODE_TOKEN}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ public_key: pubKey, private_key: privKey }),
     })
-    if (!response.ok) throw new Error(`Failed to upload WireGuard keys: HTTP ${response.status} - ${await response.text()}`)
+    if (!response.ok)
+      throw new Error(
+        `Failed to upload WireGuard keys: HTTP ${response.status} - ${await response.text()}`,
+      )
 
-    const result = await response.json() as { node_id: string }
+    const result = (await response.json()) as { node_id: string }
     console.log('[wireguard] ✓ Keys synced to database')
     return { success: true, message: 'WireGuard keys synced to database', node_id: result.node_id }
   }
 
   async syncServerConfig(): Promise<Record<string, unknown>> {
     const MANAGER_URL = process.env.AGENT_MANAGER_URL
-    const NODE_TOKEN  = process.env.AGENT_SECRET_TOKEN
-    if (!MANAGER_URL || !NODE_TOKEN) throw new Error('AGENT_MANAGER_URL and AGENT_SECRET_TOKEN must be set')
+    const NODE_TOKEN = process.env.AGENT_SECRET_TOKEN
+    if (!MANAGER_URL || !NODE_TOKEN)
+      throw new Error('AGENT_MANAGER_URL and AGENT_SECRET_TOKEN must be set')
 
     const WG_CONF = `/etc/wireguard/${this.interfaceName}.conf`
     if (!existsSync(WG_CONF)) throw new Error(`WireGuard config not found at ${WG_CONF}`)
@@ -421,19 +448,26 @@ PersistentKeepalive = 25`
       headers: { Authorization: `Bearer ${NODE_TOKEN}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(config),
     })
-    if (!response.ok) throw new Error(`Failed to sync config: HTTP ${response.status} - ${await response.text()}`)
+    if (!response.ok)
+      throw new Error(`Failed to sync config: HTTP ${response.status} - ${await response.text()}`)
 
-    const result = await response.json() as { node_id: string }
+    const result = (await response.json()) as { node_id: string }
     console.log('[wireguard] ✓ Server config synced')
-    return { success: true, message: 'WireGuard config synced to database', config, node_id: result.node_id }
+    return {
+      success: true,
+      message: 'WireGuard config synced to database',
+      config,
+      node_id: result.node_id,
+    }
   }
 
   async updateServerConfig(params: ServerConfigParams): Promise<Record<string, unknown>> {
     const WG_CONF = `/etc/wireguard/${this.interfaceName}.conf`
-    if (!existsSync(WG_CONF)) throw new Error('WireGuard config not found. Please install VPN server first.')
+    if (!existsSync(WG_CONF))
+      throw new Error('WireGuard config not found. Please install VPN server first.')
 
-    const prefix   = this._netmaskToPrefix(params.vpn_netmask)
-    const netInt   = this._ipToInt(params.vpn_network) & this._ipToInt(params.vpn_netmask)
+    const prefix = this._netmaskToPrefix(params.vpn_netmask)
+    const netInt = this._ipToInt(params.vpn_network) & this._ipToInt(params.vpn_netmask)
     const serverIp = this._intToIp(netInt + 1)
 
     let content = readFileSync(WG_CONF, 'utf-8')
@@ -445,6 +479,7 @@ PersistentKeepalive = 25`
     writeFileSync(WG_CONF, content, 'utf-8')
 
     await this.reload()
+    await applyClientIsolation('wireguard', params.firewall_engine, params.allow_client_to_client)
     return {
       success: true,
       message: 'WireGuard configuration updated. Interface restarted.',
@@ -469,10 +504,19 @@ PersistentKeepalive = 25`
     this.runSync('wg', ['set', this.interfaceName, 'peer', publicKey, 'allowed-ips', `${vpnIp}/32`])
     this.runSync('wg-quick', ['save', this.interfaceName])
     console.log(`[wireguard] ✓ Peer injected for ${username} with IP ${vpnIp}/32`)
-    return { success: true, username, vpn_ip: vpnIp, public_key: publicKey, interface: this.interfaceName }
+    return {
+      success: true,
+      username,
+      vpn_ip: vpnIp,
+      public_key: publicKey,
+      interface: this.interfaceName,
+    }
   }
 
-  async deleteClientConfig(username: string, options?: { publicKey?: string }): Promise<Record<string, unknown>> {
+  async deleteClientConfig(
+    username: string,
+    options?: { publicKey?: string },
+  ): Promise<Record<string, unknown>> {
     const publicKey = options?.publicKey
     if (!publicKey) {
       throw new Error(`Missing publicKey for WireGuard client config deletion: ${username}`)
@@ -496,9 +540,12 @@ PersistentKeepalive = 25`
 
   private readPeerState(publicKey: string, fallbackVpnIp: string): PeerState {
     const dump = this.runSync('wg', ['show', this.interfaceName, 'dump'])
-    const row = dump.trim().split('\n').slice(1)
-      .map(line => line.split('\t'))
-      .find(parts => parts[0] === publicKey)
+    const row = dump
+      .trim()
+      .split('\n')
+      .slice(1)
+      .map((line) => line.split('\t'))
+      .find((parts) => parts[0] === publicKey)
 
     return {
       allowedIps: row?.[3] && row[3] !== '(none)' ? row[3] : `${fallbackVpnIp}/32`,
@@ -525,17 +572,20 @@ PersistentKeepalive = 25`
     return ip.split('.').reduce((acc, oct) => (acc << 8) | parseInt(oct, 10), 0) >>> 0
   }
   private _intToIp(n: number): string {
-    return [24, 16, 8, 0].map(s => (n >> s) & 0xff).join('.')
+    return [24, 16, 8, 0].map((s) => (n >> s) & 0xff).join('.')
   }
 
   private _parseWgConfig(content: string): Record<string, unknown> {
     const config: Record<string, unknown> = {
-      port: 51820, protocol: 'udp', vpnNetwork: '', vpnNetmask: '255.255.255.0',
+      port: 51820,
+      protocol: 'udp',
+      vpnNetwork: '',
+      vpnNetmask: '255.255.255.0',
     }
     for (const line of content.split('\n')) {
       const t = line.trim()
       if (!t || t.startsWith('#') || t.startsWith('[')) continue
-      const [key, ...rest] = t.split('=').map(s => s.trim())
+      const [key, ...rest] = t.split('=').map((s) => s.trim())
       const val = rest.join('=').trim()
       if (key === 'ListenPort') config.port = parseInt(val, 10)
       if (key === 'Address') {
@@ -543,7 +593,7 @@ PersistentKeepalive = 25`
         if (ip && prefix) {
           const p = parseInt(prefix, 10)
           const mask = (0xffffffff << (32 - p)) >>> 0
-          config.vpnNetmask = [24, 16, 8, 0].map(s => (mask >> s) & 0xff).join('.')
+          config.vpnNetmask = [24, 16, 8, 0].map((s) => (mask >> s) & 0xff).join('.')
           const ipInt = this._ipToInt(ip) & mask
           config.vpnNetwork = this._intToIp(ipInt)
         }

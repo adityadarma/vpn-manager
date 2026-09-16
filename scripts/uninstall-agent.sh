@@ -122,6 +122,11 @@ cleanup_vpn_manager_ip_forward() {
 }
 
 cleanup_iptables_policy_chains() {
+    for iface in tun+ wg+; do
+        iptables -D FORWARD -i "$iface" -o "$iface" -j DROP 2>/dev/null || true
+    done
+    nft delete table inet vpn_manager_client_isolation 2>/dev/null || true
+
     for chain in VPN_POLICY_FWWD VPN_FWWD; do
         for iface in tun+ wg+; do
             iptables -D FORWARD -i "$iface" -j "$chain" 2>/dev/null || true

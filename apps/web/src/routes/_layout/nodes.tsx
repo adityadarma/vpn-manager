@@ -8,7 +8,24 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
-import { Plus, Trash2, MapPin, Clock, Activity, Server, X, Copy, CheckCircle2, Settings, RefreshCw, Edit, Shield, CalendarDays, Archive, RotateCcw } from 'lucide-react'
+import {
+  Plus,
+  Trash2,
+  MapPin,
+  Clock,
+  Activity,
+  Server,
+  X,
+  Copy,
+  CheckCircle2,
+  Settings,
+  RefreshCw,
+  Edit,
+  Shield,
+  CalendarDays,
+  Archive,
+  RotateCcw,
+} from 'lucide-react'
 import { formatBrowserDateTime, type VpnNode } from '@vpn/shared'
 import { Button } from '@/components/ui/button'
 
@@ -38,6 +55,7 @@ interface NodeConfig {
   network_push_directives?: string
   managed_dns_directives?: string
   firewall_engine: string
+  allow_client_to_client: boolean
 }
 
 interface RegisterResponse extends VpnNode {
@@ -54,7 +72,12 @@ function NodesPage() {
   const [configNode, setConfigNode] = useState<VpnNode | null>(null)
   const [editNode, setEditNode] = useState<VpnNode | null>(null)
   const [viewFirewallNode, setViewFirewallNode] = useState<VpnNode | null>(null)
-  const [editForm, setEditForm] = useState<NodeForm>({ hostname: '', ipAddress: '', region: '', managedDnsEnabled: false })
+  const [editForm, setEditForm] = useState<NodeForm>({
+    hostname: '',
+    ipAddress: '',
+    region: '',
+    managedDnsEnabled: false,
+  })
   const [nodeConfig, setNodeConfig] = useState<NodeConfig>({
     port: 1194,
     protocol: 'udp',
@@ -71,6 +94,7 @@ function NodesPage() {
     max_clients: 100,
     custom_push_directives: '',
     firewall_engine: 'iptables',
+    allow_client_to_client: false,
   })
 
   const { data: nodes = [], isLoading } = useQuery<VpnNode[]>({
@@ -79,13 +103,14 @@ function NodesPage() {
   })
 
   const createMutation = useMutation({
-    mutationFn: (data: NodeForm) => api.post<RegisterResponse>('/api/v1/nodes/register', {
-      hostname: data.hostname,
-      ip: data.ipAddress,
-      region: data.region,
-      version: 'web-registered',
-      port: 1194,
-    }),
+    mutationFn: (data: NodeForm) =>
+      api.post<RegisterResponse>('/api/v1/nodes/register', {
+        hostname: data.hostname,
+        ip: data.ipAddress,
+        region: data.region,
+        version: 'web-registered',
+        port: 1194,
+      }),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['nodes'] })
       if (data.id && data.token) {
@@ -168,7 +193,7 @@ function NodesPage() {
       api.post(`/api/v1/tasks`, {
         node_id: nodeId,
         action: 'sync_certificates',
-        payload: {}
+        payload: {},
       }),
     onSuccess: () => {
       toast.success('Certificate sync task created. Check node logs for progress.')
@@ -206,13 +231,17 @@ function NodesPage() {
     if (!editNode) return
     updateNodeMutation.mutate({
       nodeId: editNode.id,
-      updates: editForm
+      updates: editForm,
     })
   }
 
-  const onlineCount = nodes.filter(n => n.status === 'online').length
-  const visibleNodes = nodes.filter((node) =>
-    statusFilter === 'all' || (statusFilter === 'active' ? node.status !== 'decommissioned' : node.status === 'decommissioned'),
+  const onlineCount = nodes.filter((n) => n.status === 'online').length
+  const visibleNodes = nodes.filter(
+    (node) =>
+      statusFilter === 'all' ||
+      (statusFilter === 'active'
+        ? node.status !== 'decommissioned'
+        : node.status === 'decommissioned'),
   )
 
   return (
@@ -253,7 +282,9 @@ function NodesPage() {
         <div className="bg-card text-card-foreground rounded-xl border border-dashed border-border p-12 text-center">
           <Server className="h-10 w-10 text-gray-200 mx-auto mb-3" />
           <p className="font-medium text-foreground">No nodes registered</p>
-          <p className="text-sm text-muted-foreground/70 mt-1">Add your first VPN node to get started</p>
+          <p className="text-sm text-muted-foreground/70 mt-1">
+            Add your first VPN node to get started
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -273,10 +304,13 @@ function NodesPage() {
                             ? 'bg-emerald-500 shadow-sm shadow-emerald-200'
                             : node.status === 'decommissioned'
                               ? 'bg-amber-500'
-                            : 'bg-gray-400 dark:bg-gray-600'
+                              : 'bg-gray-400 dark:bg-gray-600'
                         }`}
                       />
-                      <p className="font-semibold text-foreground text-sm sm:text-base truncate" title={node.hostname}>
+                      <p
+                        className="font-semibold text-foreground text-sm sm:text-base truncate"
+                        title={node.hostname}
+                      >
                         {node.hostname}
                       </p>
                     </div>
@@ -286,130 +320,150 @@ function NodesPage() {
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0">
-                      <span
-                        className={`px-1.5 py-0.5 text-[0.65rem] font-bold rounded ring-1 ring-inset uppercase ${
-                          node.vpn_type === 'wireguard'
-                            ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 ring-amber-500/20'
-                            : 'bg-orange-500/10 text-orange-600 dark:text-orange-400 ring-orange-500/20'
-                        }`}
-                      >
-                        {node.vpn_type === 'wireguard' ? 'WG' : 'OVPN'}
-                      </span>
-                      <span
-                        className={`px-2 py-0.5 text-xs font-medium rounded-full capitalize ${
-                          node.status === 'online'
-                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                            : node.status === 'offline'
-                              ? 'bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20'
-                              : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
-                        }`}
-                      >
-                        {node.status}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Details */}
-                  <div className="space-y-1.5 text-xs text-muted-foreground pt-2 border-t border-border/40">
-                    {node.region && (
-                      <div className="flex items-center gap-2">
-                        <MapPin className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
-                        <span className="truncate">{node.region}</span>
-                      </div>
-                    )}
-                    {node.version && (
-                      <div className="flex items-center gap-2">
-                        <Server className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
-                        <span className="truncate">{node.version}</span>
-                      </div>
-                    )}
-                    {node.created_at && (
-                      <div className="flex items-center gap-2">
-                        <CalendarDays className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
-                        <span className="truncate">Created {formatBrowserDateTime(node.created_at)}</span>
-                      </div>
-                    )}
-                    {node.last_seen && (
-                      <div className="flex items-center gap-2">
-                        <Clock className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
-                        <span className="truncate">Last seen {formatBrowserDateTime(node.last_seen)}</span>
-                      </div>
-                    )}
-                    <div className="flex items-center gap-2">
-                      <Activity className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
-                      <span>{node.active_sessions ?? 0} active sessions</span>
-                    </div>
+                    <span
+                      className={`px-1.5 py-0.5 text-[0.65rem] font-bold rounded ring-1 ring-inset uppercase ${
+                        node.vpn_type === 'wireguard'
+                          ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 ring-amber-500/20'
+                          : 'bg-orange-500/10 text-orange-600 dark:text-orange-400 ring-orange-500/20'
+                      }`}
+                    >
+                      {node.vpn_type === 'wireguard' ? 'WG' : 'OVPN'}
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 text-xs font-medium rounded-full capitalize ${
+                        node.status === 'online'
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                          : node.status === 'offline'
+                            ? 'bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20'
+                            : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                      }`}
+                    >
+                      {node.status}
+                    </span>
                   </div>
                 </div>
 
-                {/* Actions */}
-                <div className="mt-4 pt-3 border-t border-border/50 flex items-center justify-end gap-1">
-                  {node.status === 'decommissioned' ? (
-                    <>
-                      <button
-                        onClick={() => restoreMutation.mutate(node.id)}
-                        disabled={restoreMutation.isPending}
-                        className="p-2 text-muted-foreground hover:text-emerald-600 hover:bg-emerald-500/10 rounded-lg transition-colors disabled:opacity-40"
-                        title="Restore Node and issue a new token"
-                      >
-                        <RotateCcw className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (confirm(`Permanently delete archived node "${node.hostname}" and its related history? This cannot be undone.`)) deleteMutation.mutate(node.id)
-                        }}
-                        disabled={deleteMutation.isPending}
-                        className="p-2 text-muted-foreground hover:text-red-600 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-40"
-                        title="Permanently Delete Node"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </>
-                  ) : <>
-                  <button
-                    onClick={() => syncCertsMutation.mutate(node.id)}
-                    disabled={syncCertsMutation.isPending || node.status === 'offline'}
-                    className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                    title={node.status === 'offline' ? 'Node must be online' : 'Sync Certificates'}
-                  >
-                    <RefreshCw className={`h-4 w-4 ${syncCertsMutation.isPending ? 'animate-spin' : ''}`} />
-                  </button>
-                  <button
-                    onClick={() => openEditModal(node)}
-                    className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
-                    title="Edit Node"
-                  >
-                    <Edit className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => openConfigModal(node)}
-                    className="p-2 text-muted-foreground hover:text-emerald-600 hover:bg-emerald-500/10 rounded-lg transition-colors"
-                    title="Configure"
-                  >
-                    <Settings className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => setViewFirewallNode(node)}
-                    className="p-2 text-muted-foreground hover:text-indigo-600 hover:bg-indigo-500/10 rounded-lg transition-colors"
-                    title="View Server Firewall Rules"
-                  >
-                    <Shield className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (confirm(`Decommission node "${node.hostname}"? Its agent token and VPN credentials will be revoked. Configuration and history will be retained.`)) decommissionMutation.mutate(node.id)
-                    }}
-                    disabled={decommissionMutation.isPending}
-                    className="p-2 text-muted-foreground hover:text-amber-600 hover:bg-amber-500/10 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                    title="Decommission Node"
-                  >
-                    <Archive className="h-4 w-4" />
-                  </button>
-                  </>}
+                {/* Details */}
+                <div className="space-y-1.5 text-xs text-muted-foreground pt-2 border-t border-border/40">
+                  {node.region && (
+                    <div className="flex items-center gap-2">
+                      <MapPin className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
+                      <span className="truncate">{node.region}</span>
+                    </div>
+                  )}
+                  {node.version && (
+                    <div className="flex items-center gap-2">
+                      <Server className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
+                      <span className="truncate">{node.version}</span>
+                    </div>
+                  )}
+                  {node.created_at && (
+                    <div className="flex items-center gap-2">
+                      <CalendarDays className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
+                      <span className="truncate">
+                        Created {formatBrowserDateTime(node.created_at)}
+                      </span>
+                    </div>
+                  )}
+                  {node.last_seen && (
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
+                      <span className="truncate">
+                        Last seen {formatBrowserDateTime(node.last_seen)}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <Activity className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
+                    <span>{node.active_sessions ?? 0} active sessions</span>
+                  </div>
                 </div>
               </div>
-            ))}
-          </div>
+
+              {/* Actions */}
+              <div className="mt-4 pt-3 border-t border-border/50 flex items-center justify-end gap-1">
+                {node.status === 'decommissioned' ? (
+                  <>
+                    <button
+                      onClick={() => restoreMutation.mutate(node.id)}
+                      disabled={restoreMutation.isPending}
+                      className="p-2 text-muted-foreground hover:text-emerald-600 hover:bg-emerald-500/10 rounded-lg transition-colors disabled:opacity-40"
+                      title="Restore Node and issue a new token"
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (
+                          confirm(
+                            `Permanently delete archived node "${node.hostname}" and its related history? This cannot be undone.`,
+                          )
+                        )
+                          deleteMutation.mutate(node.id)
+                      }}
+                      disabled={deleteMutation.isPending}
+                      className="p-2 text-muted-foreground hover:text-red-600 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-40"
+                      title="Permanently Delete Node"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => syncCertsMutation.mutate(node.id)}
+                      disabled={syncCertsMutation.isPending || node.status === 'offline'}
+                      className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      title={
+                        node.status === 'offline' ? 'Node must be online' : 'Sync Certificates'
+                      }
+                    >
+                      <RefreshCw
+                        className={`h-4 w-4 ${syncCertsMutation.isPending ? 'animate-spin' : ''}`}
+                      />
+                    </button>
+                    <button
+                      onClick={() => openEditModal(node)}
+                      className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+                      title="Edit Node"
+                    >
+                      <Edit className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => openConfigModal(node)}
+                      className="p-2 text-muted-foreground hover:text-emerald-600 hover:bg-emerald-500/10 rounded-lg transition-colors"
+                      title="Configure"
+                    >
+                      <Settings className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => setViewFirewallNode(node)}
+                      className="p-2 text-muted-foreground hover:text-indigo-600 hover:bg-indigo-500/10 rounded-lg transition-colors"
+                      title="View Server Firewall Rules"
+                    >
+                      <Shield className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (
+                          confirm(
+                            `Decommission node "${node.hostname}"? Its agent token and VPN credentials will be revoked. Configuration and history will be retained.`,
+                          )
+                        )
+                          decommissionMutation.mutate(node.id)
+                      }}
+                      disabled={decommissionMutation.isPending}
+                      className="p-2 text-muted-foreground hover:text-amber-600 hover:bg-amber-500/10 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      title="Decommission Node"
+                    >
+                      <Archive className="h-4 w-4" />
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
 
       {/* Add Node Modal */}
@@ -422,15 +476,22 @@ function NodesPage() {
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 mb-4">
                   <CheckCircle2 className="h-6 w-6 text-emerald-600" />
                 </div>
-                <h3 className="text-lg font-semibold text-center text-foreground mb-2">Node Registered!</h3>
+                <h3 className="text-lg font-semibold text-center text-foreground mb-2">
+                  Node Registered!
+                </h3>
                 <p className="text-sm text-center text-muted-foreground mb-6">
-                  Save these credentials now. The secret token will <strong className="text-foreground">never be shown again</strong>. Deploy your agent using these environment variables:
+                  Save these credentials now. The secret token will{' '}
+                  <strong className="text-foreground">never be shown again</strong>. Deploy your
+                  agent using these environment variables:
                 </p>
 
                 <div className="bg-muted/50 rounded-lg p-4 border border-border/50 mb-6 relative group">
                   <pre className="text-xs font-mono text-foreground whitespace-pre-wrap break-all">
-                    <span className="text-emerald-600">AGENT_NODE_ID</span>={registeredNode.id}{'\n'}
-                    <span className="text-emerald-600">AGENT_SECRET_TOKEN</span>={registeredNode.token}{'\n'}
+                    <span className="text-emerald-600">AGENT_NODE_ID</span>={registeredNode.id}
+                    {'\n'}
+                    <span className="text-emerald-600">AGENT_SECRET_TOKEN</span>=
+                    {registeredNode.token}
+                    {'\n'}
                     <span className="text-emerald-600">FIREWALL_ENGINE</span>=auto
                   </pre>
                   <button
@@ -438,14 +499,15 @@ function NodesPage() {
                     className="absolute top-2 right-2 p-1.5 bg-card text-card-foreground border border-border rounded text-muted-foreground/70 hover:text-muted-foreground shadow-sm transition opacity-0 group-hover:opacity-100"
                     title="Copy to clipboard"
                   >
-                    {copied ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+                    {copied ? (
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
                   </button>
                 </div>
 
-                <Button
-                  onClick={closeRegistration}
-                  className="w-full"
-                >
+                <Button onClick={closeRegistration} className="w-full">
                   I have saved these credentials
                 </Button>
               </div>
@@ -455,44 +517,58 @@ function NodesPage() {
                 <div className="flex items-center justify-between p-5 border-b border-border/50">
                   <div>
                     <h2 className="font-semibold text-foreground">Add Node</h2>
-                    <p className="text-sm text-muted-foreground/70 mt-0.5">Register a new VPN node</p>
+                    <p className="text-sm text-muted-foreground/70 mt-0.5">
+                      Register a new VPN node
+                    </p>
                   </div>
-                  <button onClick={() => setShowForm(false)} className="p-1 text-muted-foreground/70 hover:text-muted-foreground rounded-md">
+                  <button
+                    onClick={() => setShowForm(false)}
+                    className="p-1 text-muted-foreground/70 hover:text-muted-foreground rounded-md"
+                  >
                     <X className="h-5 w-5" />
                   </button>
                 </div>
                 <form
-                  onSubmit={e => { e.preventDefault(); createMutation.mutate(form) }}
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    createMutation.mutate(form)
+                  }}
                   className="p-5 space-y-4"
                 >
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-1.5">Hostname <span className="text-red-500">*</span></label>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">
+                      Hostname <span className="text-red-500">*</span>
+                    </label>
                     <input
                       type="text"
                       value={form.hostname}
-                      onChange={e => setForm({ ...form, hostname: e.target.value })}
+                      onChange={(e) => setForm({ ...form, hostname: e.target.value })}
                       placeholder="vpn-node-1"
                       required
                       className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-1.5">IP Address <span className="text-red-500">*</span></label>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">
+                      IP Address <span className="text-red-500">*</span>
+                    </label>
                     <input
                       type="text"
                       value={form.ipAddress}
-                      onChange={e => setForm({ ...form, ipAddress: e.target.value })}
+                      onChange={(e) => setForm({ ...form, ipAddress: e.target.value })}
                       placeholder="203.0.113.1"
                       required
                       className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-1.5">Region</label>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">
+                      Region
+                    </label>
                     <input
                       type="text"
                       value={form.region}
-                      onChange={e => setForm({ ...form, region: e.target.value })}
+                      onChange={(e) => setForm({ ...form, region: e.target.value })}
                       placeholder="Singapore"
                       className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     />
@@ -530,31 +606,41 @@ function NodesPage() {
                 <h2 className="font-semibold text-foreground">Edit Node</h2>
                 <p className="text-sm text-muted-foreground/70 mt-0.5">Update node information</p>
               </div>
-              <button onClick={() => setEditNode(null)} className="p-1 text-muted-foreground/70 hover:text-muted-foreground rounded-md">
+              <button
+                onClick={() => setEditNode(null)}
+                className="p-1 text-muted-foreground/70 hover:text-muted-foreground rounded-md"
+              >
                 <X className="h-5 w-5" />
               </button>
             </div>
             <form
-              onSubmit={e => { e.preventDefault(); handleUpdateNode() }}
+              onSubmit={(e) => {
+                e.preventDefault()
+                handleUpdateNode()
+              }}
               className="p-5 space-y-4"
             >
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1.5">Hostname <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-foreground mb-1.5">
+                  Hostname <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="text"
                   value={editForm.hostname}
-                  onChange={e => setEditForm({ ...editForm, hostname: e.target.value })}
+                  onChange={(e) => setEditForm({ ...editForm, hostname: e.target.value })}
                   placeholder="vpn-node-1"
                   required
                   className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1.5">IP Address <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-foreground mb-1.5">
+                  IP Address <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="text"
                   value={editForm.ipAddress}
-                  onChange={e => setEditForm({ ...editForm, ipAddress: e.target.value })}
+                  onChange={(e) => setEditForm({ ...editForm, ipAddress: e.target.value })}
                   placeholder="203.0.113.1"
                   required
                   className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
@@ -565,7 +651,7 @@ function NodesPage() {
                 <input
                   type="text"
                   value={editForm.region}
-                  onChange={e => setEditForm({ ...editForm, region: e.target.value })}
+                  onChange={(e) => setEditForm({ ...editForm, region: e.target.value })}
                   placeholder="Singapore"
                   className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
@@ -574,12 +660,17 @@ function NodesPage() {
                 <input
                   type="checkbox"
                   checked={Boolean(editForm.managedDnsEnabled)}
-                  onChange={e => setEditForm({ ...editForm, managedDnsEnabled: e.target.checked })}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, managedDnsEnabled: e.target.checked })
+                  }
                   className="mt-0.5"
                 />
                 <span>
                   <span className="block text-sm font-medium">Enable Managed DNS</span>
-                  <span className="block text-xs text-muted-foreground mt-0.5">Allows this node to receive CoreDNS sync tasks. Automatically enabled when the Agent reports healthy CoreDNS, or uncheck to disable manually for this node.</span>
+                  <span className="block text-xs text-muted-foreground mt-0.5">
+                    Allows this node to receive CoreDNS sync tasks. Automatically enabled when the
+                    Agent reports healthy CoreDNS, or uncheck to disable manually for this node.
+                  </span>
                 </span>
               </label>
               <div className="flex gap-3 pt-2">
@@ -611,97 +702,156 @@ function NodesPage() {
             <div className="flex items-center justify-between p-5 border-b border-border/50">
               <div>
                 <h2 className="font-semibold text-foreground">Node Configuration</h2>
-                <p className="text-sm text-muted-foreground/70 mt-0.5">Update VPN server settings</p>
+                <p className="text-sm text-muted-foreground/70 mt-0.5">
+                  Update VPN server settings
+                </p>
               </div>
-              <button onClick={() => setConfigNode(null)} className="p-1 text-muted-foreground/70 hover:text-muted-foreground rounded-md">
+              <button
+                onClick={() => setConfigNode(null)}
+                className="p-1 text-muted-foreground/70 hover:text-muted-foreground rounded-md"
+              >
                 <X className="h-5 w-5" />
               </button>
             </div>
             <form
-              onSubmit={e => {
+              onSubmit={(e) => {
                 e.preventDefault()
                 updateConfigMutation.mutate({ nodeId: configNode.id, config: nodeConfig })
               }}
               className="p-5 space-y-4 max-h-[70vh] overflow-y-auto"
             >
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-1.5">Port</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1.5">Port</label>
                   <input
                     type="number"
                     value={nodeConfig.port}
-                    onChange={e => setNodeConfig({ ...nodeConfig, port: parseInt(e.target.value) })}
+                    onChange={(e) =>
+                      setNodeConfig({ ...nodeConfig, port: parseInt(e.target.value) })
+                    }
                     className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
-                  </div>
-                  {configNode.vpn_type === 'openvpn' ? (
-                    <div>
-                      <label className="block text-sm font-medium text-foreground mb-1.5">Protocol</label>
-                      <select
-                        value={nodeConfig.protocol}
-                        onChange={e => setNodeConfig({ ...nodeConfig, protocol: e.target.value as 'udp' | 'tcp' })}
-                        className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      >
-                        <option value="udp">UDP</option>
-                        <option value="tcp">TCP</option>
-                      </select>
-                    </div>
-                  ) : (
-                    <div>
-                      <label className="block text-sm font-medium text-foreground mb-1.5">Protocol</label>
-                      <div className="px-3 py-2 border border-border rounded-lg text-sm bg-muted text-muted-foreground">UDP (required by WireGuard)</div>
-                    </div>
-                  )}
                 </div>
-
-                {configNode.vpn_type === 'openvpn' && (
+                {configNode.vpn_type === 'openvpn' ? (
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-1.5">Tunnel Mode</label>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">
+                      Protocol
+                    </label>
                     <select
-                      value={nodeConfig.tunnel_mode}
-                      onChange={e => setNodeConfig({ ...nodeConfig, tunnel_mode: e.target.value as 'full' | 'split' })}
+                      value={nodeConfig.protocol}
+                      onChange={(e) =>
+                        setNodeConfig({ ...nodeConfig, protocol: e.target.value as 'udp' | 'tcp' })
+                      }
                       className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     >
-                      <option value="full">Full Tunnel (All traffic through VPN)</option>
-                      <option value="split">Split Tunnel (Only specific routes)</option>
+                      <option value="udp">UDP</option>
+                      <option value="tcp">TCP</option>
                     </select>
                   </div>
-                )}
-
-                {configNode.vpn_type === 'wireguard' && (
-                  <>
-                    <div>
-                      <label className="block text-sm font-medium text-foreground mb-1.5">Routing Mode</label>
-                      <select
-                        value={nodeConfig.tunnel_mode}
-                        onChange={e => setNodeConfig({ ...nodeConfig, tunnel_mode: e.target.value as 'full' | 'split' })}
-                        className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      >
-                        <option value="full">Full Tunnel (all traffic through VPN)</option>
-                        <option value="split">Split Tunnel (selected destinations only)</option>
-                      </select>
+                ) : (
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">
+                      Protocol
+                    </label>
+                    <div className="px-3 py-2 border border-border rounded-lg text-sm bg-muted text-muted-foreground">
+                      UDP (required by WireGuard)
                     </div>
-                    {nodeConfig.tunnel_mode === 'split' && (
-                      <div>
-                        <label className="block text-sm font-medium text-foreground mb-1.5">WireGuard Allowed IPs</label>
-                        <input
-                          type="text"
-                          value={nodeConfig.wireguard_allowed_ips ?? ''}
-                          onChange={e => setNodeConfig({ ...nodeConfig, wireguard_allowed_ips: e.target.value })}
-                          placeholder="10.0.0.0/8,172.31.0.0/20"
-                          className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
-                        />
-                        <p className="text-xs text-muted-foreground/70 mt-1">Optional IPv4 CIDRs, comma-separated. They are combined with networks allowed through group assignments when WireGuard client profiles are generated.</p>
-                      </div>
-                    )}
-                  </>
+                  </div>
                 )}
+              </div>
+
+              {configNode.vpn_type === 'openvpn' && (
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1.5">
+                    Tunnel Mode
+                  </label>
+                  <select
+                    value={nodeConfig.tunnel_mode}
+                    onChange={(e) =>
+                      setNodeConfig({
+                        ...nodeConfig,
+                        tunnel_mode: e.target.value as 'full' | 'split',
+                      })
+                    }
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="full">Full Tunnel (All traffic through VPN)</option>
+                    <option value="split">Split Tunnel (Only specific routes)</option>
+                  </select>
+                </div>
+              )}
+
+              {configNode.vpn_type === 'wireguard' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">
+                      Routing Mode
+                    </label>
+                    <select
+                      value={nodeConfig.tunnel_mode}
+                      onChange={(e) =>
+                        setNodeConfig({
+                          ...nodeConfig,
+                          tunnel_mode: e.target.value as 'full' | 'split',
+                        })
+                      }
+                      className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    >
+                      <option value="full">Full Tunnel (all traffic through VPN)</option>
+                      <option value="split">Split Tunnel (selected destinations only)</option>
+                    </select>
+                  </div>
+                  {nodeConfig.tunnel_mode === 'split' && (
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-1.5">
+                        WireGuard Allowed IPs
+                      </label>
+                      <input
+                        type="text"
+                        value={nodeConfig.wireguard_allowed_ips ?? ''}
+                        onChange={(e) =>
+                          setNodeConfig({ ...nodeConfig, wireguard_allowed_ips: e.target.value })
+                        }
+                        placeholder="10.0.0.0/8,172.31.0.0/20"
+                        className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+                      />
+                      <p className="text-xs text-muted-foreground/70 mt-1">
+                        Optional IPv4 CIDRs, comma-separated. They are combined with networks
+                        allowed through group assignments when WireGuard client profiles are
+                        generated.
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+
+              <label className="flex items-start gap-3 rounded-lg border border-border p-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={nodeConfig.allow_client_to_client}
+                  onChange={(e) =>
+                    setNodeConfig({ ...nodeConfig, allow_client_to_client: e.target.checked })
+                  }
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="block text-sm font-medium">Allow client-to-client traffic</span>
+                  <span className="block text-xs text-muted-foreground mt-0.5">
+                    Disabled by default. VPN clients on this node cannot access one another, but can
+                    still reach permitted LAN and internet destinations.
+                  </span>
+                </span>
+              </label>
 
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1.5">Firewall Engine</label>
+                <label className="block text-sm font-medium text-foreground mb-1.5">
+                  Firewall Engine
+                </label>
                 <select
                   value={nodeConfig.firewall_engine}
-                  onChange={e => setNodeConfig({ ...nodeConfig, firewall_engine: e.target.value })}
+                  onChange={(e) =>
+                    setNodeConfig({ ...nodeConfig, firewall_engine: e.target.value })
+                  }
                   className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 >
                   <option value="iptables">iptables (Legacy/Standard)</option>
@@ -714,180 +864,250 @@ function NodesPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">VPN Network</label>
+                  <label className="block text-sm font-medium text-foreground mb-1.5">
+                    VPN Network
+                  </label>
                   <input
                     type="text"
                     value={nodeConfig.vpn_network}
-                    onChange={e => setNodeConfig({ ...nodeConfig, vpn_network: e.target.value })}
+                    onChange={(e) => setNodeConfig({ ...nodeConfig, vpn_network: e.target.value })}
                     placeholder="10.8.0.0"
                     className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">Netmask</label>
+                  <label className="block text-sm font-medium text-foreground mb-1.5">
+                    Netmask
+                  </label>
                   <input
                     type="text"
                     value={nodeConfig.vpn_netmask}
-                    onChange={e => setNodeConfig({ ...nodeConfig, vpn_netmask: e.target.value })}
+                    onChange={(e) => setNodeConfig({ ...nodeConfig, vpn_netmask: e.target.value })}
                     placeholder="255.255.255.0"
                     className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
                   />
                 </div>
               </div>
 
-              {configNode.vpn_type === 'openvpn' && <>
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1.5">DNS Servers</label>
-                <input
-                  type="text"
-                  value={nodeConfig.dns_servers}
-                  onChange={e => setNodeConfig({ ...nodeConfig, dns_servers: e.target.value })}
-                  placeholder="8.8.8.8,1.1.1.1"
-                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
-                />
-                <p className="text-xs text-muted-foreground/70 mt-1">Optional fallback DNS servers, comma-separated. Each generates <code className="bg-muted px-1 rounded">push "dhcp-option DNS ...</code>.</p>
-              </div>
-
-              {nodeConfig.managed_dns_directives && (
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-sm font-medium text-foreground">Managed DNS Directives</label>
-                    <span className="text-xs text-muted-foreground/70 bg-muted px-2 py-0.5 rounded">Applied per group</span>
+              {configNode.vpn_type === 'openvpn' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">
+                      DNS Servers
+                    </label>
+                    <input
+                      type="text"
+                      value={nodeConfig.dns_servers}
+                      onChange={(e) =>
+                        setNodeConfig({ ...nodeConfig, dns_servers: e.target.value })
+                      }
+                      placeholder="8.8.8.8,1.1.1.1"
+                      className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+                    />
+                    <p className="text-xs text-muted-foreground/70 mt-1">
+                      Optional fallback DNS servers, comma-separated. Each generates{' '}
+                      <code className="bg-muted px-1 rounded">push "dhcp-option DNS ...</code>.
+                    </p>
                   </div>
-                  <textarea
-                    value={nodeConfig.managed_dns_directives}
-                    readOnly
-                    rows={Math.max(2, nodeConfig.managed_dns_directives.split('\n').length)}
-                    className="w-full px-3 py-2 border border-border rounded-lg text-sm font-mono resize-y bg-muted text-muted-foreground"
-                  />
-                  <p className="text-xs text-muted-foreground/70 mt-1">Included automatically only in profiles for clients assigned to the matching group. Configure listeners from Managed DNS.</p>
-                </div>
-              )}
 
-              {nodeConfig.network_push_directives && (
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-sm font-medium text-foreground">Network Push Directives</label>
-                    <span className="text-xs text-muted-foreground/70 bg-muted px-2 py-0.5 rounded">Managed automatically</span>
-                  </div>
-                  <textarea
-                    value={nodeConfig.network_push_directives}
-                    readOnly
-                    rows={Math.max(2, nodeConfig.network_push_directives.split('\n').length)}
-                    className="w-full px-3 py-2 border border-border rounded-lg text-sm font-mono resize-y bg-muted text-muted-foreground"
-                  />
-                  <p className="text-xs text-muted-foreground/70 mt-1">Routes from networks assigned to this node. Change them from the Networks page.</p>
-                </div>
-              )}
+                  {nodeConfig.managed_dns_directives && (
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-sm font-medium text-foreground">
+                          Managed DNS Directives
+                        </label>
+                        <span className="text-xs text-muted-foreground/70 bg-muted px-2 py-0.5 rounded">
+                          Applied per group
+                        </span>
+                      </div>
+                      <textarea
+                        value={nodeConfig.managed_dns_directives}
+                        readOnly
+                        rows={Math.max(2, nodeConfig.managed_dns_directives.split('\n').length)}
+                        className="w-full px-3 py-2 border border-border rounded-lg text-sm font-mono resize-y bg-muted text-muted-foreground"
+                      />
+                      <p className="text-xs text-muted-foreground/70 mt-1">
+                        Included automatically only in profiles for clients assigned to the matching
+                        group. Configure listeners from Managed DNS.
+                      </p>
+                    </div>
+                  )}
 
-              {/* Custom Push Directives */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-sm font-medium text-foreground">Custom Push Directives</label>
-                  <span className="text-xs text-muted-foreground/70 bg-muted px-2 py-0.5 rounded">Optional</span>
-                </div>
-                <textarea
-                  value={nodeConfig.custom_push_directives}
-                  onChange={e => setNodeConfig({ ...nodeConfig, custom_push_directives: e.target.value })}
-                  rows={5}
-                  placeholder={`dhcp-option DNS 172.31.6.140\ndhcp-option DOMAIN corp.internal\ndhcp-option DOMAIN internal.example.com\nDNS 94.140.14.14\nroute 172.31.0.0 255.255.0.0`}
-                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono resize-y"
-                />
-                <div className="mt-1.5 space-y-0.5">
-                  <p className="text-xs text-muted-foreground/70">Optional override. One directive per line — prepended with <code className="bg-muted px-1 rounded">push "..."</code> automatically.</p>
-                  <p className="text-xs text-muted-foreground/70">These are appended <em>after</em> the DNS Servers above. Both fields can be used together.</p>
-                  <p className="text-xs text-amber-600 mt-1">Example:</p>
-                  <pre className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded px-2 py-1.5 font-mono">{`dhcp-option DNS 172.31.6.140
+                  {nodeConfig.network_push_directives && (
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-sm font-medium text-foreground">
+                          Network Push Directives
+                        </label>
+                        <span className="text-xs text-muted-foreground/70 bg-muted px-2 py-0.5 rounded">
+                          Managed automatically
+                        </span>
+                      </div>
+                      <textarea
+                        value={nodeConfig.network_push_directives}
+                        readOnly
+                        rows={Math.max(2, nodeConfig.network_push_directives.split('\n').length)}
+                        className="w-full px-3 py-2 border border-border rounded-lg text-sm font-mono resize-y bg-muted text-muted-foreground"
+                      />
+                      <p className="text-xs text-muted-foreground/70 mt-1">
+                        Routes from networks assigned to this node. Change them from the Networks
+                        page.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Custom Push Directives */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-sm font-medium text-foreground">
+                        Custom Push Directives
+                      </label>
+                      <span className="text-xs text-muted-foreground/70 bg-muted px-2 py-0.5 rounded">
+                        Optional
+                      </span>
+                    </div>
+                    <textarea
+                      value={nodeConfig.custom_push_directives}
+                      onChange={(e) =>
+                        setNodeConfig({ ...nodeConfig, custom_push_directives: e.target.value })
+                      }
+                      rows={5}
+                      placeholder={`dhcp-option DNS 172.31.6.140\ndhcp-option DOMAIN corp.internal\ndhcp-option DOMAIN internal.example.com\nDNS 94.140.14.14\nroute 172.31.0.0 255.255.0.0`}
+                      className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono resize-y"
+                    />
+                    <div className="mt-1.5 space-y-0.5">
+                      <p className="text-xs text-muted-foreground/70">
+                        Optional override. One directive per line — prepended with{' '}
+                        <code className="bg-muted px-1 rounded">push "..."</code> automatically.
+                      </p>
+                      <p className="text-xs text-muted-foreground/70">
+                        These are appended <em>after</em> the DNS Servers above. Both fields can be
+                        used together.
+                      </p>
+                      <p className="text-xs text-amber-600 mt-1">Example:</p>
+                      <pre className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded px-2 py-1.5 font-mono">{`dhcp-option DNS 172.31.6.140
 dhcp-option DOMAIN corp.internal
 route 172.31.0.0 255.255.0.0`}</pre>
-                </div>
-              </div>
+                    </div>
+                  </div>
 
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1.5">Push Routes</label>
-                <input
-                  type="text"
-                  value={nodeConfig.push_routes}
-                  onChange={e => setNodeConfig({ ...nodeConfig, push_routes: e.target.value })}
-                  placeholder="192.168.1.0/24,10.0.0.0/8"
-                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
-                />
-                <p className="text-xs text-muted-foreground/70 mt-1">Comma-separated routes (for split tunnel)</p>
-              </div>
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">
+                      Push Routes
+                    </label>
+                    <input
+                      type="text"
+                      value={nodeConfig.push_routes}
+                      onChange={(e) =>
+                        setNodeConfig({ ...nodeConfig, push_routes: e.target.value })
+                      }
+                      placeholder="192.168.1.0/24,10.0.0.0/8"
+                      className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+                    />
+                    <p className="text-xs text-muted-foreground/70 mt-1">
+                      Comma-separated routes (for split tunnel)
+                    </p>
+                  </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">Cipher</label>
-                  <select
-                    value={nodeConfig.cipher}
-                    onChange={e => setNodeConfig({ ...nodeConfig, cipher: e.target.value })}
-                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  >
-                    <option value="AES-256-GCM">AES-256-GCM</option>
-                    <option value="AES-128-GCM">AES-128-GCM</option>
-                    <option value="AES-256-CBC">AES-256-CBC</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">Auth Digest</label>
-                  <select
-                    value={nodeConfig.auth_digest}
-                    onChange={e => setNodeConfig({ ...nodeConfig, auth_digest: e.target.value })}
-                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  >
-                    <option value="SHA256">SHA256</option>
-                    <option value="SHA384">SHA384</option>
-                    <option value="SHA512">SHA512</option>
-                  </select>
-                </div>
-              </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-1.5">
+                        Cipher
+                      </label>
+                      <select
+                        value={nodeConfig.cipher}
+                        onChange={(e) => setNodeConfig({ ...nodeConfig, cipher: e.target.value })}
+                        className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      >
+                        <option value="AES-256-GCM">AES-256-GCM</option>
+                        <option value="AES-128-GCM">AES-128-GCM</option>
+                        <option value="AES-256-CBC">AES-256-CBC</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-1.5">
+                        Auth Digest
+                      </label>
+                      <select
+                        value={nodeConfig.auth_digest}
+                        onChange={(e) =>
+                          setNodeConfig({ ...nodeConfig, auth_digest: e.target.value })
+                        }
+                        className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      >
+                        <option value="SHA256">SHA256</option>
+                        <option value="SHA384">SHA384</option>
+                        <option value="SHA512">SHA512</option>
+                      </select>
+                    </div>
+                  </div>
 
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1.5">Compression</label>
-                <select
-                  value={nodeConfig.compression}
-                  onChange={e => setNodeConfig({ ...nodeConfig, compression: e.target.value })}
-                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                >
-                  <option value="lz4-v2">LZ4-v2 (Recommended)</option>
-                  <option value="lz4">LZ4</option>
-                  <option value="lzo">LZO</option>
-                  <option value="none">None</option>
-                </select>
-              </div>
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">
+                      Compression
+                    </label>
+                    <select
+                      value={nodeConfig.compression}
+                      onChange={(e) =>
+                        setNodeConfig({ ...nodeConfig, compression: e.target.value })
+                      }
+                      className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    >
+                      <option value="lz4-v2">LZ4-v2 (Recommended)</option>
+                      <option value="lz4">LZ4</option>
+                      <option value="lzo">LZO</option>
+                      <option value="none">None</option>
+                    </select>
+                  </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">Keepalive Ping</label>
-                  <input
-                    type="number"
-                    value={nodeConfig.keepalive_ping}
-                    onChange={e => setNodeConfig({ ...nodeConfig, keepalive_ping: parseInt(e.target.value) })}
-                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                  <p className="text-xs text-muted-foreground/70 mt-1">seconds</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">Keepalive Timeout</label>
-                  <input
-                    type="number"
-                    value={nodeConfig.keepalive_timeout}
-                    onChange={e => setNodeConfig({ ...nodeConfig, keepalive_timeout: parseInt(e.target.value) })}
-                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                  <p className="text-xs text-muted-foreground/70 mt-1">seconds</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">Max Clients</label>
-                  <input
-                    type="number"
-                    value={nodeConfig.max_clients}
-                    onChange={e => setNodeConfig({ ...nodeConfig, max_clients: parseInt(e.target.value) })}
-                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-              </div>
-              </>}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-1.5">
+                        Keepalive Ping
+                      </label>
+                      <input
+                        type="number"
+                        value={nodeConfig.keepalive_ping}
+                        onChange={(e) =>
+                          setNodeConfig({ ...nodeConfig, keepalive_ping: parseInt(e.target.value) })
+                        }
+                        className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                      <p className="text-xs text-muted-foreground/70 mt-1">seconds</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-1.5">
+                        Keepalive Timeout
+                      </label>
+                      <input
+                        type="number"
+                        value={nodeConfig.keepalive_timeout}
+                        onChange={(e) =>
+                          setNodeConfig({
+                            ...nodeConfig,
+                            keepalive_timeout: parseInt(e.target.value),
+                          })
+                        }
+                        className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                      <p className="text-xs text-muted-foreground/70 mt-1">seconds</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-1.5">
+                        Max Clients
+                      </label>
+                      <input
+                        type="number"
+                        value={nodeConfig.max_clients}
+                        onChange={(e) =>
+                          setNodeConfig({ ...nodeConfig, max_clients: parseInt(e.target.value) })
+                        }
+                        className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
 
               <div className="flex gap-3 pt-4 border-t border-border/50">
                 <Button
@@ -922,24 +1142,26 @@ route 172.31.0.0 255.255.0.0`}</pre>
                   Active Firewall Rules
                 </h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Raw iptables/nftables setup currently active on {viewFirewallNode.hostname} ({viewFirewallNode.ip_address})
+                  Raw iptables/nftables setup currently active on {viewFirewallNode.hostname} (
+                  {viewFirewallNode.ip_address})
                 </p>
               </div>
-              <button 
+              <button
                 onClick={() => setViewFirewallNode(null)}
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
-            
+
             <div className="p-5 bg-card overflow-y-auto flex-1">
               {!viewFirewallNode.firewall_rules_dump ? (
                 <div className="text-center py-12">
                   <Shield className="h-12 w-12 text-muted-foreground/20 mx-auto mb-4" />
                   <p className="text-foreground font-medium">No firewall data available yet</p>
                   <p className="text-sm text-muted-foreground/70 mt-1 max-w-sm mx-auto">
-                    The agent hasn't synchronized its firewall rules. Please wait up to 30 seconds for the next automatically scheduled heartbeat.
+                    The agent hasn't synchronized its firewall rules. Please wait up to 30 seconds
+                    for the next automatically scheduled heartbeat.
                   </p>
                 </div>
               ) : (
@@ -950,7 +1172,7 @@ route 172.31.0.0 255.255.0.0`}</pre>
                 </div>
               )}
             </div>
-            
+
             <div className="p-4 border-t border-border/50 bg-muted/30 flex justify-end">
               <Button variant="outline" onClick={() => setViewFirewallNode(null)}>
                 Close

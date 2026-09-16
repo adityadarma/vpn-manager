@@ -127,8 +127,11 @@ export interface ServerConfigParams {
   keepalive_timeout: number
   group_subnets?: string[]
   custom_push_directives?: string
+  firewall_engine?: string
   /** Managed DNS pushes resolvers per credential, never as a server-wide default. */
   managed_dns_enabled?: boolean
+  /** Whether clients on this VPN node may reach one another. */
+  allow_client_to_client: boolean
 }
 
 // ── Main driver interface ─────────────────────────────────────────────────────
@@ -157,7 +160,10 @@ export interface VpnDriver extends EventEmitter {
 
   // ── Session management ─────────────────────────────────────────────────────
   kickSession(commonName: string, options?: KickSessionOptions): Promise<KickSessionResult>
-  unkickSession(commonName: string, options?: UnkickSessionOptions): Promise<Record<string, unknown>>
+  unkickSession(
+    commonName: string,
+    options?: UnkickSessionOptions,
+  ): Promise<Record<string, unknown>>
 
   // ── Config management ──────────────────────────────────────────────────────
   /** Reload the VPN daemon / apply config changes. */
@@ -171,9 +177,16 @@ export interface VpnDriver extends EventEmitter {
 
   // ── Per-client config (CCD / WireGuard peer) ──────────────────────────────
   /** OpenVPN: write CCD ifconfig-push. WireGuard: inject peer with allowed-ips. */
-  writeClientConfig(username: string, vpnIp: string, options?: WriteClientConfigOptions): Promise<Record<string, unknown>>
+  writeClientConfig(
+    username: string,
+    vpnIp: string,
+    options?: WriteClientConfigOptions,
+  ): Promise<Record<string, unknown>>
   /** OpenVPN: delete CCD file. WireGuard: remove peer from interface. */
-  deleteClientConfig(username: string, options?: { publicKey?: string }): Promise<Record<string, unknown>>
+  deleteClientConfig(
+    username: string,
+    options?: { publicKey?: string },
+  ): Promise<Record<string, unknown>>
 
   // ── Low-level ──────────────────────────────────────────────────────────────
   disconnectClient(commonName: string): Promise<void>

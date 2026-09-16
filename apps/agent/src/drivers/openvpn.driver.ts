@@ -30,6 +30,7 @@ import type {
   ServerConfigParams,
 } from './vpn-driver.interface'
 import { resolveWithin } from '../core/net-validate'
+import { applyClientIsolation } from '../services/client-isolation'
 
 // All process execution goes through execFile/execFileSync with an explicit
 // argv array. No value is ever interpolated into a shell string, so shell
@@ -83,13 +84,13 @@ function _netmaskToPrefix(netmask: string): number {
 }
 function _prefixToNetmask(prefix: number): string {
   const mask = (0xffffffff << (32 - prefix)) >>> 0
-  return [24, 16, 8, 0].map(s => (mask >> s) & 0xff).join('.')
+  return [24, 16, 8, 0].map((s) => (mask >> s) & 0xff).join('.')
 }
 function _ipToInt(ip: string): number {
   return ip.split('.').reduce((acc, oct) => (acc << 8) | parseInt(oct, 10), 0) >>> 0
 }
 function _intToIp(n: number): string {
-  return [24, 16, 8, 0].map(s => (n >> s) & 0xff).join('.')
+  return [24, 16, 8, 0].map((s) => (n >> s) & 0xff).join('.')
 }
 function _parseCidr(cidr: string): { network: string; netmask: string } | null {
   if (cidr.includes('/')) {
@@ -105,20 +106,25 @@ function _parseCidr(cidr: string): { network: string; netmask: string } | null {
 function _networkAddress(ip: string, netmask: string): string {
   return _intToIp(_ipToInt(ip) & _ipToInt(netmask))
 }
-function _isSubnetContainedIn(subNet: string, subMask: string, poolNet: string, poolMask: string): boolean {
+function _isSubnetContainedIn(
+  subNet: string,
+  subMask: string,
+  poolNet: string,
+  poolMask: string,
+): boolean {
   const poolPrefix = _netmaskToPrefix(poolMask)
-  const subPrefix  = _netmaskToPrefix(subMask)
+  const subPrefix = _netmaskToPrefix(subMask)
   if (subPrefix < poolPrefix) return false
   return (_ipToInt(poolNet) & _ipToInt(poolMask)) === (_ipToInt(subNet) & _ipToInt(poolMask))
 }
 
 /**
  * OpenVPN Interface Driver
- * 
+ *
  * Communicates with OpenVPN via Unix socket
- * 
+ *
  * Unix Socket: /run/openvpn/server.sock
- * 
+ *
  * Protocol Reference:
  * - https://openvpn.net/community-resources/management-interface/
  */
@@ -187,40 +193,40 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
 
       socket.on('connect', () => {
         void (async () => {
-        console.log(`[openvpn-driver] Connected to management interface`)
+          console.log(`[openvpn-driver] Connected to management interface`)
 
-        // Set connected BEFORE sending commands
-        this.connected = true
+          // Set connected BEFORE sending commands
+          this.connected = true
 
-        // Reset reconnect attempts on successful connection
-        this.reconnectAttempts = 0
+          // Reset reconnect attempts on successful connection
+          this.reconnectAttempts = 0
 
-        // Enable realtime event notifications.
-        //
-        // `log on all` is deliberately NOT sent here. Verified against a real
-        // OpenVPN management socket: it replays the daemon's entire log
-        // history as a burst of bare lines with NO '>LOG:' prefix and no
-        // terminator, sent as part of the *same* command's response before
-        // 'SUCCESS:' - and that burst can still be arriving on the socket
-        // after this call resolves and the next command is sent. When that
-        // happens, the next command's response gets prefixed with leftover
-        // log lines, and `sendCommand` never sees its expected 'SUCCESS:' /
-        // 'END' cleanly, so callers like `getServerInfo()` / `getClients()`
-        // intermittently got empty results (5/5 failures reproduced with
-        // `log on all` enabled against a live server; 0/5 without it, using
-        // the exact same command sequence).
-        //
-        // No code here consumes '>LOG:' lines (see the no-op filter in
-        // processLine) or the 'log' event, so there is no feature loss.
-        try {
-          await this.sendCommand('state on')
-        } catch (err) {
-          console.warn('[openvpn-driver] Failed to enable events:', err)
-        }
+          // Enable realtime event notifications.
+          //
+          // `log on all` is deliberately NOT sent here. Verified against a real
+          // OpenVPN management socket: it replays the daemon's entire log
+          // history as a burst of bare lines with NO '>LOG:' prefix and no
+          // terminator, sent as part of the *same* command's response before
+          // 'SUCCESS:' - and that burst can still be arriving on the socket
+          // after this call resolves and the next command is sent. When that
+          // happens, the next command's response gets prefixed with leftover
+          // log lines, and `sendCommand` never sees its expected 'SUCCESS:' /
+          // 'END' cleanly, so callers like `getServerInfo()` / `getClients()`
+          // intermittently got empty results (5/5 failures reproduced with
+          // `log on all` enabled against a live server; 0/5 without it, using
+          // the exact same command sequence).
+          //
+          // No code here consumes '>LOG:' lines (see the no-op filter in
+          // processLine) or the 'log' event, so there is no feature loss.
+          try {
+            await this.sendCommand('state on')
+          } catch (err) {
+            console.warn('[openvpn-driver] Failed to enable events:', err)
+          }
 
-        if (this.socket !== socket || !this.connected) return
-        this.emit('connected')
-        finish()
+          if (this.socket !== socket || !this.connected) return
+          this.emit('connected')
+          finish()
         })()
       })
 
@@ -309,7 +315,7 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
     // 1. >CLIENT:CONNECT,{CID},{KID}
     // 2. >CLIENT:ENV,... (multiple lines)
     // 3. >CLIENT:ENV,END
-    
+
     if (line.startsWith('>CLIENT:CONNECT,')) {
       this.handleClientConnect(line)
       return
@@ -331,7 +337,7 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
       this.handleClientEnv(line)
       return
     }
-    
+
     // Skip LOG lines (too verbose)
     if (line.startsWith('>LOG:')) {
       return
@@ -346,11 +352,11 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
     // Process command responses
     if (this.commandQueue.length > 0) {
       const current = this.commandQueue[0]
-      
+
       // Check for command completion markers
       if (line === 'END' || line.startsWith('SUCCESS:') || line.startsWith('ERROR:')) {
         this.commandQueue.shift()
-        
+
         if (line.startsWith('ERROR:')) {
           current.reject(new Error(line.substring(6)))
         } else if (line === 'END') {
@@ -359,7 +365,7 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
         } else {
           current.resolve(line)
         }
-        
+
         this.isProcessing = false
         this.processNextCommand()
       } else {
@@ -396,7 +402,9 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
         // We iterate pendingEnv in insertion order and emit for the first complete set
         for (const [clientId, envVars] of this.pendingEnv.entries()) {
           const keyId = ''
-          console.log(`[openvpn-driver] Client connected: CID=${clientId}, IV_PLAT=${envVars['IV_PLAT'] ?? 'unknown'}, IV_GUI_VER=${envVars['IV_GUI_VER'] ?? '-'}`)
+          console.log(
+            `[openvpn-driver] Client connected: CID=${clientId}, IV_PLAT=${envVars['IV_PLAT'] ?? 'unknown'}, IV_GUI_VER=${envVars['IV_GUI_VER'] ?? '-'}`,
+          )
 
           // Cache client info for disconnect lookup
           const username = envVars['common_name'] ?? ''
@@ -459,13 +467,13 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
     try {
       // Format: >CLIENT:REAUTH,{CID},{KID}
       const parts = line.split(',')
-      
+
       if (parts.length >= 2) {
         const clientId = parts[1]
         const keyId = parts[2] || ''
-        
+
         console.log(`[openvpn-driver] Client reauthenticating: CID=${clientId}, KID=${keyId}`)
-        
+
         this.emit('client-reauth', {
           clientId,
           keyId,
@@ -485,7 +493,7 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
     this.isProcessing = true
     const current = this.commandQueue[0]
     const { command } = current
-    
+
     if (this.socket && this.connected) {
       current.timeout = setTimeout(() => {
         const index = this.commandQueue.indexOf(current)
@@ -558,7 +566,9 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
       30000,
     )
     this.reconnectAttempts++
-    console.log(`[openvpn-driver] Reconnecting in ${Math.round(backoffDelay / 1000)}s (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`)
+    console.log(
+      `[openvpn-driver] Reconnecting in ${Math.round(backoffDelay / 1000)}s (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`,
+    )
 
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null
@@ -600,7 +610,7 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
     for (const line of lines) {
       if (line.startsWith('CLIENT_LIST')) {
         const parts = line.split('\t')
-        
+
         if (parts.length >= 8) {
           // CLIENT_LIST format:
           // 0: CLIENT_LIST
@@ -651,10 +661,7 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
   }
 
   async getStatus(): Promise<VpnStatus> {
-    const [serverInfo, clients] = await Promise.all([
-      this.getServerInfo(),
-      this.getClients(),
-    ])
+    const [serverInfo, clients] = await Promise.all([this.getServerInfo(), this.getClients()])
 
     return {
       state: this.connected ? 'connected' : 'disconnected',
@@ -700,11 +707,10 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
 
     // Previously a single shell string joined by '&&'. Split into two argv
     // invocations so `username` cannot terminate the command.
-    const { stdout } = await execFileAsync(
-      EASYRSA_BIN,
-      ['--batch', 'revoke', username],
-      { cwd: EASYRSA_DIR, shell: false },
-    )
+    const { stdout } = await execFileAsync(EASYRSA_BIN, ['--batch', 'revoke', username], {
+      cwd: EASYRSA_DIR,
+      shell: false,
+    })
     await execFileAsync(EASYRSA_BIN, ['gen-crl'], { cwd: EASYRSA_DIR, shell: false })
 
     // cp/chmod replaced with direct fs calls — no subprocess needed.
@@ -715,25 +721,32 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
     try {
       await this.sendCommand('signal SIGHUP')
       console.log(`[openvpn] Sent SIGHUP — reloading CRL`)
-      await new Promise(resolve => setTimeout(resolve, 3000))
+      await new Promise((resolve) => setTimeout(resolve, 3000))
     } catch (err) {
       console.error('[openvpn] Failed to send SIGHUP:', err)
     }
     try {
       await this.disconnectClient(username)
-    } catch { /* client may not be connected */ }
+    } catch {
+      /* client may not be connected */
+    }
 
     try {
       await this.deleteClientConfig(username)
-    } catch { /* ccd might not exist */ }
+    } catch {
+      /* ccd might not exist */
+    }
 
     console.log(`[openvpn] Certificate revoked for: ${username}`)
     return { username, stdout: stdout.trim() }
   }
 
-  async generateClientCert(username: string, options: ClientCertOptions = {}): Promise<ClientCertResult> {
+  async generateClientCert(
+    username: string,
+    options: ClientCertOptions = {},
+  ): Promise<ClientCertResult> {
     const { password, validDays } = options
-    const certValidDays = (validDays === null || validDays === 0) ? 36500 : (validDays ?? 3650)
+    const certValidDays = validDays === null || validDays === 0 ? 36500 : (validDays ?? 3650)
 
     const EASYRSA_DIR = '/etc/openvpn/easy-rsa'
     const EASYRSA_BIN = `${EASYRSA_DIR}/easyrsa`
@@ -743,9 +756,9 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
     // Guard before building paths: these are used for read, write and unlink,
     // so a traversing value would reach arbitrary privileged files.
     // resolveWithin also asserts the result stays inside the PKI directory.
-    const certPath = resolveWithin(`${EASYRSA_DIR}/pki/issued`,  `${username}.crt`, 'username')
-    const keyPath  = resolveWithin(`${EASYRSA_DIR}/pki/private`, `${username}.key`, 'username')
-    const reqPath  = resolveWithin(`${EASYRSA_DIR}/pki/reqs`,    `${username}.req`, 'username')
+    const certPath = resolveWithin(`${EASYRSA_DIR}/pki/issued`, `${username}.crt`, 'username')
+    const keyPath = resolveWithin(`${EASYRSA_DIR}/pki/private`, `${username}.key`, 'username')
+    const reqPath = resolveWithin(`${EASYRSA_DIR}/pki/reqs`, `${username}.req`, 'username')
 
     // Clean up pre-existing cert files
     if (existsSync(certPath) || existsSync(keyPath) || existsSync(reqPath)) {
@@ -755,7 +768,9 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
           const batchEnv = { ...process.env, EASYRSA_BATCH: '1' }
           runFile(EASYRSA_BIN, ['revoke', username], { cwd: EASYRSA_DIR, env: batchEnv })
           runFile(EASYRSA_BIN, ['gen-crl'], { cwd: EASYRSA_DIR, env: batchEnv })
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
       const indexPath = `${EASYRSA_DIR}/pki/index.txt`
       if (existsSync(indexPath)) {
@@ -769,14 +784,24 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
             .split('\n')
             .filter((line) => !line.endsWith(`/CN=${username}`))
           writeFileSync(indexPath, kept.join('\n'), 'utf-8')
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
       for (const target of [certPath, keyPath, reqPath]) {
-        try { if (existsSync(target)) unlinkSync(target) } catch { /* ignore */ }
+        try {
+          if (existsSync(target)) unlinkSync(target)
+        } catch {
+          /* ignore */
+        }
       }
     }
 
-    const env = { ...process.env, EASYRSA_BATCH: '1', EASYRSA_CERT_EXPIRE: certValidDays.toString() }
+    const env = {
+      ...process.env,
+      EASYRSA_BATCH: '1',
+      EASYRSA_CERT_EXPIRE: certValidDays.toString(),
+    }
     if (password) {
       // `password` reaches EasyRSA only as an env var value, never as argv or a
       // shell word, so metacharacters in it cannot break out.
@@ -792,7 +817,7 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
     }
 
     const clientCert = readFileSync(certPath, 'utf-8')
-    const clientKey  = readFileSync(keyPath, 'utf-8')
+    const clientKey = readFileSync(keyPath, 'utf-8')
     let expiresAt: string | null = null
     if (certValidDays !== 36500) {
       const endDate = execFileSync('openssl', ['x509', '-noout', '-enddate', '-in', certPath], {
@@ -811,24 +836,38 @@ export class OpenVpnDriver extends EventEmitter implements VpnDriver {
 
   async generateClientConfig(username: string, options: ClientConfigOptions): Promise<string> {
     const {
-      serverIp, serverPort = 1194, protocol = 'udp',
-      cipher = 'AES-256-GCM', authDigest = 'SHA256',
+      serverIp,
+      serverPort = 1194,
+      protocol = 'udp',
+      cipher = 'AES-256-GCM',
+      authDigest = 'SHA256',
     } = options
 
     if (!serverIp) throw new Error('Missing serverIp')
 
     const EASY_RSA_PKI = '/etc/openvpn/easy-rsa/pki'
-    const OPENVPN_CA   = `${EASY_RSA_PKI}/ca.crt`
+    const OPENVPN_CA = `${EASY_RSA_PKI}/ca.crt`
 
     let tlsKey = ''
     for (const p of ['/etc/openvpn/server/tls-crypt.key', '/etc/openvpn/server/ta.key']) {
-      try { tlsKey = await readFile(p, 'utf-8'); break } catch { /* try next */ }
+      try {
+        tlsKey = await readFile(p, 'utf-8')
+        break
+      } catch {
+        /* try next */
+      }
     }
 
     const [ca, cert, key] = await Promise.all([
       readFile(OPENVPN_CA, 'utf-8'),
-      readFile(resolveWithin(path.join(EASY_RSA_PKI, 'issued'),  `${username}.crt`, 'username'), 'utf-8'),
-      readFile(resolveWithin(path.join(EASY_RSA_PKI, 'private'), `${username}.key`, 'username'), 'utf-8'),
+      readFile(
+        resolveWithin(path.join(EASY_RSA_PKI, 'issued'), `${username}.crt`, 'username'),
+        'utf-8',
+      ),
+      readFile(
+        resolveWithin(path.join(EASY_RSA_PKI, 'private'), `${username}.key`, 'username'),
+        'utf-8',
+      ),
     ])
 
     const protoClient = protocol === 'tcp' ? 'tcp-client' : protocol
@@ -872,14 +911,20 @@ ${tlsKey ? `\n<tls-crypt>\n${tlsKey.trim()}\n</tls-crypt>` : ''}`.trim()
 
   // ── Session management ──────────────────────────────────────────────────────
 
-  async kickSession(commonName: string, options: KickSessionOptions = {}): Promise<KickSessionResult> {
+  async kickSession(
+    commonName: string,
+    options: KickSessionOptions = {},
+  ): Promise<KickSessionResult> {
     const { permanent = false, blockDurationSeconds } = options
     const MGMT_SOCKET = this.socketPath
     const CCD_DIR = '/etc/openvpn/ccd'
 
     const result: KickSessionResult = {
-      kicked: false, common_name: commonName, permanent,
-      kill_method: null, kill_response: null,
+      kicked: false,
+      common_name: commonName,
+      permanent,
+      kill_method: null,
+      kill_response: null,
     }
 
     this.cancelPendingUnkick(commonName)
@@ -938,11 +983,10 @@ ${tlsKey ? `\n<tls-crypt>\n${tlsKey.trim()}\n</tls-crypt>` : ''}`.trim()
     // character escaped into the shell. Now the command is written straight to
     // socat's stdin and the argv is fixed. `printf` is no longer involved.
     try {
-      const output = runFile(
-        'socat',
-        ['-', `UNIX-CONNECT:${MGMT_SOCKET}`],
-        { input: `kill ${assertMgmtSafe(commonName, 'common_name')}\r\n`, timeout: 5000 },
-      )
+      const output = runFile('socat', ['-', `UNIX-CONNECT:${MGMT_SOCKET}`], {
+        input: `kill ${assertMgmtSafe(commonName, 'common_name')}\r\n`,
+        timeout: 5000,
+      })
       result.kicked = true
       result.kill_method = 'socat'
       result.kill_response = output.trim()
@@ -953,7 +997,10 @@ ${tlsKey ? `\n<tls-crypt>\n${tlsKey.trim()}\n</tls-crypt>` : ''}`.trim()
     return result
   }
 
-  async unkickSession(commonName: string, _options: UnkickSessionOptions = {}): Promise<Record<string, unknown>> {
+  async unkickSession(
+    commonName: string,
+    _options: UnkickSessionOptions = {},
+  ): Promise<Record<string, unknown>> {
     const CCD_DIR = '/etc/openvpn/ccd'
     this.cancelPendingUnkick(commonName)
     const ccdFile = resolveWithin(CCD_DIR, commonName, 'common_name')
@@ -967,7 +1014,12 @@ ${tlsKey ? `\n<tls-crypt>\n${tlsKey.trim()}\n</tls-crypt>` : ''}`.trim()
       unlinkSync(ccdFile)
       return { unkicked: true, common_name: commonName, ccd_file_removed: true }
     } else if (content.includes('disable')) {
-      const cleaned = content.split('\n').filter(l => l.trim() !== 'disable').join('\n').trimEnd() + '\n'
+      const cleaned =
+        content
+          .split('\n')
+          .filter((l) => l.trim() !== 'disable')
+          .join('\n')
+          .trimEnd() + '\n'
       writeFileSync(ccdFile, cleaned, 'utf-8')
       return { unkicked: true, common_name: commonName, ccd_file_updated: true }
     }
@@ -983,19 +1035,21 @@ ${tlsKey ? `\n<tls-crypt>\n${tlsKey.trim()}\n</tls-crypt>` : ''}`.trim()
 
   async syncCertificates(): Promise<Record<string, unknown>> {
     const MANAGER_URL = process.env.AGENT_MANAGER_URL
-    const NODE_TOKEN  = process.env.AGENT_SECRET_TOKEN
-    if (!MANAGER_URL || !NODE_TOKEN) throw new Error('AGENT_MANAGER_URL and AGENT_SECRET_TOKEN must be set')
+    const NODE_TOKEN = process.env.AGENT_SECRET_TOKEN
+    if (!MANAGER_URL || !NODE_TOKEN)
+      throw new Error('AGENT_MANAGER_URL and AGENT_SECRET_TOKEN must be set')
 
-    const CA_CERT_PATH    = '/etc/openvpn/server/ca.crt'
-    const TLS_CRYPT_PATH  = '/etc/openvpn/server/tls-crypt.key'
-    const TLS_AUTH_PATH   = '/etc/openvpn/server/ta.key'
+    const CA_CERT_PATH = '/etc/openvpn/server/ca.crt'
+    const TLS_CRYPT_PATH = '/etc/openvpn/server/tls-crypt.key'
+    const TLS_AUTH_PATH = '/etc/openvpn/server/ta.key'
 
     if (!existsSync(CA_CERT_PATH)) throw new Error(`CA certificate not found at ${CA_CERT_PATH}`)
 
     let tlsKeyPath = TLS_CRYPT_PATH
     if (!existsSync(TLS_CRYPT_PATH)) {
-      if (existsSync(TLS_AUTH_PATH)) { tlsKeyPath = TLS_AUTH_PATH }
-      else throw new Error('No TLS key found (tls-crypt.key or ta.key)')
+      if (existsSync(TLS_AUTH_PATH)) {
+        tlsKeyPath = TLS_AUTH_PATH
+      } else throw new Error('No TLS key found (tls-crypt.key or ta.key)')
     }
 
     const caCert = readFileSync(CA_CERT_PATH, 'utf-8')
@@ -1008,11 +1062,13 @@ ${tlsKey ? `\n<tls-crypt>\n${tlsKey.trim()}\n</tls-crypt>` : ''}`.trim()
     })
     if (!response.ok) throw new Error(`Failed to upload certificates: HTTP ${response.status}`)
 
-    const result = await response.json() as { node_id: string }
+    const result = (await response.json()) as { node_id: string }
     console.log('[openvpn] ✓ Certificates synced to database')
     return {
-      success: true, message: 'Certificates synced to database',
-      ca_cert_size: caCert.length, ta_key_size: tlsKey.length,
+      success: true,
+      message: 'Certificates synced to database',
+      ca_cert_size: caCert.length,
+      ta_key_size: tlsKey.length,
       tls_method: tlsKeyPath.includes('tls-crypt') ? 'tls-crypt' : 'tls-auth',
       node_id: result.node_id,
     }
@@ -1020,8 +1076,9 @@ ${tlsKey ? `\n<tls-crypt>\n${tlsKey.trim()}\n</tls-crypt>` : ''}`.trim()
 
   async syncServerConfig(): Promise<Record<string, unknown>> {
     const MANAGER_URL = process.env.AGENT_MANAGER_URL
-    const NODE_TOKEN  = process.env.AGENT_SECRET_TOKEN
-    if (!MANAGER_URL || !NODE_TOKEN) throw new Error('AGENT_MANAGER_URL and AGENT_SECRET_TOKEN must be set')
+    const NODE_TOKEN = process.env.AGENT_SECRET_TOKEN
+    if (!MANAGER_URL || !NODE_TOKEN)
+      throw new Error('AGENT_MANAGER_URL and AGENT_SECRET_TOKEN must be set')
 
     const CONFIG_PATH = '/etc/openvpn/server/server.conf'
     if (!existsSync(CONFIG_PATH)) throw new Error(`Server config not found at ${CONFIG_PATH}`)
@@ -1033,35 +1090,46 @@ ${tlsKey ? `\n<tls-crypt>\n${tlsKey.trim()}\n</tls-crypt>` : ''}`.trim()
       headers: { Authorization: `Bearer ${NODE_TOKEN}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(config),
     })
-    if (!response.ok) throw new Error(`Failed to sync config: HTTP ${response.status} - ${await response.text()}`)
+    if (!response.ok)
+      throw new Error(`Failed to sync config: HTTP ${response.status} - ${await response.text()}`)
 
-    const result = await response.json() as { node_id: string }
+    const result = (await response.json()) as { node_id: string }
     console.log('[openvpn] ✓ Server config synced')
-    return { success: true, message: 'Server config synced to database', config, node_id: result.node_id }
+    return {
+      success: true,
+      message: 'Server config synced to database',
+      config,
+      node_id: result.node_id,
+    }
   }
 
   async updateServerConfig(params: ServerConfigParams): Promise<Record<string, unknown>> {
-    const CONFIG_PATH  = '/etc/openvpn/server/server.conf'
-    const BACKUP_PATH  = '/etc/openvpn/server/server.conf.backup'
-    const EASYRSA_DIR  = '/etc/openvpn/easy-rsa'
-    const CCD_DIR      = '/etc/openvpn/ccd'
-    const CRL_PATH     = '/etc/openvpn/server/crl.pem'
+    const CONFIG_PATH = '/etc/openvpn/server/server.conf'
+    const BACKUP_PATH = '/etc/openvpn/server/server.conf.backup'
+    const EASYRSA_DIR = '/etc/openvpn/easy-rsa'
+    const CCD_DIR = '/etc/openvpn/ccd'
+    const CRL_PATH = '/etc/openvpn/server/crl.pem'
 
     if (!existsSync(CONFIG_PATH)) throw new Error('VPN server config not found.')
 
-    const port             = params.port             || 1194
-    const protocol         = params.protocol         || 'udp'
-    const dnsServers       = params.dns_servers      || '8.8.8.8,1.1.1.1'
-    const tunnelMode       = params.tunnel_mode      || 'full'
-    const cipher           = params.cipher           || 'AES-256-GCM'
-    const keepalivePing    = params.keepalive_ping   || 10
+    const port = params.port || 1194
+    const protocol = params.protocol || 'udp'
+    const dnsServers = params.dns_servers || '8.8.8.8,1.1.1.1'
+    const tunnelMode = params.tunnel_mode || 'full'
+    const cipher = params.cipher || 'AES-256-GCM'
+    const keepalivePing = params.keepalive_ping || 10
     const keepaliveTimeout = params.keepalive_timeout || 120
     const enableCompression = params.compression === 'lz4-v2'
-    const customRoutes     = params.push_routes
-      ? params.push_routes.split(',').map(r => r.trim()).filter(Boolean)
+    const customRoutes = params.push_routes
+      ? params.push_routes
+          .split(',')
+          .map((r) => r.trim())
+          .filter(Boolean)
       : []
-    const customPushLines  = (params.custom_push_directives ?? '')
-      .split('\n').map(l => l.trim()).filter(Boolean)
+    const customPushLines = (params.custom_push_directives ?? '')
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
 
     // Detect cipher directive name (data-ciphers vs ncp-ciphers for OpenVPN < 2.5)
     let cipherDirective = 'data-ciphers'
@@ -1077,12 +1145,17 @@ ${tlsKey ? `\n<tls-crypt>\n${tlsKey.trim()}\n</tls-crypt>` : ''}`.trim()
         versionOut = (err as { stdout?: string }).stdout ?? ''
       }
       const match = versionOut.match(/OpenVPN\s+(\d+)\.(\d+)/)
-      if (match && (parseInt(match[1]) < 2 || (parseInt(match[1]) === 2 && parseInt(match[2]) < 5))) {
+      if (
+        match &&
+        (parseInt(match[1]) < 2 || (parseInt(match[1]) === 2 && parseInt(match[2]) < 5))
+      ) {
         cipherDirective = 'ncp-ciphers'
       }
-    } catch { /* default to data-ciphers */ }
+    } catch {
+      /* default to data-ciphers */
+    }
 
-    const serverNet  = _networkAddress(params.vpn_network, params.vpn_netmask)
+    const serverNet = _networkAddress(params.vpn_network, params.vpn_netmask)
     const serverMask = params.vpn_netmask
 
     // CCD cleanup on network change
@@ -1097,30 +1170,39 @@ ${tlsKey ? `\n<tls-crypt>\n${tlsKey.trim()}\n</tls-crypt>` : ''}`.trim()
           // one less subprocess, and no dependency on `find` being installed.
           for (const entry of readdirSync(CCD_DIR, { withFileTypes: true })) {
             if (entry.isFile() && entry.name !== '.current_network') {
-              try { unlinkSync(path.join(CCD_DIR, entry.name)) } catch { /* ignore */ }
+              try {
+                unlinkSync(path.join(CCD_DIR, entry.name))
+              } catch {
+                /* ignore */
+              }
             }
           }
         }
         writeFileSync(NETWORK_MARKER, currentNet)
-      } catch { /* non-fatal */ }
+      } catch {
+        /* non-fatal */
+      }
     }
 
     // Compute group subnet routes
     const extraRoutes: Array<{ network: string; netmask: string; cidr: string }> = []
-    for (const cidr of (params.group_subnets ?? [])) {
+    for (const cidr of params.group_subnets ?? []) {
       const parsed = _parseCidr(cidr)
       if (!parsed) continue
-      const gNet  = _networkAddress(parsed.network, parsed.netmask)
+      const gNet = _networkAddress(parsed.network, parsed.netmask)
       const gMask = parsed.netmask
       if (_isSubnetContainedIn(gNet, gMask, serverNet, serverMask)) continue
-      if (!extraRoutes.some(r => r.network === gNet && r.netmask === gMask)) {
+      if (!extraRoutes.some((r) => r.network === gNet && r.netmask === gMask)) {
         extraRoutes.push({ network: gNet, netmask: gMask, cidr })
       }
     }
 
     const dnsArray = params.managed_dns_enabled
       ? []
-      : dnsServers.split(',').map((d: string) => d.trim()).filter(Boolean)
+      : dnsServers
+          .split(',')
+          .map((d: string) => d.trim())
+          .filter(Boolean)
 
     let newConfig = `# VPN Server Configuration — generated by VPN Manager ${new Date().toISOString()}
 
@@ -1140,7 +1222,9 @@ topology subnet
 `
     if (extraRoutes.length) {
       newConfig += `# Routes for group subnets outside the server pool\n`
-      extraRoutes.forEach(r => { newConfig += `route ${r.network} ${r.netmask}\n` })
+      extraRoutes.forEach((r) => {
+        newConfig += `route ${r.network} ${r.netmask}\n`
+      })
       newConfig += '\n'
     }
 
@@ -1152,14 +1236,18 @@ topology subnet
 
     if (customPushLines.length) {
       newConfig += '\n# Custom Push Directives\n'
-      customPushLines.forEach(l => { newConfig += l.startsWith('push ') ? `${l}\n` : `push "${l}"\n` })
+      customPushLines.forEach((l) => {
+        newConfig += l.startsWith('push ') ? `${l}\n` : `push "${l}"\n`
+      })
     }
 
     newConfig += `\n# Tunnel Mode: ${tunnelMode}\n`
     if (tunnelMode === 'full') {
       newConfig += `push "redirect-gateway def1 bypass-dhcp"\n`
     } else {
-      customRoutes.forEach(r => { newConfig += `push "route ${r}"\n` })
+      customRoutes.forEach((r) => {
+        newConfig += `push "route ${r}"\n`
+      })
     }
 
     newConfig += `
@@ -1196,7 +1284,9 @@ crl-verify /etc/openvpn/server/crl.pem
         runFile('./easyrsa', ['--batch', 'gen-crl'], { cwd: EASYRSA_DIR })
         copyFileSync(`${EASYRSA_DIR}/pki/crl.pem`, CRL_PATH)
         chmodSync(CRL_PATH, 0o644)
-      } catch { /* non-fatal */ }
+      } catch {
+        /* non-fatal */
+      }
     }
 
     const currentConfig = readFileSync(CONFIG_PATH, 'utf-8')
@@ -1210,13 +1300,15 @@ crl-verify /etc/openvpn/server/crl.pem
       throw new Error('Failed to reload VPN. Config restored from backup.')
     }
 
-    await new Promise(resolve => setTimeout(resolve, 5000))
+    await applyClientIsolation('openvpn', params.firewall_engine, params.allow_client_to_client)
+
+    await new Promise((resolve) => setTimeout(resolve, 5000))
     return {
       success: true,
       message: 'Server configuration updated. OpenVPN is reloading.',
       configPath: CONFIG_PATH,
       backupPath: BACKUP_PATH,
-      groupRoutes: extraRoutes.map(r => `${r.network} ${r.netmask}`),
+      groupRoutes: extraRoutes.map((r) => `${r.network} ${r.netmask}`),
     }
   }
 
@@ -1236,20 +1328,35 @@ crl-verify /etc/openvpn/server/crl.pem
 
     const ccdPath = resolveWithin(CCD_DIR, username, 'username')
     const existing = existsSync(ccdPath)
-      ? readFileSync(ccdPath, 'utf-8').split('\n').map(l => l.trim()).filter(Boolean)
+      ? readFileSync(ccdPath, 'utf-8')
+          .split('\n')
+          .map((l) => l.trim())
+          .filter(Boolean)
       : []
-    const isDisabled = existing.some(l => l === 'disable')
+    const isDisabled = existing.some((l) => l === 'disable')
 
     const lines = [`ifconfig-push ${vpnIp} ${netmask}`]
     if (isDisabled) lines.push('disable')
-    extraLines.forEach(l => { if (l.trim()) lines.push(l.trim()) })
+    extraLines.forEach((l) => {
+      if (l.trim()) lines.push(l.trim())
+    })
 
     writeFileSync(ccdPath, lines.join('\n') + '\n', { encoding: 'utf-8', mode: 0o644 })
     console.log(`[openvpn] ✓ CCD written: ${ccdPath}`)
-    return { success: true, username, vpn_ip: vpnIp, netmask, ccd_path: ccdPath, is_disabled: isDisabled }
+    return {
+      success: true,
+      username,
+      vpn_ip: vpnIp,
+      netmask,
+      ccd_path: ccdPath,
+      is_disabled: isDisabled,
+    }
   }
 
-  async deleteClientConfig(username: string, _options?: { publicKey?: string }): Promise<Record<string, unknown>> {
+  async deleteClientConfig(
+    username: string,
+    _options?: { publicKey?: string },
+  ): Promise<Record<string, unknown>> {
     const ccdPath = resolveWithin('/etc/openvpn/ccd', username, 'username')
     if (existsSync(ccdPath)) {
       unlinkSync(ccdPath)
@@ -1265,10 +1372,15 @@ crl-verify /etc/openvpn/server/crl.pem
     return new Promise((resolve, reject) => {
       const socket = new net.Socket()
       let response = ''
-      const timeout = setTimeout(() => { socket.destroy(); reject(new Error('Raw socket kill timed out')) }, 8000)
+      const timeout = setTimeout(() => {
+        socket.destroy()
+        reject(new Error('Raw socket kill timed out'))
+      }, 8000)
 
       const safeName = assertMgmtSafe(commonName, 'common_name')
-      socket.connect(socketPath, () => { socket.write(`kill ${safeName}\n`) })
+      socket.connect(socketPath, () => {
+        socket.write(`kill ${safeName}\n`)
+      })
       socket.on('data', (chunk) => {
         response += chunk.toString()
         if (response.includes('SUCCESS:') || response.includes('ERROR:')) {
@@ -1279,8 +1391,14 @@ crl-verify /etc/openvpn/server/crl.pem
             : resolve(response.trim())
         }
       })
-      socket.on('error', (err) => { clearTimeout(timeout); reject(err) })
-      socket.on('close', () => { clearTimeout(timeout); if (!response.includes('ERROR:')) resolve(response.trim()) })
+      socket.on('error', (err) => {
+        clearTimeout(timeout)
+        reject(err)
+      })
+      socket.on('close', () => {
+        clearTimeout(timeout)
+        if (!response.includes('ERROR:')) resolve(response.trim())
+      })
     })
   }
 
@@ -1289,7 +1407,11 @@ crl-verify /etc/openvpn/server/crl.pem
       if (!existsSync(ccdDir)) mkdirSync(ccdDir, { recursive: true })
       const ccdFile = resolveWithin(ccdDir, commonName, 'common_name')
       let existing = ''
-      try { existing = readFileSync(ccdFile, 'utf-8') } catch { /* new file */ }
+      try {
+        existing = readFileSync(ccdFile, 'utf-8')
+      } catch {
+        /* new file */
+      }
       if (!existing.includes('disable')) {
         writeFileSync(ccdFile, existing ? `${existing.trimEnd()}\ndisable\n` : 'disable\n', 'utf-8')
       }
@@ -1306,9 +1428,19 @@ crl-verify /etc/openvpn/server/crl.pem
       if (content.trim() === 'disable') {
         unlinkSync(ccdFile)
       } else if (content.includes('disable')) {
-        writeFileSync(ccdFile, content.split('\n').filter(l => l.trim() !== 'disable').join('\n').trimEnd() + '\n', 'utf-8')
+        writeFileSync(
+          ccdFile,
+          content
+            .split('\n')
+            .filter((l) => l.trim() !== 'disable')
+            .join('\n')
+            .trimEnd() + '\n',
+          'utf-8',
+        )
       }
-    } catch { /* non-fatal */ }
+    } catch {
+      /* non-fatal */
+    }
   }
 
   private cancelPendingUnkick(commonName: string): void {
@@ -1319,10 +1451,20 @@ crl-verify /etc/openvpn/server/crl.pem
 
   private _parseServerConfig(content: string): Record<string, unknown> {
     const config: Record<string, unknown> = {
-      port: 1194, protocol: 'udp', cipher: 'AES-128-GCM', auth: 'SHA256',
-      vpnNetwork: '10.8.0.0', vpnNetmask: '255.255.255.0', dnsServers: '',
-      pushRoutes: '', customPushDirectives: '', compression: 'none',
-      keepalivePing: 10, keepaliveTimeout: 60, maxClients: 100, tunnelMode: 'split',
+      port: 1194,
+      protocol: 'udp',
+      cipher: 'AES-128-GCM',
+      auth: 'SHA256',
+      vpnNetwork: '10.8.0.0',
+      vpnNetmask: '255.255.255.0',
+      dnsServers: '',
+      pushRoutes: '',
+      customPushDirectives: '',
+      compression: 'none',
+      keepalivePing: 10,
+      keepaliveTimeout: 60,
+      maxClients: 100,
+      tunnelMode: 'split',
     }
     const customLines: string[] = []
     for (const line of content.split('\n')) {
@@ -1330,15 +1472,35 @@ crl-verify /etc/openvpn/server/crl.pem
       if (!t || t.startsWith('#')) continue
       const parts = t.split(/\s+/)
       switch (parts[0]) {
-        case 'port':      config.port = parseInt(parts[1], 10); break
-        case 'proto':     config.protocol = parts[1]; break
-        case 'cipher':    config.cipher = parts[1]; break
-        case 'auth':      config.auth = parts[1]; break
-        case 'server':    config.vpnNetwork = parts[1]; config.vpnNetmask = parts[2]; break
-        case 'keepalive': config.keepalivePing = parseInt(parts[1], 10); config.keepaliveTimeout = parseInt(parts[2], 10); break
-        case 'max-clients': config.maxClients = parseInt(parts[1], 10); break
-        case 'comp-lzo':  config.compression = parts[1] || 'lzo'; break
-        case 'compress':  config.compression = parts[1] || 'lz4-v2'; break
+        case 'port':
+          config.port = parseInt(parts[1], 10)
+          break
+        case 'proto':
+          config.protocol = parts[1]
+          break
+        case 'cipher':
+          config.cipher = parts[1]
+          break
+        case 'auth':
+          config.auth = parts[1]
+          break
+        case 'server':
+          config.vpnNetwork = parts[1]
+          config.vpnNetmask = parts[2]
+          break
+        case 'keepalive':
+          config.keepalivePing = parseInt(parts[1], 10)
+          config.keepaliveTimeout = parseInt(parts[2], 10)
+          break
+        case 'max-clients':
+          config.maxClients = parseInt(parts[1], 10)
+          break
+        case 'comp-lzo':
+          config.compression = parts[1] || 'lzo'
+          break
+        case 'compress':
+          config.compression = parts[1] || 'lz4-v2'
+          break
         case 'push': {
           const arg = parts.slice(1).join(' ').replace(/^"|"$/g, '')
           if (arg.startsWith('dhcp-option DNS ')) {

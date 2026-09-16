@@ -7,6 +7,12 @@ description: Manage nodes, OpenVPN certificates, WireGuard configurations, sessi
 
 A node represents a VPN server and its Agent. Confirm its hostname, IP address, port, VPN type, subnet, and status before use. An `online` status depends on an Agent heartbeat; it does not guarantee that the UDP port is reachable from the internet. Test client connectivity after firewall, DNS, or routing changes.
 
+### Client isolation
+
+**Allow client-to-client traffic** is disabled by default in Node Configuration. When disabled, clients connected to the same OpenVPN or WireGuard node cannot reach each other's VPN addresses. They can still reach permitted LAN and internet destinations. Enable it only when clients must communicate directly, such as a trusted site-to-site or peer collaboration network.
+
+Client isolation supports `iptables`, `nftables`, `ufw`, `firewalld`, and `auto`; the dashboard rejects isolation with `FIREWALL_ENGINE=none` because the host would have no enforcement point. On firewalld hosts, the Agent applies an isolated nftables table immediately and stores an equivalent firewalld Direct rule for restart persistence without globally reloading firewalld. In `auto` mode, the Agent selects active firewalld first, then nftables, then iptables. Existing nodes receive an Agent configuration task after migration so the new default is applied as soon as the node is online.
+
 ## OpenVPN
 
 The installer creates Easy-RSA PKI and an OpenVPN server using UDP `1194`, `tls-crypt`, ECDH (`dh none`), AES-GCM, SHA-256, and TLS 1.2 or later. The default configuration uses a full tunnel through `redirect-gateway`; test route changes because they can alter client internet traffic.
