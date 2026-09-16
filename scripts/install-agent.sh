@@ -324,6 +324,26 @@ if [ -d "$INSTALL_DIR" ] && { [ -f "$INSTALL_DIR/docker-compose.yml" ] || [ -f "
     ok "Agent is already installed"
 fi
 
+# Let interactive installs choose their deployment mode without requiring an
+# environment variable. Automated installs retain the native default so they do
+# not block waiting for terminal input.
+if [ -z "$AGENT_INSTALL_MODE_SET" ] && [ "$AGENT_INSTALLED" = false ] && [ "${UPDATE_ONLY:-false}" != "true" ]; then
+    if [ -n "${MANAGER_URL:-${AGENT_API_MANAGER_URL:-}}" ] || [ -n "${VPN_TOKEN:-}" ] || [ -n "${REG_KEY:-${NODE_REGISTRATION_KEY:-}}" ]; then
+        info "AGENT_INSTALL_MODE not set; using native mode for non-interactive installation"
+    else
+        echo ""
+        echo "Select Agent deployment mode:"
+        echo "1) Native (Default, systemd service)"
+        echo "2) Docker Compose"
+        read -p "Choice [1-2] (default 1): " agent_mode_choice </dev/tty
+        case "$agent_mode_choice" in
+            2) AGENT_INSTALL_MODE="docker" ;;
+            *) AGENT_INSTALL_MODE="native" ;;
+        esac
+        info "Agent deployment mode: ${AGENT_INSTALL_MODE}"
+    fi
+fi
+
 echo ""
 
 if [ -z "$VPN_TYPE" ]; then
