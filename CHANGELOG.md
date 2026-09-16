@@ -4,7 +4,17 @@ All notable changes to VPN Manager are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Prevented `update-node.sh` from prompting for VPN engine, tunnel, firewall, or Managed DNS settings; updates now preserve the existing Agent configuration.
+
 ## [2.3.2] - 2026-09-16
+
+### Changed
+
+- Published Manager and Agent Docker images as multi-architecture manifests for `linux/amd64` and `linux/arm64`.
 
 ### Fixed
 

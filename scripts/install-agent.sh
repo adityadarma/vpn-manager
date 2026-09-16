@@ -225,6 +225,27 @@ case "$AGENT_INSTALL_MODE" in
     *) error "AGENT_INSTALL_MODE must be native or docker (received: $AGENT_INSTALL_MODE)"; exit 1 ;;
 esac
 
+# update-node.sh invokes this installer with UPDATE_ONLY=true. Reuse the node's
+# saved settings before any interactive setup so an image-only update cannot
+# accidentally select a different VPN engine, firewall, or DNS profile.
+if [ "${UPDATE_ONLY:-false}" = "true" ]; then
+    [ -f "$INSTALL_DIR/.env" ] || { error "No Agent configuration at $INSTALL_DIR/.env"; exit 1; }
+    read_agent_env() {
+        grep -e "^$1=" "$INSTALL_DIR/.env" | tail -n1 | cut -d '=' -f2- | tr -d '"' | tr -d "'" || true
+    }
+    VPN_TYPE="${VPN_TYPE:-$(read_agent_env VPN_TYPE)}"
+    TUNNEL_MODE="${TUNNEL_MODE:-$(read_agent_env TUNNEL_MODE)}"
+    FIREWALL_ENGINE="${FIREWALL_ENGINE:-$(read_agent_env FIREWALL_ENGINE)}"
+    DNS_ENABLED="${DNS_ENABLED:-$(read_agent_env DNS_ENABLED)}"
+    DNS_BLOCK_DOT="${DNS_BLOCK_DOT:-$(read_agent_env DNS_BLOCK_DOT)}"
+    VPN_TYPE="${VPN_TYPE:-openvpn}"
+    TUNNEL_MODE="${TUNNEL_MODE:-full}"
+    FIREWALL_ENGINE="${FIREWALL_ENGINE:-auto}"
+    DNS_ENABLED="${DNS_ENABLED:-false}"
+    DNS_BLOCK_DOT="${DNS_BLOCK_DOT:-false}"
+    info "Update-only mode: preserving ${VPN_TYPE} and existing Agent settings"
+fi
+
 echo -e "${B}============================================================"
 echo "  VPN Manager - Node Installation/Update"
 echo "============================================================${NC}"
@@ -313,7 +334,9 @@ if [ "$ENV_TUNNEL_MODE" = "split" ]; then
 fi
 
 # Installation mode
-if [ "$ENV_VPN_TYPE" = "wireguard" ]; then
+if [ "${UPDATE_ONLY:-false}" = "true" ]; then
+    mode=2
+elif [ "$ENV_VPN_TYPE" = "wireguard" ]; then
     if [ "$WIREGUARD_INSTALLED" = true ]; then
         echo "WireGuard is already installed. What do you want to do?"
         echo "1) Update WireGuard configuration only"

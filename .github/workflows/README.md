@@ -6,8 +6,8 @@ Builds Docker images and native Agent release artifacts for VPN Manager.
 
 ### Images
 
-- `ghcr.io/adityadarma/vpn-manager:latest` - Manager (web + api)
-- `ghcr.io/adityadarma/vpn-agent:latest` - Agent
+- `ghcr.io/adityadarma/vpn-manager:latest` - Manager (web + api), multi-architecture (`linux/amd64`, `linux/arm64`)
+- `ghcr.io/adityadarma/vpn-agent:latest` - Agent, multi-architecture (`linux/amd64`, `linux/arm64`)
 - `vpn-agent-linux-amd64` and `vpn-agent-linux-arm64` - Bun-compiled native Agent binaries attached to GitHub Releases
 - `vpn-agent-linux-amd64.sha256` and `vpn-agent-linux-arm64.sha256` - release artifact checksums
 

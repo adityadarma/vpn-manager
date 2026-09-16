@@ -199,6 +199,11 @@ jobs:
       - name: Checkout release source
         uses: actions/checkout@v5
 
+      # Buildx uses QEMU to build the non-native arm64 variant on the hosted
+      # amd64 runner, then publishes one manifest list for each image tag.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -255,7 +260,7 @@ jobs:
           sbom: false
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           build-args: |
             VERSION=${{ steps.version-tags.outputs.version }}
             REVISION=${{ github.sha }}
