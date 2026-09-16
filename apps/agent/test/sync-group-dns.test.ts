@@ -62,7 +62,7 @@ describe('sync_group_dns handler', () => {
     const result = await handleSyncGroupDns(payload, {} as VpnDriver, env)
     expect(result).toMatchObject({ revision: 1, status: 'healthy', listeners: ['10.20.10.53:53'] })
     expect(await fs.readlink(path.join(root, 'active'))).toBe('revisions/1')
-    expect(await fs.readFile(path.join(root, 'Corefile'), 'utf8')).toContain('file /etc/coredns/active/groups/018f1d8b-4f90-7ce1-b9d7-018f1d8b4f90/zones/corp.internal.db corp.internal')
+    expect(await fs.readFile(path.join(root, 'Corefile'), 'utf8')).toContain('file /etc/coredns/active/groups/018f1d8b-4f90-7ce1-b9d7-018f1d8b4f90/zones/corp.internal.db corp.internal {\n        fallthrough\n    }')
     const corefile = await fs.readFile(path.join(root, 'Corefile'), 'utf8')
     // A listener must be `.:port` + `bind`, never `ip:port` (that is a zone name).
     expect(corefile).toContain('.:53 {')
@@ -73,13 +73,26 @@ describe('sync_group_dns handler', () => {
     // CoreDNS runs `template` before hosts/file/forward, so every generated
     // block must fall through or it answers all queries for the listener.
     const templateBlocks = corefile.split('\n').filter((line) => line.trim().startsWith('template IN ')).length
-    const fallthroughs = corefile.split('\n').filter((line) => line.trim() === 'fallthrough').length
+    const templateFallthroughs = [...corefile.matchAll(/template IN [^{]+\{[\s\S]*?\n        fallthrough\n    \}/g)].length
     expect(templateBlocks).toBeGreaterThan(0)
-    expect(fallthroughs).toBe(templateBlocks)
+    expect(templateFallthroughs).toBe(templateBlocks)
     expect(await fs.readFile(path.join(root, 'revisions/1/groups/018f1d8b-4f90-7ce1-b9d7-018f1d8b4f90/zones/corp.internal.db'), 'utf8')).toContain('git 60 IN A 10.20.10.15')
     // The listener address must be assigned before the config goes live, or
     // CoreDNS cannot bind it and exits.
     expect(ensureDnsListenerAddresses).toHaveBeenCalledWith(['10.20.10.53'])
+  })
+
+  it('forwards missing private-zone records to the configured upstreams', async () => {
+    const { root, env } = await fixture()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }))
+
+    await handleSyncGroupDns(payload, {} as VpnDriver, env)
+
+    const corefile = await fs.readFile(path.join(root, 'Corefile'), 'utf8')
+    // A private zone overrides public records that exist in its zone file, but
+    // must not make public-only sibling names return an authoritative NXDOMAIN.
+    expect(corefile).toContain('file /etc/coredns/active/groups/018f1d8b-4f90-7ce1-b9d7-018f1d8b4f90/zones/corp.internal.db corp.internal {\n        fallthrough\n    }')
+    expect(corefile).toContain('forward . 1.1.1.1')
   })
 
   it('restores the previous revision when CoreDNS health fails', async () => {

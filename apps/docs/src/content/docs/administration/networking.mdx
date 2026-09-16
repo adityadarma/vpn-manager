@@ -24,6 +24,12 @@ WireGuard uses `AllowedIPs` on each peer. This value both selects client routes 
 
 The installer enables IPv4 forwarding. For traffic to the detected LAN, bootstrap rules attempt to preserve the VPN client source IP so LAN servers can see the client address. Non-LAN traffic can be MASQUERADEd through the node's outbound interface. If the LAN has no return route to the VPN subnet, either add a return route to the LAN router or use NAT while understanding that the destination will no longer see the original client source.
 
+## Private DNS zones and public fallback
+
+A managed private zone takes precedence when it has a matching record. When a queried name is absent from that zone, the VPN DNS listener forwards the query to its configured public upstreams. This permits a public hostname such as `sub.example.com` to resolve while `adityadarma.dev` is also managed privately, unless a DNS block or sinkhole policy matches it.
+
+Use a private record only when it must override the public answer. DNS fallback controls name resolution only; enforce access to the resulting IP address with Manager firewall policies and the target network's firewall or Security Group.
+
 ## AWS VPC private access
 
 Use this design when the VPN node is **Server A** and clients in a dedicated VPN subnet, such as `10.8.1.0/24`, must access private EC2 instances **Server B-E**. The target instances should not expose their application ports to the public internet.

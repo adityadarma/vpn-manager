@@ -230,9 +230,11 @@ function zoneNameFromPattern(pattern: string): string {
  */
 function buildGroupBlocks(group: DnsGroup, includeHealth: boolean): string[] {
   const templates = policyTemplates(group)
-  const zoneFiles = group.zones.map(
-    (zone) => `    file /etc/coredns/active/groups/${group.id}/zones/${zone.name}.db ${zone.name}`,
-  )
+  const zoneFiles = group.zones.flatMap((zone) => [
+    `    file /etc/coredns/active/groups/${group.id}/zones/${zone.name}.db ${zone.name} {`,
+    '        fallthrough',
+    '    }',
+  ])
   const forwardLine =
     group.upstreams.length > 0 ? `    forward . ${group.upstreams.join(' ')}` : null
 
