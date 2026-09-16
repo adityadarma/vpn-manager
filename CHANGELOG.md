@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- Added an interactive Agent deployment-mode prompt so manual node installation can choose native systemd or Docker Compose without setting `AGENT_INSTALL_MODE`.
+
 ## [2.3.3] - 2026-09-16
 
 ### Fixed

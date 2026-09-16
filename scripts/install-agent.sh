@@ -288,7 +288,11 @@ fi
 echo -e "${B}============================================================"
 echo "  VPN Manager - Node Installation/Update"
 echo "============================================================${NC}"
-info "Installation channel: ${CHANNEL} (Agent mode: ${AGENT_INSTALL_MODE})"
+if [ -z "$AGENT_INSTALL_MODE_SET" ] && [ "${UPDATE_ONLY:-false}" != "true" ]; then
+    info "Installation channel: ${CHANNEL} (Agent mode: select below)"
+else
+    info "Installation channel: ${CHANNEL} (Agent mode: ${AGENT_INSTALL_MODE})"
+fi
 echo ""
 
 # Show environment variable support
@@ -324,13 +328,11 @@ if [ -d "$INSTALL_DIR" ] && { [ -f "$INSTALL_DIR/docker-compose.yml" ] || [ -f "
     ok "Agent is already installed"
 fi
 
-# Let interactive installs choose their deployment mode without requiring an
-# environment variable. Automated installs retain the native default so they do
-# not block waiting for terminal input.
+# Let every installer run with a controlling terminal choose its deployment mode,
+# including auto-registration runs that already supply VPN_TOKEN or REG_KEY.
+# Headless automation without a terminal retains the native default.
 if [ -z "$AGENT_INSTALL_MODE_SET" ] && [ "$AGENT_INSTALLED" = false ] && [ "${UPDATE_ONLY:-false}" != "true" ]; then
-    if [ -n "${MANAGER_URL:-${AGENT_API_MANAGER_URL:-}}" ] || [ -n "${VPN_TOKEN:-}" ] || [ -n "${REG_KEY:-${NODE_REGISTRATION_KEY:-}}" ]; then
-        info "AGENT_INSTALL_MODE not set; using native mode for non-interactive installation"
-    else
+    if [ -t 0 ] || { [ -r /dev/tty ] && [ -w /dev/tty ]; }; then
         echo ""
         echo "Select Agent deployment mode:"
         echo "1) Native (Default, systemd service)"
@@ -341,6 +343,8 @@ if [ -z "$AGENT_INSTALL_MODE_SET" ] && [ "$AGENT_INSTALLED" = false ] && [ "${UP
             *) AGENT_INSTALL_MODE="native" ;;
         esac
         info "Agent deployment mode: ${AGENT_INSTALL_MODE}"
+    else
+        info "AGENT_INSTALL_MODE not set; using native mode without an interactive terminal"
     fi
 fi
 
