@@ -63,7 +63,7 @@ await handleSyncGroupDns(
       listener_port: 53,
       public_default_action: 'allow',
       upstreams: ['1.1.1.1', '8.8.8.8'],
-      zones: [{ name: 'corp.internal', records: [{ name: 'git', type: 'A', value: '10.20.10.15', ttl: 60 }] }],
+      zones: [{ name: 'corp.internal', records: [{ name: 'git', type: 'A', value: '10.20.10.15', ttl: 60 }] }, { name: 'one.one.one.one', records: [] }],
       policies: [
         { domain_pattern: '*.youtube.com', action: 'block', scope: 'public', priority: 10, sinkhole_ipv4: null },
         { domain_pattern: 'blocked.example', action: 'block', scope: 'public', priority: 9, sinkhole_ipv4: null },
@@ -104,8 +104,13 @@ grep -q '^    bind 127\.0\.0\.1$' "$GENERATED_DIR/Corefile" \
   && echo "  ok   listener declares bind" \
   || { echo "  FAIL listener has no bind directive"; FAILURES=$((FAILURES + 1)); }
 TEMPLATES=$(grep -c '^    template IN ' "$GENERATED_DIR/Corefile" || true)
-FALLTHROUGHS=$(grep -c '^        fallthrough$' "$GENERATED_DIR/Corefile" || true)
-check "every template block falls through" "$TEMPLATES" "$FALLTHROUGHS"
+TEMPLATE_FALLTHROUGHS=$(awk '
+  /^    template IN / { in_template = 1 }
+  in_template && /^        fallthrough$/ { count += 1 }
+  in_template && /^    }$/ { in_template = 0 }
+  END { print count + 0 }
+' "$GENERATED_DIR/Corefile")
+check "every template block falls through" "$TEMPLATES" "$TEMPLATE_FALLTHROUGHS"
 
 # ── 2. Serve that config from the pinned CoreDNS image ───────────────────────
 echo "==> Starting $COREDNS_IMAGE"
@@ -156,6 +161,13 @@ UPSTREAM=$(get one.one.one.one A)
 case "$UPSTREAM" in
   NOERROR/1.*) echo "  ok   upstream forwarding works ($UPSTREAM)" ;;
   *) echo "  FAIL upstream forwarding — got '$UPSTREAM'"; FAILURES=$((FAILURES + 1)) ;;
+esac
+# The generated private zone owns one.one.one.one but has no records. Its
+# public apex answer proves the missing private record fell through instead of
+# returning an authoritative NXDOMAIN.
+case "$UPSTREAM" in
+  NOERROR/1.*) echo "  ok   missing private record falls through ($UPSTREAM)" ;;
+  *) echo "  FAIL missing private record did not fall through — got '$UPSTREAM'"; FAILURES=$((FAILURES + 1)) ;;
 esac
 
 docker rm -f "$SERVER" >/dev/null 2>&1 || true
