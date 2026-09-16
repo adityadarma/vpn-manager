@@ -41,7 +41,7 @@ export async function applyClientIsolation(
   firewallEngine: string | undefined,
   allowClientToClient: boolean,
 ): Promise<void> {
-  const resolvedEngine = await resolveFirewallEngine(firewallEngine)
+  const resolvedEngine = firewallEngine ?? 'iptables'
 
   if (resolvedEngine === 'none') {
     if (!allowClientToClient)
@@ -83,21 +83,6 @@ export async function applyClientIsolation(
   const rule = ['-i', iptablesInterface, '-o', iptablesInterface, '-j', 'DROP']
   await ignoreMissing('iptables', ['-D', 'FORWARD', ...rule])
   if (!allowClientToClient) await run('iptables', ['-I', 'FORWARD', '1', ...rule])
-}
-
-async function resolveFirewallEngine(engine: string | undefined): Promise<string> {
-  if (engine !== 'auto') return engine ?? 'iptables'
-  try {
-    await run('firewall-cmd', ['--state'])
-    return 'firewalld'
-  } catch {
-    try {
-      await run('nft', ['list', 'ruleset'])
-      return 'nftables'
-    } catch {
-      return 'iptables'
-    }
-  }
 }
 
 async function applyFirewalldPersistent(

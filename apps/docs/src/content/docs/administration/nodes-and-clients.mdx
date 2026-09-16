@@ -11,7 +11,7 @@ A node represents a VPN server and its Agent. Confirm its hostname, IP address, 
 
 **Allow client-to-client traffic** is disabled by default in Node Configuration. When disabled, clients connected to the same OpenVPN or WireGuard node cannot reach each other's VPN addresses. They can still reach permitted LAN and internet destinations. Enable it only when clients must communicate directly, such as a trusted site-to-site or peer collaboration network.
 
-Client isolation supports `iptables`, `nftables`, `ufw`, `firewalld`, and `auto`; the dashboard rejects isolation with `FIREWALL_ENGINE=none` because the host would have no enforcement point. On firewalld hosts, the Agent applies an isolated nftables table immediately and stores an equivalent firewalld Direct rule for restart persistence without globally reloading firewalld. In `auto` mode, the Agent selects active firewalld first, then nftables, then iptables. Existing nodes receive an Agent configuration task after migration so the new default is applied as soon as the node is online.
+Client isolation supports `iptables`, `nftables`, `ufw`, and `firewalld`; the dashboard rejects isolation with `FIREWALL_ENGINE=none` because the host would have no enforcement point. The installer detects and stores the active firewall as a concrete engine. On firewalld hosts, the Agent applies an isolated nftables table immediately and stores an equivalent firewalld Direct rule for restart persistence without globally reloading firewalld. Existing nodes receive an Agent configuration task after migration so the new default is applied as soon as the node is online.
 
 ## OpenVPN
 

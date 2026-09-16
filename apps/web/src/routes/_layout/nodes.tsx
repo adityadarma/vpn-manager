@@ -492,7 +492,7 @@ function NodesPage() {
                     <span className="text-emerald-600">AGENT_SECRET_TOKEN</span>=
                     {registeredNode.token}
                     {'\n'}
-                    <span className="text-emerald-600">FIREWALL_ENGINE</span>=auto
+                    <span className="text-emerald-600">FIREWALL_ENGINE</span>=iptables
                   </pre>
                   <button
                     onClick={copyCredentials}

@@ -12,7 +12,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Changed
 
-- Applied client isolation consistently across iptables, UFW, nftables, firewalld, and auto-detected firewall engines.
+- Applied client isolation consistently across iptables, UFW, nftables, and firewalld engines.
 
 ## [2.3.0] - 2026-09-14
 

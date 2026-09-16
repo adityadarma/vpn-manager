@@ -90,7 +90,6 @@ describe('Legacy node config compatibility', () => {
     ['cipher', 'BF-CBC'],
     ['cipher', 'AES-256-GCM:AES-128-GCM'],
     ['protocol', 'udp6'],
-    ['firewall_engine', 'auto'],
   ])('a node with legacy %s=%s stays editable', async (column, value) => {
     const nodeId = await makeNode({ [column]: value })
     const { config, put } = await roundTrip(nodeId)
@@ -133,24 +132,6 @@ describe('Legacy node config compatibility', () => {
     expect(sync.statusCode).toBe(200)
 
     const { put } = await roundTrip(nodeId)
-    expect(put.statusCode).toBe(200)
-  })
-
-  it('an agent heartbeat with firewall_engine=auto leaves the node editable', async () => {
-    const nodeId = await makeNode()
-    const token = (await app.db('vpn_nodes').where({ id: nodeId }).first()).token
-
-    // `auto` is the agent's default (apps/agent/src/config/env.ts).
-    const hb = await app.inject({
-      method: 'POST',
-      url: '/api/v1/nodes/heartbeat',
-      headers: { Authorization: `Bearer ${token}` },
-      payload: { nodeId, firewallEngine: 'auto' },
-    })
-    expect(hb.statusCode).toBe(200)
-
-    const { config, put } = await roundTrip(nodeId)
-    expect(config.firewall_engine).toBe('auto')
     expect(put.statusCode).toBe(200)
   })
 

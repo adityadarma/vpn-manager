@@ -112,20 +112,16 @@ export const KNOWN_PROTOCOLS = ['udp', 'tcp'] as const
 export const KNOWN_CIPHERS = ['AES-256-GCM', 'AES-128-GCM', 'AES-256-CBC'] as const
 export const KNOWN_AUTH_DIGESTS = ['SHA256', 'SHA384', 'SHA512'] as const
 export const KNOWN_COMPRESSIONS = ['lz4-v2', 'lz4', 'lzo', 'none'] as const
-export const KNOWN_FIREWALL_ENGINES = [
-  'iptables',
-  'nftables',
-  'ufw',
-  'firewalld',
-  'none',
-  'auto',
-] as const
+export const KNOWN_FIREWALL_ENGINES = ['iptables', 'nftables', 'ufw', 'firewalld', 'none'] as const
 
 export const ProtocolSchema = configToken('protocol')
 export const CipherSchema = configToken('cipher')
 export const AuthDigestSchema = configToken('auth_digest')
 export const CompressionSchema = configToken('compression')
-export const FirewallEngineSchema = configToken('firewall_engine')
+export const FirewallEngineSchema = configToken('firewall_engine').refine(
+  (value) => value !== 'auto',
+  'firewall_engine must be a concrete engine selected by the installer',
+)
 
 /**
  * CCD `extra_lines`.

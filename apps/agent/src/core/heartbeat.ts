@@ -17,7 +17,12 @@ async function getDnsStatus(env: AgentEnv) {
     if (response.ok) {
       return { enabled: true, capable: true, status: 'healthy' as const, lastError: null }
     }
-    return { enabled: true, capable: false, status: 'degraded' as const, lastError: `CoreDNS health check returned HTTP ${response.status}` }
+    return {
+      enabled: true,
+      capable: false,
+      status: 'degraded' as const,
+      lastError: `CoreDNS health check returned HTTP ${response.status}`,
+    }
   } catch (error) {
     return {
       enabled: true,
@@ -57,7 +62,7 @@ export function startHeartbeat(env: AgentEnv, driver: VpnDriver): void {
             driver.getMetrics(),
             driver.getServerInfo(),
           ])
-          
+
           clients = clientsData
           metrics = metricsData
           serverInfo = serverInfoData
@@ -82,10 +87,10 @@ export function startHeartbeat(env: AgentEnv, driver: VpnDriver): void {
           }
           return 'iptables'
         }
-        
+
         const getFirewallRules = async () => {
           if (env.FIREWALL_ENGINE === 'none') return ''
-          
+
           if (['iptables', 'ufw', 'firewalld'].includes(env.FIREWALL_ENGINE)) {
             const iptables = await getIptablesCommand()
             try {
@@ -93,29 +98,33 @@ export function startHeartbeat(env: AgentEnv, driver: VpnDriver): void {
             } catch {
               return (await execAsync(`${iptables} -S ${IPTABLES_LEGACY_POLICY_CHAIN}`)).stdout
             }
-          } 
+          }
           if (env.FIREWALL_ENGINE === 'nftables') {
             // Try listing the dedicated policy chain first; if it doesn't exist yet
             // fall back to table dumps so we always return something useful.
             try {
-              return (await execAsync(`nft list chain inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_POLICY_CHAIN}`)).stdout
+              return (
+                await execAsync(
+                  `nft list chain inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_POLICY_CHAIN}`,
+                )
+              ).stdout
             } catch {
-              try { return (await execAsync(`nft list table inet ${NFTABLES_FILTER_TABLE}`)).stdout } catch {}
-              try { return (await execAsync('nft list chain inet filter VPN_FWWD')).stdout } catch {}
-              try { return (await execAsync('nft list table inet filter')).stdout } catch {}
+              try {
+                return (await execAsync(`nft list table inet ${NFTABLES_FILTER_TABLE}`)).stdout
+              } catch {}
+              try {
+                return (await execAsync('nft list chain inet filter VPN_FWWD')).stdout
+              } catch {}
+              try {
+                return (await execAsync('nft list table inet filter')).stdout
+              } catch {}
               return ''
             }
           }
 
-          // Fallback to 'auto' mode
-          const iptables = await getIptablesCommand()
-          try { return (await execAsync(`${iptables} -S ${IPTABLES_POLICY_CHAIN}`)).stdout } catch {}
-          try { return (await execAsync(`${iptables} -S ${IPTABLES_LEGACY_POLICY_CHAIN}`)).stdout } catch {}
-          try { return (await execAsync(`nft list chain inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_POLICY_CHAIN}`)).stdout } catch {}
-          try { return (await execAsync('nft list chain inet filter VPN_FWWD')).stdout } catch {}
           return ''
         }
-        
+
         firewallRules = await getFirewallRules()
       } catch (e: any) {
         // Silently ignore if firewall tools are not installed or chain missing
@@ -127,7 +136,7 @@ export function startHeartbeat(env: AgentEnv, driver: VpnDriver): void {
           Authorization: `Bearer ${env.AGENT_SECRET_TOKEN}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           nodeId: env.AGENT_NODE_ID,
           caCert,
           taKey,

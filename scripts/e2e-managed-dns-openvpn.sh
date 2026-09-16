@@ -113,7 +113,7 @@ api -X PUT "http://127.0.0.1:$PORT/api/v1/nodes/$NODE_ID/config" -d "{
   \"dns_servers\":\"9.9.9.9\",\"push_routes\":\"\",
   \"cipher\":\"AES-256-GCM\",\"auth_digest\":\"SHA256\",\"compression\":\"none\",
   \"keepalive_ping\":10,\"keepalive_timeout\":120,\"max_clients\":50,
-  \"custom_push_directives\":\"\",\"firewall_engine\":\"none\"}" >/dev/null
+  \"custom_push_directives\":\"\",\"firewall_engine\":\"none\",\"allow_client_to_client\":true}" >/dev/null
 api -X PUT "http://127.0.0.1:$PORT/api/v1/nodes/$NODE_ID" -d '{"managed_dns_enabled":true}' >/dev/null
 check "node registered as openvpn" "openvpn" "$(json "$(api "http://127.0.0.1:$PORT/api/v1/nodes/$NODE_ID")" '.vpn_type')"
 

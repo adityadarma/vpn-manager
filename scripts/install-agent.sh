@@ -1042,7 +1042,7 @@ install_agent() {
         fi
         AGENT_VPN_TYPE="${AGENT_VPN_TYPE:-openvpn}"
         AGENT_FIREWALL_ENGINE="${FIREWALL_ENGINE:-}"
-        if { [ -z "$AGENT_FIREWALL_ENGINE" ] || [ "$AGENT_FIREWALL_ENGINE" = "auto" ]; } && [ -f .env ]; then
+        if [ -z "$AGENT_FIREWALL_ENGINE" ] && [ -f .env ]; then
             AGENT_FIREWALL_ENGINE=$(grep -e '^FIREWALL_ENGINE=' .env | cut -d '=' -f2 | tr -d '"' | tr -d "'" || true)
         fi
 

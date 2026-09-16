@@ -194,7 +194,7 @@ if [ -f "/opt/vpn-agent/.env" ]; then
     VPN_TYPE=$(grep -e "^VPN_TYPE=" /opt/vpn-agent/.env | cut -d '=' -f2 | tr -d '"' | tr -d "'" || echo "openvpn")
     [ -z "$VPN_TYPE" ] && VPN_TYPE="openvpn"
     FIREWALL_ENGINE=$(grep -e "^FIREWALL_ENGINE=" /opt/vpn-agent/.env | cut -d '=' -f2 | tr -d '"' | tr -d "'" || true)
-    [ -z "$FIREWALL_ENGINE" ] || [ "$FIREWALL_ENGINE" = "auto" ] && FIREWALL_ENGINE="iptables"
+    [ -z "$FIREWALL_ENGINE" ] && FIREWALL_ENGINE="iptables"
     if [ "$VPN_TYPE" = "wireguard" ]; then
         DETECTED_VPN="WireGuard"
     elif [ "$VPN_TYPE" = "openvpn" ]; then
