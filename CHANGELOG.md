@@ -4,6 +4,12 @@ All notable changes to VPN Manager are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.2] - 2026-09-16
+
+### Fixed
+
+- Forwarded unresolved names in managed private DNS zones to configured upstream DNS servers, allowing public records such as `sub.example.com` to resolve while a private record in `example.com` still takes precedence.
+
 ## [2.3.1] - 2026-09-16
 
 ### Added
