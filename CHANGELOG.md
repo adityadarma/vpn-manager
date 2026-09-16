@@ -4,6 +4,16 @@ All notable changes to VPN Manager are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.1] - 2026-09-16
+
+### Added
+
+- Added per-Node client isolation, disabled by default, for OpenVPN and WireGuard clients on the same VPN node.
+
+### Changed
+
+- Applied client isolation consistently across iptables, UFW, nftables, firewalld, and auto-detected firewall engines.
+
 ## [2.3.0] - 2026-09-14
 
 ### Added
