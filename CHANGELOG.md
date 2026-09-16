@@ -10,6 +10,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 - Added an interactive Agent deployment-mode prompt so manual node installation can choose native systemd or Docker Compose without setting `AGENT_INSTALL_MODE`.
 
+### Fixed
+
+- Used the credential label instead of `Unknown Device` when the Agent synchronizes an already-connected OpenVPN client.
+
+### Changed
+
+- Replaced raw VPN session disconnect reasons in history with user-friendly status labels and explanations.
+
 ## [2.3.3] - 2026-09-16
 
 ### Fixed

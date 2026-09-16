@@ -68,6 +68,24 @@ describe('VPN Agent API', () => {
     expect(res.json().session_id).toBeDefined()
   })
 
+  it('uses the credential name when a synchronized OpenVPN client has no device metadata', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/vpn/connect',
+      headers: { 'X-VPN-Token': 'agent-secret-token' },
+      payload: {
+        username: adminCommonName,
+        vpn_ip: '10.8.0.2',
+        node_id: nodeId,
+        device_name: null,
+      },
+    })
+
+    expect(res.statusCode).toBe(201)
+    const session = await app.db('vpn_sessions').where({ id: res.json().session_id }).first()
+    expect(session.device_name).toBe('admin-test')
+  })
+
   it('should record vpn disconnect event', async () => {
     const res = await app.inject({
       method: 'POST',

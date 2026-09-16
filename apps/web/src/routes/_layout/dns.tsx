@@ -918,7 +918,7 @@ function ManagedDnsPage() {
                         <Input
                           value={policy.domain_pattern}
                           onChange={(e) => setPolicy({ ...policy, domain_pattern: e.target.value })}
-                          placeholder="*.youtube.com or admin.adityadarma.internal"
+                          placeholder="*.youtube.com or admin.example.internal"
                           className="h-9 font-mono text-xs"
                         />
                       </div>
@@ -971,7 +971,7 @@ function ManagedDnsPage() {
                     <p className="text-xs text-muted-foreground">
                       <span className="font-medium text-foreground">Public</span> applies to upstream domains,{' '}
                       <span className="font-medium text-foreground">Private zones</span> applies to assigned internal zones such as{' '}
-                      <code>adityadarma.internal</code>, and <span className="font-medium text-foreground">Public + private zones</span> applies to both.
+                      <code>example.internal</code>, and <span className="font-medium text-foreground">Public + private zones</span> applies to both.
                     </p>
 
                     {policy.action === 'sinkhole' && (

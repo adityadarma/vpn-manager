@@ -193,19 +193,24 @@ function KickDropdown({ sessionId, name, onKick, isPending }: KickDropdownProps)
 
 // ── DisconnectReasonBadge ────────────────────────────────────────────────────
 function DisconnectReasonBadge({ reason }: { reason?: string }) {
-  if (!reason) return <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground">Disconnected</span>
+  if (!reason) return <span title="The client ended the VPN session" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground">Disconnected</span>
 
-  const map: Record<string, { label: string; className: string }> = {
-    normal:               { label: 'Disconnected',   className: 'bg-muted text-muted-foreground' },
-    admin_kick:           { label: 'Kicked',          className: 'bg-red-500/10 text-red-600 dark:text-red-400' },
-    admin_kick_permanent: { label: 'Blocked',         className: 'bg-red-500/20 text-red-700 dark:text-red-400 font-semibold border border-red-500/20' },
-    timeout:              { label: 'Timeout',         className: 'bg-amber-500/10 text-amber-600 dark:text-amber-400' },
-    reconnect:            { label: 'Reconnected',     className: 'bg-blue-500/10 text-blue-600 dark:text-blue-400' },
+  const map: Record<string, { label: string; description: string; className: string }> = {
+    normal:               { label: 'Disconnected',  description: 'The client ended the VPN session', className: 'bg-muted text-muted-foreground' },
+    reconnect:            { label: 'Reconnected',    description: 'Replaced by a newer connection from the same credential', className: 'bg-blue-500/10 text-blue-600 dark:text-blue-400' },
+    timeout:              { label: 'Timed Out',      description: 'The VPN connection stopped responding', className: 'bg-amber-500/10 text-amber-600 dark:text-amber-400' },
+    heartbeat_timeout:    { label: 'Node Unreachable', description: 'The node stopped reporting this active session', className: 'bg-amber-500/10 text-amber-600 dark:text-amber-400' },
+    admin_kick:           { label: 'Kicked',         description: 'Disconnected by an administrator', className: 'bg-red-500/10 text-red-600 dark:text-red-400' },
+    admin_kick_permanent: { label: 'Blocked',        description: 'Disconnected and blocked until an administrator restores access', className: 'bg-red-500/20 text-red-700 dark:text-red-400 font-semibold border border-red-500/20' },
+    node_decommissioned:  { label: 'Node Archived',  description: 'Disconnected because the VPN node was archived', className: 'bg-slate-500/10 text-slate-600 dark:text-slate-400' },
+    cert_revoked:         { label: 'Credential Revoked', description: 'Disconnected because this VPN credential was revoked', className: 'bg-red-500/10 text-red-600 dark:text-red-400' },
+    cert_expired:         { label: 'Credential Expired', description: 'Disconnected because this VPN credential expired', className: 'bg-amber-500/10 text-amber-600 dark:text-amber-400' },
+    user_disabled:        { label: 'User Disabled',  description: 'Disconnected because the user account was disabled', className: 'bg-red-500/10 text-red-600 dark:text-red-400' },
   }
 
-  const style = map[reason] ?? { label: reason, className: 'bg-muted text-muted-foreground' }
+  const style = map[reason] ?? { label: 'Disconnected', description: `Disconnect reason: ${reason}`, className: 'bg-muted text-muted-foreground' }
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${style.className}`}>
+    <span title={style.description} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${style.className}`}>
       {reason === 'admin_kick_permanent' && <ShieldOff className="h-3 w-3" />}
       {style.label}
     </span>

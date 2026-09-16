@@ -249,7 +249,7 @@ async function syncExistingClients(env: AgentEnv, driver: VpnDriver): Promise<vo
                     ? client.connectedSince.toISOString()
                     : null,
                   client_version: 'OpenVPN',
-                  device_name: 'Unknown Device',
+                  device_name: null,
                 }
           ),
           signal: AbortSignal.timeout(5000),
