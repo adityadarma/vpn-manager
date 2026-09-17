@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
@@ -6,7 +6,6 @@ import {
   ChevronLeft,
   Users,
   Network,
-  Pencil,
   Trash2,
   Search,
   X,
@@ -19,8 +18,6 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal'
 import { useConfirm } from '@/components/ui/confirm-dialog'
@@ -80,28 +77,20 @@ interface NetworkItem {
   description: string | null
 }
 
-interface FormState {
-  name: string
-  description: string
-}
-
 // eslint-disable-next-line react-refresh/only-export-components
 function GroupDetailPage() {
   const { groupId } = Route.useParams()
   const qc = useQueryClient()
-  const navigate = useNavigate()
   const confirm = useConfirm()
 
   const [activeTab, setActiveTab] = useState<string>('members')
   const [memberSearch, setMemberSearch] = useState('')
   const [networkSearch, setNetworkSearch] = useState('')
-  const [showEdit, setShowEdit] = useState(false)
   const [showAddMember, setShowAddMember] = useState(false)
   const [showAddNetwork, setShowAddNetwork] = useState(false)
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set())
   const [selectedNetworkIds, setSelectedNetworkIds] = useState<Set<string>>(new Set())
   const [modalSearchQuery, setModalSearchQuery] = useState('')
-  const [editForm, setEditForm] = useState<FormState>({ name: '', description: '' })
 
   const { data: groupDetail, isLoading } = useQuery<GroupDetail>({
     queryKey: ['groups', groupId],
@@ -116,27 +105,6 @@ function GroupDetailPage() {
   const { data: allNetworks = [] } = useQuery<NetworkItem[]>({
     queryKey: ['networks'],
     queryFn: () => api.get('/api/v1/networks'),
-  })
-
-  const updateMutation = useMutation({
-    mutationFn: (data: FormState) => api.patch<Group>(`/api/v1/groups/${groupId}`, data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['groups'] })
-      qc.invalidateQueries({ queryKey: ['groups', groupId] })
-      setShowEdit(false)
-      toast.success('Group updated successfully')
-    },
-    onError: (e: Error) => toast.error(e.message),
-  })
-
-  const deleteMutation = useMutation({
-    mutationFn: () => api.delete(`/api/v1/groups/${groupId}`),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['groups'] })
-      toast.success('Group deleted')
-      navigate({ to: '/groups' })
-    },
-    onError: (e: Error) => toast.error(e.message),
   })
 
   const addMemberMutation = useMutation({
@@ -189,16 +157,6 @@ function GroupDetailPage() {
     onError: (e: Error) => toast.error(e.message),
   })
 
-  const openEditModal = () => {
-    if (groupDetail) {
-      setEditForm({
-        name: groupDetail.name,
-        description: groupDetail.description ?? '',
-      })
-      setShowEdit(true)
-    }
-  }
-
   // Filter available users for adding (not already in this group)
   const availableUsers = allUsers.filter(
     (u) =>
@@ -250,62 +208,22 @@ function GroupDetailPage() {
   return (
     <div className="space-y-6">
       {/* Top Header & Breadcrumb */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-1">
-          <Link
-            to="/groups"
-            className="inline-flex items-center text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ChevronLeft className="mr-1 h-3.5 w-3.5" />
-            Back to Groups
-          </Link>
-          <div className="flex items-center gap-3 mt-1 flex-wrap">
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">
-              {isLoading ? (
-                <Skeleton className="h-8 w-48" />
-              ) : (
-                groupDetail?.name ?? 'Group Details'
-              )}
-            </h1>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {groupDetail?.description || (
-              <span className="italic text-muted-foreground/60">No description provided</span>
-            )}
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={openEditModal}
-            disabled={isLoading || !groupDetail}
-            className="shadow-xs"
-          >
-            <Pencil className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
-            Edit Group
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={async () => {
-              if (!groupDetail) return
-              const ok = await confirm({
-                title: 'Delete group',
-                description: `Are you sure you want to delete group "${groupDetail.name}"?`,
-                warning: 'This action cannot be undone.',
-                confirmLabel: 'Delete Group',
-              })
-              if (ok) deleteMutation.mutate()
-            }}
-            disabled={isLoading || !groupDetail || deleteMutation.isPending}
-            className="text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30 shadow-xs"
-          >
-            <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-            Delete Group
-          </Button>
-        </div>
+      <div className="space-y-1">
+        <Link
+          to="/groups"
+          className="inline-flex items-center text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ChevronLeft className="mr-1 h-3.5 w-3.5" />
+          Back to Groups
+        </Link>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground mt-1">
+          {isLoading ? <Skeleton className="h-8 w-48" /> : groupDetail?.name ?? 'Group Details'}
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          {groupDetail?.description || (
+            <span className="italic text-muted-foreground/60">No description provided</span>
+          )}
+        </p>
       </div>
 
       {/* Summary Stat Cards */}
@@ -931,42 +849,6 @@ function GroupDetailPage() {
         </ModalFooter>
       </Modal>
 
-      {/* MODAL 3: Edit Group */}
-      <Modal open={showEdit} onClose={() => setShowEdit(false)}>
-        <ModalHeader title="Edit Group" onClose={() => setShowEdit(false)} />
-        <ModalBody>
-          <div className="space-y-1.5">
-            <Label htmlFor="detail-group-name">Name</Label>
-            <Input
-              id="detail-group-name"
-              value={editForm.name}
-              onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="detail-group-desc">Description</Label>
-            <Textarea
-              id="detail-group-desc"
-              rows={3}
-              value={editForm.description}
-              onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
-            />
-          </div>
-          <div className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
-            Groups allow you to organize users and assign network CIDR access routes.
-          </div>
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="outline" onClick={() => setShowEdit(false)}>Cancel</Button>
-          <Button
-            disabled={!editForm.name.trim() || updateMutation.isPending}
-            onClick={() => updateMutation.mutate({ name: editForm.name, description: editForm.description })}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white"
-          >
-            {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
-          </Button>
-        </ModalFooter>
-      </Modal>
     </div>
   )
 }

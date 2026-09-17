@@ -15,7 +15,6 @@ import {
   ListTodo,
   Radio,
   ExternalLink,
-  Plus,
   Zap,
 } from 'lucide-react'
 import {
@@ -183,17 +182,6 @@ function DashboardPage() {
           >
             <RefreshCw className={`size-3.5 ${isRefreshing ? 'animate-spin text-emerald-500' : ''}`} />
             Refresh
-          </Button>
-
-          <Button
-            asChild
-            size="sm"
-            className="h-9 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs shadow-xs"
-          >
-            <Link to="/nodes">
-              <Plus className="size-3.5" />
-              Add Node
-            </Link>
           </Button>
         </div>
       </div>
@@ -556,9 +544,9 @@ function DashboardPage() {
 
           <div className="p-4 sm:p-5 flex-1">
             {isLoadingSessions ? (
-              <div className="space-y-3">
+              <div className="space-y-1.5">
                 {[1, 2, 3].map((i) => (
-                  <Skeleton key={i} className="h-16 w-full rounded-lg" />
+                  <Skeleton key={i} className="h-10 w-full rounded-lg" />
                 ))}
               </div>
             ) : sessions.length === 0 ? (
@@ -568,40 +556,35 @@ function DashboardPage() {
                 <p className="text-xs text-muted-foreground mt-1">Users will appear here when connected</p>
               </div>
             ) : (
-              <div className="space-y-2.5 max-h-[420px] overflow-y-auto pr-1">
+              <div className="space-y-1.5 max-h-[420px] overflow-y-auto pr-1">
                 {sessions.map((s) => {
                   const nodeObj = nodes.find((n) => n.id === s.node_id)
                   return (
                     <div
                       key={s.id}
-                      className="p-3 rounded-lg border border-border/60 bg-muted/20 hover:bg-muted/40 transition-colors"
+                      className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg border border-border/60 bg-muted/20 hover:bg-muted/40 transition-colors"
+                      title={`${s.name} · ${s.vpn_ip} · ${nodeObj ? nodeObj.hostname : 'VPN Server'}`}
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="size-8 rounded-full bg-linear-to-br from-emerald-500/30 to-teal-500/30 border border-emerald-500/30 flex items-center justify-center font-bold text-xs text-emerald-700 dark:text-emerald-300 shrink-0">
-                            {getInitials(s.name)}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="font-semibold text-sm text-foreground truncate">{s.name}</p>
-                            <p className="text-xs font-mono text-muted-foreground">{s.vpn_ip}</p>
-                          </div>
-                        </div>
-
-                        <Badge
-                          variant="outline"
-                          className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 text-[10px] px-1.5 py-0 shrink-0"
-                        >
-                          <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse mr-1" />
-                          Online
-                        </Badge>
+                      <span
+                        className="size-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0"
+                        title="Online"
+                      />
+                      <div className="size-6 rounded-full bg-linear-to-br from-emerald-500/30 to-teal-500/30 border border-emerald-500/30 flex items-center justify-center font-bold text-[10px] text-emerald-700 dark:text-emerald-300 shrink-0">
+                        {getInitials(s.name)}
                       </div>
-
-                      <div className="mt-2.5 pt-2 border-t border-border/40 flex items-center justify-between text-[11px] text-muted-foreground">
-                        <span className="truncate max-w-[140px] text-muted-foreground/80">
+                      <span className="font-medium text-xs text-foreground truncate min-w-0">
+                        {s.name}
+                      </span>
+                      <span className="text-[11px] font-mono text-muted-foreground shrink-0">
+                        {s.vpn_ip}
+                      </span>
+                      <span className="ml-auto flex items-center gap-1.5 text-[10px] text-muted-foreground/80 shrink-0">
+                        <span className="truncate max-w-[80px]">
                           {nodeObj ? nodeObj.hostname : 'VPN Server'}
                         </span>
+                        <span className="text-muted-foreground/40">·</span>
                         <span>{formatConnectedSince(s.connected_at)}</span>
-                      </div>
+                      </span>
                     </div>
                   )
                 })}

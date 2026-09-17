@@ -452,11 +452,6 @@ function SessionsPage() {
             />
             Refresh
           </Button>
-
-          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted/60 border border-border/70 text-muted-foreground text-xs font-medium rounded-lg">
-            <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-            Auto-refresh 10s
-          </span>
         </div>
       </div>
 

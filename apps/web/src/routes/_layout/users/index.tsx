@@ -73,7 +73,6 @@ interface EditUserPayload {
   email?: string
   password?: string
   role?: 'admin' | 'user'
-  isActive?: boolean
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -96,7 +95,6 @@ function UsersPage() {
     email: '',
     password: '',
     role: 'user',
-    isActive: true,
   })
 
   // Filter & Search states
@@ -157,14 +155,13 @@ function UsersPage() {
       if (data.email !== undefined) payload.email = data.email || undefined
       if (data.password) payload.password = data.password
       if (data.role !== undefined) payload.role = data.role
-      if (data.isActive !== undefined) payload.isActive = data.isActive
       return api.patch<User>(`/api/v1/users/${id}`, payload)
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['users'] })
       setShowEditForm(false)
       setSelectedUserForEdit(null)
-      setEditForm({ name: '', email: '', password: '', role: 'user', isActive: true })
+      setEditForm({ name: '', email: '', password: '', role: 'user' })
       toast.success('User updated successfully')
     },
     onError: (e: Error) => toast.error(e.message),
@@ -200,7 +197,6 @@ function UsersPage() {
       email: user.email || '',
       password: '',
       role: user.role,
-      isActive: user.is_active,
     })
     setShowEditForm(true)
   }
@@ -854,7 +850,7 @@ function UsersPage() {
                 onClick={() => {
                   setShowEditForm(false)
                   setSelectedUserForEdit(null)
-                  setEditForm({ name: '', email: '', password: '', role: 'user', isActive: true })
+                  setEditForm({ name: '', email: '', password: '', role: 'user' })
                 }}
                 className="p-1 text-muted-foreground hover:text-foreground rounded-md transition-colors"
               >
@@ -926,21 +922,6 @@ function UsersPage() {
                   </p>
                 </div>
               )}
-              <div className="flex items-center gap-3 p-3 bg-muted/40 rounded-lg border border-border">
-                <input
-                  type="checkbox"
-                  id="isActive"
-                  checked={editForm.isActive}
-                  onChange={(e) => setEditForm({ ...editForm, isActive: e.target.checked })}
-                  className="rounded border-border text-violet-600 focus:ring-violet-500 h-4 w-4"
-                />
-                <label
-                  htmlFor="isActive"
-                  className="text-xs font-medium text-foreground cursor-pointer"
-                >
-                  Account is active
-                </label>
-              </div>
               <div className="flex gap-3 pt-2">
                 <Button
                   type="button"
@@ -953,7 +934,6 @@ function UsersPage() {
                       email: '',
                       password: '',
                       role: 'user',
-                      isActive: true,
                     })
                   }}
                   className="flex-1"

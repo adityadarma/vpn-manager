@@ -7,8 +7,6 @@ import {
   Plus,
   Trash2,
   MapPin,
-  Clock,
-  Activity,
   Server,
   X,
   Copy,
@@ -21,8 +19,6 @@ import {
   Archive,
   RotateCcw,
   Search,
-  LayoutGrid,
-  List,
   Users,
   Radio,
   AlertTriangle,
@@ -90,15 +86,13 @@ interface RegisterResponse extends VpnNode {
 
 type StatusFilter = 'all' | 'active' | 'online' | 'offline' | 'decommissioned'
 type EngineFilter = 'all' | 'wireguard' | 'openvpn'
-type ViewMode = 'cards' | 'table'
 
 // eslint-disable-next-line react-refresh/only-export-components
 function NodesPage() {
   const qc = useQueryClient()
   const confirm = useConfirm()
 
-  // View & Filter States
-  const [viewMode, setViewMode] = useState<ViewMode>('cards')
+  // Filter States
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active')
   const [engineFilter, setEngineFilter] = useState<EngineFilter>('all')
   const [searchQuery, setSearchQuery] = useState('')
@@ -554,45 +548,25 @@ function NodesPage() {
             ))}
           </div>
 
-          {/* View Mode Toggle */}
-          <div className="flex items-center bg-muted/40 p-1 rounded-lg border border-border/60">
-            <button
-              type="button"
-              onClick={() => setViewMode('cards')}
-              className={`p-1.5 rounded-md transition-all cursor-pointer ${
-                viewMode === 'cards'
-                  ? 'bg-background text-foreground shadow-xs'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-              title="Card Grid View"
-            >
-              <LayoutGrid className="size-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('table')}
-              className={`p-1.5 rounded-md transition-all cursor-pointer ${
-                viewMode === 'table'
-                  ? 'bg-background text-foreground shadow-xs'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-              title="Dense Directory Table"
-            >
-              <List className="size-4" />
-            </button>
-          </div>
         </div>
       </div>
 
       {/* Main Content Area */}
       {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="rounded-xl border border-border bg-card p-5 space-y-4">
-              <Skeleton className="h-6 w-3/4" />
-              <Skeleton className="h-4 w-1/2" />
-              <Skeleton className="h-24 w-full" />
-              <Skeleton className="h-8 w-full" />
+        <div className="rounded-xl border border-border bg-card overflow-hidden shadow-xs divide-y divide-border/60">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="flex items-center gap-4 p-4">
+              <Skeleton className="h-4 w-6 shrink-0" />
+              <Skeleton className="h-5 w-20 shrink-0 rounded-full" />
+              <div className="flex-1 space-y-1.5">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-3 w-24" />
+              </div>
+              <Skeleton className="h-5 w-20 shrink-0 rounded-full" />
+              <Skeleton className="h-4 w-20 shrink-0" />
+              <Skeleton className="h-4 w-14 shrink-0" />
+              <Skeleton className="h-4 w-32 shrink-0" />
+              <Skeleton className="h-7 w-14 shrink-0" />
             </div>
           ))}
         </div>
@@ -620,258 +594,8 @@ function NodesPage() {
             </Button>
           )}
         </div>
-      ) : viewMode === 'cards' ? (
-        /* --- 1. CARD GRID VIEW --- */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredNodes.map((node) => {
-            const isOnline = node.status === 'online'
-            const isDecom = node.status === 'decommissioned'
-            const hasDnsSync = Boolean((node as { managed_dns_enabled?: boolean }).managed_dns_enabled)
-
-            return (
-              <div
-                key={node.id}
-                className="group rounded-xl border border-border bg-card shadow-xs p-5 flex flex-col justify-between transition-all hover:border-border/80 hover:shadow-md"
-              >
-                <div>
-                  {/* Card Header: Hostname & Badges */}
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`size-2.5 rounded-full shrink-0 ${
-                            isOnline
-                              ? 'bg-emerald-500 shadow-xs shadow-emerald-500/50'
-                              : isDecom
-                              ? 'bg-amber-500'
-                              : 'bg-red-500'
-                          }`}
-                        />
-                        <h3 className="font-bold text-foreground text-base truncate" title={node.hostname}>
-                          {node.hostname}
-                        </h3>
-                      </div>
-
-                      {/* IP address with one-click copy */}
-                      <div className="flex items-center gap-1.5 mt-1 pl-4.5">
-                        <span className="font-mono text-xs text-muted-foreground">{node.ip_address}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleCopyIp(node.ip_address, node.id)}
-                          className="text-muted-foreground/60 hover:text-foreground p-0.5 rounded cursor-pointer"
-                          title="Copy IP address"
-                        >
-                          {copiedIpId === node.id ? (
-                            <Check className="size-3 text-emerald-500" />
-                          ) : (
-                            <Copy className="size-3" />
-                          )}
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <Badge
-                        variant="outline"
-                        className={`text-[10px] font-bold uppercase px-1.5 py-0 ${
-                          node.vpn_type === 'wireguard'
-                            ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
-                            : 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20'
-                        }`}
-                      >
-                        {node.vpn_type === 'wireguard' ? 'WG' : 'OVPN'}
-                      </Badge>
-
-                      <Badge
-                        variant="outline"
-                        className={`capitalize text-xs font-medium ${
-                          isOnline
-                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
-                            : isDecom
-                            ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
-                            : 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'
-                        }`}
-                      >
-                        {node.status}
-                      </Badge>
-                    </div>
-                  </div>
-
-                  {/* Metadata List */}
-                  <div className="space-y-2 text-xs text-muted-foreground pt-3 border-t border-border/50">
-                    {node.region && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground/70 flex items-center gap-1.5">
-                          <MapPin className="size-3.5 text-muted-foreground/60" /> Region
-                        </span>
-                        <span className="font-medium text-foreground truncate max-w-[160px]">{node.region}</span>
-                      </div>
-                    )}
-
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground/70 flex items-center gap-1.5">
-                        <Activity className="size-3.5 text-muted-foreground/60" /> Active Tunnels
-                      </span>
-                      <span className="font-medium text-foreground bg-muted/50 px-2 py-0.5 rounded-md text-[11px] border border-border/50">
-                        {node.active_sessions ?? 0} clients
-                      </span>
-                    </div>
-
-                    {node.version && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground/70 flex items-center gap-1.5">
-                          <Server className="size-3.5 text-muted-foreground/60" /> Agent Version
-                        </span>
-                        <span
-                          className={`font-mono text-[11px] px-1.5 py-0.5 rounded ${
-                            node.version === APP_VERSION
-                              ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
-                              : 'bg-amber-500/10 text-amber-700 dark:text-amber-400'
-                          }`}
-                        >
-                          v{node.version}
-                        </span>
-                      </div>
-                    )}
-
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground/70 flex items-center gap-1.5">
-                        <Shield className="size-3.5 text-muted-foreground/60" /> Managed DNS
-                      </span>
-                      <span
-                        className={`text-[11px] font-medium ${
-                          hasDnsSync
-                            ? 'text-emerald-600 dark:text-emerald-400'
-                            : 'text-muted-foreground/60'
-                        }`}
-                      >
-                        {hasDnsSync ? 'Active / Synchronized' : 'Disabled'}
-                      </span>
-                    </div>
-
-                    {node.last_seen && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground/70 flex items-center gap-1.5">
-                          <Clock className="size-3.5 text-muted-foreground/60" /> Last Seen
-                        </span>
-                        <span className="text-[11px] text-muted-foreground">
-                          {formatBrowserDateTime(node.last_seen)}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Bottom Action Ribbon */}
-                <div className="mt-4 pt-3 border-t border-border/50 flex items-center justify-between gap-1">
-                  <div className="flex items-center gap-1">
-                    {/* Secondary Dropdown Action Menu */}
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="size-8 p-0 text-muted-foreground hover:text-foreground cursor-pointer"
-                        >
-                          <MoreHorizontal className="size-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" className="w-48">
-                        <DropdownMenuItem onClick={() => openEditModal(node)} className="gap-2 cursor-pointer">
-                          <Edit className="size-3.5" />
-                          Edit Details
-                        </DropdownMenuItem>
-
-                        <DropdownMenuItem
-                          onClick={() => setViewFirewallNode(node)}
-                          className="gap-2 cursor-pointer"
-                        >
-                          <Terminal className="size-3.5 text-indigo-500" />
-                          Firewall Rules
-                        </DropdownMenuItem>
-
-                        <DropdownMenuSeparator />
-
-                        {isDecom ? (
-                          <>
-                            <DropdownMenuItem
-                              onClick={() => restoreMutation.mutate(node.id)}
-                              disabled={restoreMutation.isPending}
-                              className="gap-2 text-emerald-600 dark:text-emerald-400 cursor-pointer"
-                            >
-                              <RotateCcw className="size-3.5" />
-                              Restore Node
-                            </DropdownMenuItem>
-
-                            <DropdownMenuItem
-                              onClick={() => confirmDeleteNode(node)}
-                              className="gap-2 text-red-600 dark:text-red-400 cursor-pointer"
-                            >
-                              <Trash2 className="size-3.5" />
-                              Delete Permanently
-                            </DropdownMenuItem>
-                          </>
-                        ) : (
-                          <DropdownMenuItem
-                            onClick={() => confirmDecommissionNode(node)}
-                            className="gap-2 text-amber-600 dark:text-amber-400 cursor-pointer"
-                          >
-                            <Archive className="size-3.5" />
-                            Decommission Node
-                          </DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-
-                    {/* Sync Certs Action */}
-                    {!isDecom && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => syncCertsMutation.mutate(node.id)}
-                        disabled={syncCertsMutation.isPending || !isOnline}
-                        className="size-8 p-0 text-muted-foreground hover:text-foreground cursor-pointer"
-                        title={isOnline ? 'Sync Certificates' : 'Node must be online'}
-                      >
-                        <RefreshCw
-                          className={`size-3.5 ${syncCertsMutation.isPending ? 'animate-spin' : ''}`}
-                        />
-                      </Button>
-                    )}
-                  </div>
-
-                  {/* Primary Action Button */}
-                  <div className="flex items-center gap-1.5">
-                    {isDecom ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => restoreMutation.mutate(node.id)}
-                        disabled={restoreMutation.isPending}
-                        className="h-8 gap-1 text-xs border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20 cursor-pointer"
-                      >
-                        <RotateCcw className="size-3" />
-                        Restore
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openConfigModal(node)}
-                        className="h-8 gap-1.5 text-xs border-border bg-background hover:bg-muted cursor-pointer shadow-xs"
-                      >
-                        <Settings className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-                        Configure
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
       ) : (
-        /* --- 2. DENSE DIRECTORY TABLE VIEW --- */
+        /* --- DENSE DIRECTORY TABLE --- */
         <div className="rounded-xl border border-border bg-card overflow-hidden shadow-xs">
           <Table>
             <TableHeader className="bg-muted/40">
@@ -888,9 +612,12 @@ function NodesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredNodes.map((node, index) => {
+                {filteredNodes.map((node, index) => {
                 const isOnline = node.status === 'online'
                 const isDecom = node.status === 'decommissioned'
+                const hasDnsSync = Boolean(
+                  (node as { managed_dns_enabled?: boolean }).managed_dns_enabled
+                )
 
                 return (
                   <TableRow key={node.id} className="hover:bg-muted/30 transition-colors">
@@ -920,7 +647,15 @@ function NodesPage() {
 
                     <TableCell>
                       <div>
-                        <p className="font-semibold text-sm text-foreground">{node.hostname}</p>
+                        <p className="font-semibold text-sm text-foreground flex items-center gap-1.5">
+                          {node.hostname}
+                          {hasDnsSync && (
+                            <Shield
+                              className="size-3 text-emerald-600 dark:text-emerald-400 shrink-0"
+                              title="Managed DNS active / synchronized"
+                            />
+                          )}
+                        </p>
                         <button
                           type="button"
                           onClick={() => handleCopyIp(node.ip_address, node.id)}
@@ -960,7 +695,24 @@ function NodesPage() {
                     </TableCell>
 
                     <TableCell className="text-xs font-mono">
-                      {node.version ? `v${node.version}` : '—'}
+                      {node.version ? (
+                        <span
+                          className={`px-1.5 py-0.5 rounded ${
+                            node.version === APP_VERSION
+                              ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                              : 'bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                          }`}
+                          title={
+                            node.version === APP_VERSION
+                              ? 'Agent matches manager version'
+                              : `Manager is on v${APP_VERSION}`
+                          }
+                        >
+                          v{node.version}
+                        </span>
+                      ) : (
+                        '—'
+                      )}
                     </TableCell>
 
                     <TableCell className="text-center">
@@ -975,19 +727,7 @@ function NodesPage() {
                     </TableCell>
 
                     <TableCell className="text-right pr-4">
-                      <div className="flex items-center justify-end gap-1">
-                        {!isDecom && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openConfigModal(node)}
-                            className="size-8 p-0 text-muted-foreground hover:text-foreground cursor-pointer"
-                            title="Configure"
-                          >
-                            <Settings className="size-4" />
-                          </Button>
-                        )}
-
+                      <div className="flex items-center justify-end">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
@@ -998,7 +738,31 @@ function NodesPage() {
                               <MoreHorizontal className="size-4" />
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-44">
+                          <DropdownMenuContent align="end" className="w-48">
+                            {!isDecom && (
+                              <DropdownMenuItem
+                                onClick={() => openConfigModal(node)}
+                                className="gap-2 cursor-pointer"
+                              >
+                                <Settings className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                                Configuration
+                              </DropdownMenuItem>
+                            )}
+
+                            {!isDecom && (
+                              <DropdownMenuItem
+                                onClick={() => syncCertsMutation.mutate(node.id)}
+                                disabled={syncCertsMutation.isPending || !isOnline}
+                                className="gap-2 cursor-pointer"
+                                title={isOnline ? undefined : 'Node must be online'}
+                              >
+                                <RefreshCw
+                                  className={`size-3.5 ${syncCertsMutation.isPending ? 'animate-spin' : ''}`}
+                                />
+                                Sync Certificates
+                              </DropdownMenuItem>
+                            )}
+
                             <DropdownMenuItem onClick={() => openEditModal(node)} className="gap-2 cursor-pointer">
                               <Edit className="size-3.5" />
                               Edit Node
@@ -1455,6 +1219,48 @@ function NodesPage() {
                   />
                 </div>
               </div>
+
+              {/* Managed automatically — read-only, derived from other pages */}
+              {nodeConfig.network_push_directives && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="font-medium text-foreground">Network Routes</label>
+                    <span className="text-[10px] text-muted-foreground/70 bg-muted px-1.5 py-0.5 rounded">
+                      Managed automatically
+                    </span>
+                  </div>
+                  <textarea
+                    value={nodeConfig.network_push_directives}
+                    readOnly
+                    rows={Math.min(6, Math.max(2, nodeConfig.network_push_directives.split('\n').length))}
+                    className="w-full p-2.5 rounded-md border border-border bg-muted text-muted-foreground font-mono text-xs resize-y"
+                  />
+                  <p className="text-[11px] text-muted-foreground/70">
+                    Routes from networks assigned to this node. Change these on the Networks page.
+                  </p>
+                </div>
+              )}
+
+              {nodeConfig.managed_dns_directives && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="font-medium text-foreground">Managed DNS Listeners</label>
+                    <span className="text-[10px] text-muted-foreground/70 bg-muted px-1.5 py-0.5 rounded">
+                      Managed automatically
+                    </span>
+                  </div>
+                  <textarea
+                    value={nodeConfig.managed_dns_directives}
+                    readOnly
+                    rows={Math.min(6, Math.max(2, nodeConfig.managed_dns_directives.split('\n').length))}
+                    className="w-full p-2.5 rounded-md border border-border bg-muted text-muted-foreground font-mono text-xs resize-y"
+                  />
+                  <p className="text-[11px] text-muted-foreground/70">
+                    Applied per group during profile generation, never pushed globally. Configure these on
+                    the Managed DNS page.
+                  </p>
+                </div>
+              )}
 
               {/* OpenVPN Specific Settings */}
               {configNode.vpn_type === 'openvpn' && (

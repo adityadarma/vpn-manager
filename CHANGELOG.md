@@ -11,9 +11,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - A target network with no selected nodes is no longer treated as global; routes are pushed only to explicitly selected nodes. Review any network showing `No nodes` on the Networks page and select its target nodes.
 - Replaced all remaining native browser `confirm()` prompts with themed in-app confirmation dialogs, including node decommission and permanent delete.
 - Removed duplicate primary action buttons from empty states; each list now has a single entry point in its header.
+- Removed the `Edit Group` and `Delete Group` buttons from the Group Details header; both remain available from the row menu on the Groups list.
+- Removed the `Add Node` button from the dashboard header; node registration lives on the VPN Nodes page.
+- Condensed dashboard Active Sessions entries to a single row, replacing the two-row card and `Online` badge with a status dot so more sessions fit without scrolling.
+- Removed the `Account is active` checkbox from the user edit modal; enabling and disabling an account is handled by `Disable user` / `Enable user` in the row menu.
+- The VPN Nodes page now always renders the dense table and the card/table view toggle is gone, matching every other list page. Agent version match colouring and the Managed DNS indicator moved from the card into the table, and `Configuration` and `Sync Certificates` now live in the row menu so each row has a single actions control.
+- Removed the `Auto-refresh 10s` badge from the VPN Sessions header; the `Refresh` button still reports fetch progress and polling is unchanged.
 
 ### Fixed
 
+- Restored the read-only `Network Routes` and `Managed DNS Listeners` fields in the node configuration modal. The API had kept returning both, but the dashboard stopped rendering them, so there was no way to see which routes and DNS listeners were being written into the generated server config.
 - Fixed network routes bypassing node scoping when assigning a network to a group, which could leak a node-specific route to every node.
 - Fixed unchecked Target Nodes checkboxes rendering as solid white boxes on the Networks page, which made unselected nodes look selected in dark mode.
 
