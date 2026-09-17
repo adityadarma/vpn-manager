@@ -82,12 +82,12 @@ describe('Nodes API', () => {
       method: 'POST',
       url: '/api/v1/nodes/heartbeat',
       headers: { Authorization: `Bearer ${nodeToken}` },
-      payload: { nodeId, agentVersion: '2.4.0' }
+      payload: { nodeId, agentVersion: '2.4.1' }
     })
 
     expect(res.statusCode).toBe(200)
     const node = await app.db('vpn_nodes').where({ id: nodeId }).first()
-    expect(node.version).toBe('2.4.0')
+    expect(node.version).toBe('2.4.1')
   })
 
   it('records Managed DNS health only when an admin enables it for the node', async () => {

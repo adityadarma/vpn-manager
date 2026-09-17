@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-09-17
+
+### Added
+
+- Added running Agent version indicators on Node cards with match status coloring.
+
+### Changed
+
+- Overhauled Dashboard (`/`) with real-time KPI metrics, 24h bandwidth telemetry, infrastructure monitor, and live sessions stream.
+- Overhauled VPN Nodes (`/nodes`) with stat cards, search, status/engine filter pills, card/table view toggle, and accessible confirmation dialogs.
+
 ## [2.4.0] - 2026-09-17
 
 ### Added
