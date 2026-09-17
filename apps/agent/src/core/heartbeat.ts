@@ -1,11 +1,13 @@
 import type { AgentEnv } from '../config/env'
 import type { VpnDriver } from '../drivers'
 import fs from 'node:fs/promises'
+import packageJson from '../../package.json' with { type: 'json' }
 
 const IPTABLES_POLICY_CHAIN = 'VPN_POLICY_FWWD'
 const IPTABLES_LEGACY_POLICY_CHAIN = 'VPN_FWWD'
 const NFTABLES_FILTER_TABLE = 'vpn_manager_filter'
 const NFTABLES_POLICY_CHAIN = 'VPN_POLICY_FWWD'
+const AGENT_VERSION = packageJson.version
 
 async function getDnsStatus(env: AgentEnv) {
   if (!env.DNS_ENABLED) {
@@ -138,6 +140,7 @@ export function startHeartbeat(env: AgentEnv, driver: VpnDriver): void {
         },
         body: JSON.stringify({
           nodeId: env.AGENT_NODE_ID,
+          agentVersion: AGENT_VERSION,
           caCert,
           taKey,
           firewallRules,

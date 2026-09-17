@@ -947,7 +947,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       const authenticatedNode = await app.authenticateNodeToken(request, reply)
       if (!authenticatedNode) return
 
-      const { nodeId, caCert, taKey, firewallRules, firewallEngine, clients, startup, dns } =
+      const { nodeId, agentVersion, caCert, taKey, firewallRules, firewallEngine, clients, startup, dns } =
         HeartbeatSchema.parse(request.body)
       if (authenticatedNode.id !== nodeId) {
         return reply.status(403).send({
@@ -967,6 +967,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       )
 
       const updates: any = { status: 'online', last_seen: new Date() }
+      if (agentVersion) updates.version = agentVersion
       if (caCert) updates.ca_cert = caCert
       if (taKey) updates.ta_key = taKey
       if (firewallRules !== undefined) updates.firewall_rules_dump = firewallRules

@@ -26,7 +26,7 @@ import {
   Archive,
   RotateCcw,
 } from 'lucide-react'
-import { formatBrowserDateTime, type VpnNode } from '@vpn/shared'
+import { APP_VERSION, formatBrowserDateTime, type VpnNode } from '@vpn/shared'
 import { Button } from '@/components/ui/button'
 
 interface NodeForm {
@@ -354,7 +354,16 @@ function NodesPage() {
                   {node.version && (
                     <div className="flex items-center gap-2">
                       <Server className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
-                      <span className="truncate">{node.version}</span>
+                      <span
+                        className={`truncate rounded px-1.5 py-0.5 font-mono font-medium ${
+                          node.version === APP_VERSION
+                            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                            : 'bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                        }`}
+                        title={`Agent ${node.version}; Manager ${APP_VERSION}`}
+                      >
+                        Agent v{node.version}
+                      </span>
                     </div>
                   )}
                   {node.created_at && (

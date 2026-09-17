@@ -17,6 +17,7 @@ export const RegisterNodeSchema = z.object({
 
 export const HeartbeatSchema = z.object({
   nodeId: z.string().uuid(),
+  agentVersion: z.string().min(1).max(100).optional(),
   caCert: z.string().optional(),
   taKey: z.string().optional(),
   firewallRules: z.string().optional(),
