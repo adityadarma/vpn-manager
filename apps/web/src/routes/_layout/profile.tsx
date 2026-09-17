@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
@@ -9,7 +9,6 @@ import {
   Lock,
   Mail,
   Shield,
-  Calendar,
   Key,
   Check,
   Copy,
@@ -17,8 +16,6 @@ import {
   EyeOff,
   Activity,
   FileText,
-  CheckCircle2,
-  AlertCircle,
   ExternalLink,
   Clock,
   Fingerprint,
@@ -71,6 +68,7 @@ function getActionMeta(action: string) {
   }
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 function ProfilePage() {
   const qc = useQueryClient()
   const authStoreUser = useAuthStore((s) => s.user)
@@ -84,23 +82,17 @@ function ProfilePage() {
 
   const user = meUser ?? authStoreUser
 
-  // 2. Personal Information Form State
-  const [name, setName] = useState(user?.name ?? '')
-  const [email, setEmail] = useState(user?.email ?? '')
+  // 2. Personal Information Form State (derived state with user input override)
+  const [nameOverride, setNameOverride] = useState<string | null>(null)
+  const [emailOverride, setEmailOverride] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState(false)
 
-  useEffect(() => {
-    if (meUser) {
-      setName(meUser.name)
-      setEmail(meUser.email ?? '')
-    } else if (authStoreUser) {
-      setName(authStoreUser.name)
-      setEmail(authStoreUser.email ?? '')
-    }
-  }, [meUser, authStoreUser])
+  const name = nameOverride !== null ? nameOverride : (user?.name ?? '')
+  const email = emailOverride !== null ? emailOverride : (user?.email ?? '')
 
   const isProfileChanged =
-    (user?.name ?? '') !== name.trim() || (user?.email ?? '') !== email.trim()
+    (nameOverride !== null && nameOverride.trim() !== (user?.name ?? '')) ||
+    (emailOverride !== null && emailOverride.trim() !== (user?.email ?? ''))
 
   // 3. Change Password Form State
   const [currentPassword, setCurrentPassword] = useState('')
@@ -132,6 +124,8 @@ function ProfilePage() {
     onSuccess: (updated) => {
       qc.invalidateQueries({ queryKey: ['auth-me'] })
       qc.invalidateQueries({ queryKey: ['users'] })
+      setNameOverride(null)
+      setEmailOverride(null)
       if (updated && authStoreUser) {
         login({
           ...authStoreUser,
@@ -369,7 +363,7 @@ function ProfilePage() {
                     id="profile-name"
                     type="text"
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    onChange={(e) => setNameOverride(e.target.value)}
                     placeholder="Enter your full name"
                     className="pl-9 h-9 text-xs"
                     required
@@ -391,7 +385,7 @@ function ProfilePage() {
                     id="profile-email"
                     type="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => setEmailOverride(e.target.value)}
                     placeholder="admin@example.com"
                     className="pl-9 h-9 text-xs font-mono"
                     required
@@ -433,8 +427,8 @@ function ProfilePage() {
                     size="sm"
                     className="h-8 text-xs cursor-pointer"
                     onClick={() => {
-                      setName(user?.name ?? '')
-                      setEmail(user?.email ?? '')
+                      setNameOverride(null)
+                      setEmailOverride(null)
                     }}
                     disabled={updateProfileMutation.isPending}
                   >
