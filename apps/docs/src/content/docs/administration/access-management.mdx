@@ -15,6 +15,8 @@ Create groups for teams such as `engineering` or `support`, then add users. Crea
 
 Avoid overlapping CIDRs. Overlap between the LAN, VPN pool, and Docker routes can send traffic through the wrong path or prevent return traffic from reaching clients.
 
+A network also needs **Target Nodes**. Reachability is a property of the node the subnet sits behind, so a route is pushed only to the nodes you select. A network with no target nodes is shown as `No nodes` on the Networks page and is never pushed to any client, even when it is assigned to a group. Select every node that can actually reach the subnet, and do not select nodes that cannot, because a client on such a node would receive a route to a destination its server cannot deliver.
+
 ## Operating with or without groups
 
 Using groups in VPN Manager is optional for basic operations, but required for advanced routing and security features:

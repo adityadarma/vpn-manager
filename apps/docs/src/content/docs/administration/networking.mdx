@@ -52,11 +52,15 @@ Create a VPN group in the Manager with a non-overlapping subnet, for example `10
 
 ### 2. Push the VPC route to clients
 
-Add the private VPC destination to the VPN node's **Push Routes** configuration. For example, when Server B-E are in `172.31.0.0/20`:
+Create a Network for the private VPC destination and select Server A under **Target Nodes**. For example, when Server B-E are in `172.31.0.0/20`:
 
 ```text
 172.31.0.0/20
 ```
+
+Select only the nodes that can reach the subnet. Here that is Server A, since it is inside the VPC. A network left with no target nodes is not pushed to any client, and selecting an unrelated node would hand its clients a route their server cannot deliver.
+
+The resulting `route` directives appear as read-only **Network Routes** in that node's **Configuration**. Change them from the Networks page, not by editing the node config.
 
 Reconnect the client and verify that the private target uses the VPN interface:
 

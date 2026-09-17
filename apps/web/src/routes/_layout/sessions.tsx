@@ -44,7 +44,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { formatBrowserDateTime, type VpnNode } from '@vpn/shared'
+import { formatBrowserDateTime, resolveBrowserTimeZone, type VpnNode } from '@vpn/shared'
 
 export const Route = createFileRoute('/_layout/sessions')({
   component: SessionsPage,
@@ -88,6 +88,9 @@ interface SessionStats {
     session_count: number
   }>
 }
+
+/** Resolved once per page load; the stats query keys off this value. */
+const browserTimeZone = resolveBrowserTimeZone()
 
 function formatBytes(bytes: number) {
   if (!bytes || bytes <= 0) return '0 B'
@@ -254,8 +257,9 @@ function SessionsPage() {
     isFetching: isFetchingStats,
     refetch: refetchStats,
   } = useQuery<SessionStats>({
-    queryKey: ['sessions-stats'],
-    queryFn: () => api.get('/api/v1/sessions/stats'),
+    queryKey: ['sessions-stats', browserTimeZone],
+    queryFn: () =>
+      api.get(`/api/v1/sessions/stats?tz=${encodeURIComponent(browserTimeZone)}`),
     refetchInterval: realtimeConnected ? false : 60_000,
   })
 
@@ -479,10 +483,10 @@ function SessionsPage() {
           </p>
         </div>
 
-        {/* Card 2: Sessions Today (24h) */}
+        {/* Card 2: Sessions Today */}
         <div className="bg-card text-card-foreground rounded-xl border border-border p-4 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-muted-foreground">Sessions Today (24h)</span>
+            <span className="text-xs font-medium text-muted-foreground">Sessions Today</span>
             <div className="p-2 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
               <Users className="size-4" />
             </div>

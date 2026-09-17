@@ -557,7 +557,6 @@ function NodesPage() {
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="flex items-center gap-4 p-4">
               <Skeleton className="h-4 w-6 shrink-0" />
-              <Skeleton className="h-5 w-20 shrink-0 rounded-full" />
               <div className="flex-1 space-y-1.5">
                 <Skeleton className="h-4 w-32" />
                 <Skeleton className="h-3 w-24" />
@@ -565,7 +564,9 @@ function NodesPage() {
               <Skeleton className="h-5 w-20 shrink-0 rounded-full" />
               <Skeleton className="h-4 w-20 shrink-0" />
               <Skeleton className="h-4 w-14 shrink-0" />
+              <Skeleton className="h-4 w-8 shrink-0" />
               <Skeleton className="h-4 w-32 shrink-0" />
+              <Skeleton className="h-5 w-20 shrink-0 rounded-full" />
               <Skeleton className="h-7 w-14 shrink-0" />
             </div>
           ))}
@@ -601,13 +602,13 @@ function NodesPage() {
             <TableHeader className="bg-muted/40">
               <TableRow>
                 <TableHead className="w-12 text-center text-xs">#</TableHead>
-                <TableHead className="text-xs">Status</TableHead>
                 <TableHead className="text-xs">Hostname & IP</TableHead>
                 <TableHead className="text-xs">Engine</TableHead>
                 <TableHead className="text-xs">Region</TableHead>
                 <TableHead className="text-xs">Agent Version</TableHead>
                 <TableHead className="text-xs text-center">Tunnels</TableHead>
                 <TableHead className="text-xs">Last Seen</TableHead>
+                <TableHead className="text-xs">Status</TableHead>
                 <TableHead className="text-xs text-right pr-4">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -623,26 +624,6 @@ function NodesPage() {
                   <TableRow key={node.id} className="hover:bg-muted/30 transition-colors">
                     <TableCell className="text-center font-mono text-xs text-muted-foreground">
                       {index + 1}
-                    </TableCell>
-
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={`capitalize text-xs font-medium ${
-                          isOnline
-                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
-                            : isDecom
-                            ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
-                            : 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'
-                        }`}
-                      >
-                        <span
-                          className={`size-1.5 rounded-full mr-1.5 ${
-                            isOnline ? 'bg-emerald-500 animate-pulse' : isDecom ? 'bg-amber-500' : 'bg-red-500'
-                          }`}
-                        />
-                        {node.status}
-                      </Badge>
                     </TableCell>
 
                     <TableCell>
@@ -724,6 +705,26 @@ function NodesPage() {
 
                     <TableCell className="text-xs text-muted-foreground">
                       {node.last_seen ? formatBrowserDateTime(node.last_seen) : '—'}
+                    </TableCell>
+
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={`capitalize text-xs font-medium ${
+                          isOnline
+                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                            : isDecom
+                            ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+                            : 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'
+                        }`}
+                      >
+                        <span
+                          className={`size-1.5 rounded-full mr-1.5 ${
+                            isOnline ? 'bg-emerald-500 animate-pulse' : isDecom ? 'bg-amber-500' : 'bg-red-500'
+                          }`}
+                        />
+                        {node.status}
+                      </Badge>
                     </TableCell>
 
                     <TableCell className="text-right pr-4">

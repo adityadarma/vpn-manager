@@ -18,6 +18,7 @@ import {
   Zap,
 } from 'lucide-react'
 import {
+  resolveBrowserTimeZone,
   type User as UserType,
   type VpnNode,
   type VpnSession,
@@ -47,6 +48,9 @@ interface SessionStats {
     session_count: number
   }>
 }
+
+/** Resolved once per page load; the stats query keys off this value. */
+const browserTimeZone = resolveBrowserTimeZone()
 
 function formatBytes(bytes: number) {
   if (!bytes || bytes <= 0) return '0 B'
@@ -112,8 +116,9 @@ function DashboardPage() {
   })
 
   const { data: stats, isLoading: isLoadingStats, isFetching: isFetchingStats } = useQuery<SessionStats>({
-    queryKey: ['session-stats'],
-    queryFn: () => api.get('/api/v1/sessions/stats'),
+    queryKey: ['session-stats', browserTimeZone],
+    queryFn: () =>
+      api.get(`/api/v1/sessions/stats?tz=${encodeURIComponent(browserTimeZone)}`),
   })
 
   const isRefreshing =
@@ -325,7 +330,7 @@ function DashboardPage() {
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
               <Zap className="size-3.5 text-emerald-500" />
-              Bandwidth Today (24h)
+              Bandwidth Today
             </span>
             <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-border">
               Total
@@ -354,7 +359,7 @@ function DashboardPage() {
               Avg Connection Duration
             </span>
             <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-border">
-              24h
+              Today
             </Badge>
           </div>
           {isLoadingStats ? (

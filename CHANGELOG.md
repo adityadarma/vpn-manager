@@ -17,6 +17,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Removed the `Account is active` checkbox from the user edit modal; enabling and disabling an account is handled by `Disable user` / `Enable user` in the row menu.
 - The VPN Nodes page now always renders the dense table and the card/table view toggle is gone, matching every other list page. Agent version match colouring and the Managed DNS indicator moved from the card into the table, and `Configuration` and `Sync Certificates` now live in the row menu so each row has a single actions control.
 - Removed the `Auto-refresh 10s` badge from the VPN Sessions header; the `Refresh` button still reports fetch progress and polling is unchanged.
+- Session statistics now treat "today" as the viewer's calendar day instead of a rolling 24-hour window. The dashboard sends its IANA timezone to `GET /api/v1/sessions/stats?tz=`, so totals reset at local midnight; unknown or missing zones fall back to UTC. The response also reports `today_starts_at` and `time_zone`, and the `(24h)` card labels are gone.
 
 ### Fixed
 

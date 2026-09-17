@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { v7 as uuidv7 } from 'uuid'
+import { startOfDayInTimeZone } from '@vpn/shared'
 import { logAudit, getClientIp } from '../../utils/audit'
 
 const sessionRoutes: FastifyPluginAsync = async (app) => {
@@ -146,11 +147,17 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
   )
 
   // GET /api/v1/sessions/stats  — session statistics
-  app.get(
+  //
+  // "Today" means the caller's calendar day. The dashboard sends its IANA zone
+  // as ?tz=, so an admin in Asia/Jakarta sees totals reset at local midnight
+  // rather than at UTC midnight or on a rolling 24h window. Unknown or missing
+  // zones fall back to UTC.
+  app.get<{ Querystring: { tz?: string } }>(
     '/sessions/stats',
     { onRequest: [app.authenticateAdmin], schema: { tags: ['sessions'], summary: 'Session statistics', security: [{ bearerAuth: [] }] } },
-    async () => {
-      const last24h = new Date(Date.now() - (24 * 60 * 60 * 1000))
+    async (request) => {
+      const timeZone = request.query.tz ?? 'UTC'
+      const startOfToday = new Date(startOfDayInTimeZone(timeZone))
       const last7d = new Date(Date.now() - (7 * 24 * 60 * 60 * 1000))
 
       // Active sessions count
@@ -159,23 +166,23 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
         .count('* as count')
         .first()
 
-      // Total sessions today
+      // Connection events started today
       const todayCount = await app.db('vpn_sessions')
-        .where('connected_at', '>=', last24h)
+        .where('connected_at', '>=', startOfToday)
         .count('* as count')
         .first()
 
-      // Total bandwidth today
+      // Bandwidth from sessions started today
       const todayBandwidth = await app.db('vpn_sessions')
-        .where('connected_at', '>=', last24h)
+        .where('connected_at', '>=', startOfToday)
         .sum('bytes_sent as sent')
         .sum('bytes_received as received')
         .first()
 
-      // Average session duration (last 24h)
+      // Average duration of sessions that started and ended today
       const avgDuration = await app.db('vpn_sessions')
         .whereNotNull('disconnected_at')
-        .where('connected_at', '>=', last24h)
+        .where('connected_at', '>=', startOfToday)
         .avg('connection_duration_seconds as avg')
         .first()
 
@@ -202,6 +209,8 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
           total: (todayBandwidth?.sent || 0) + (todayBandwidth?.received || 0),
         },
         avg_duration_seconds: Math.round(avgDuration?.avg || 0),
+        today_starts_at: startOfToday.toISOString(),
+        time_zone: timeZone,
         top_users: topUsers,
       }
     },
