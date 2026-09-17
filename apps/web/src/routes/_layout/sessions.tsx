@@ -131,7 +131,10 @@ function formatDurationFromSeconds(seconds: number) {
   return `${m}m`
 }
 
-const disconnectReasonConfig: Record<string, { label: string; description: string; className: string }> = {
+const disconnectReasonConfig: Record<
+  string,
+  { label: string; description: string; className: string }
+> = {
   normal: {
     label: 'Disconnected',
     description: 'The client ended the VPN session normally',
@@ -188,7 +191,10 @@ const disconnectReasonConfig: Record<string, { label: string; description: strin
 function DisconnectReasonBadge({ reason }: { reason?: string }) {
   if (!reason) {
     return (
-      <Badge variant="outline" className="text-[11px] font-medium bg-muted text-muted-foreground border-border/70">
+      <Badge
+        variant="outline"
+        className="text-[11px] font-medium bg-muted text-muted-foreground border-border/70"
+      >
         Disconnected
       </Badge>
     )
@@ -241,10 +247,14 @@ function SessionsPage() {
   })
 
   // 2. Fetch High-Level Session Stats
-  const { data: stats, isFetching: isFetchingStats, refetch: refetchStats } = useQuery<SessionStats>({
+  const {
+    data: stats,
+    isFetching: isFetchingStats,
+    refetch: refetchStats,
+  } = useQuery<SessionStats>({
     queryKey: ['sessions-stats'],
     queryFn: () => api.get('/api/v1/sessions/stats'),
-    refetchInterval: 15_000,
+    refetchInterval: 10_000,
   })
 
   // 3. Fetch Active Sessions
@@ -256,7 +266,7 @@ function SessionsPage() {
   } = useQuery<Session[]>({
     queryKey: ['sessions'],
     queryFn: () => api.get('/api/v1/sessions'),
-    refetchInterval: 15_000,
+    refetchInterval: 10_000,
   })
 
   // 4. Fetch History Sessions
@@ -266,7 +276,10 @@ function SessionsPage() {
     isFetching: isFetchingHistory,
     isPlaceholderData: isPlaceholderHistory,
     refetch: refetchHistory,
-  } = useQuery<{ sessions: Session[]; pagination: { page: number; limit: number; total: number; pages: number } }>({
+  } = useQuery<{
+    sessions: Session[]
+    pagination: { page: number; limit: number; total: number; pages: number }
+  }>({
     queryKey: ['sessions', 'history', historyPage, historyNodeFilter],
     queryFn: () => {
       const params = new URLSearchParams({
@@ -293,10 +306,11 @@ function SessionsPage() {
       sessionId: string
       permanent: boolean
       blockDurationSeconds?: number
-    }) =>
-      api.post(`/api/v1/sessions/${sessionId}/kick`, { permanent, blockDurationSeconds }),
+    }) => api.post(`/api/v1/sessions/${sessionId}/kick`, { permanent, blockDurationSeconds }),
     onSuccess: (_data, { permanent }) => {
-      toast.success(permanent ? 'Session permanently blocked until Unkick' : 'Session blocked for 5 minutes')
+      toast.success(
+        permanent ? 'Session permanently blocked until Unkick' : 'Session blocked for 5 minutes',
+      )
       setBlockTarget(null)
       if (inspectSession) setInspectSession(null)
       queryClient.invalidateQueries({ queryKey: ['sessions'] })
@@ -341,7 +355,14 @@ function SessionsPage() {
         const matchRealIp = (s.real_ip || '').toLowerCase().includes(q)
         const matchNode = s.node_hostname.toLowerCase().includes(q)
         const matchDevice = (s.device_name || '').toLowerCase().includes(q)
-        if (!matchName && !matchEmail && !matchVpnIp && !matchRealIp && !matchNode && !matchDevice) {
+        if (
+          !matchName &&
+          !matchEmail &&
+          !matchVpnIp &&
+          !matchRealIp &&
+          !matchNode &&
+          !matchDevice
+        ) {
           return false
         }
       }
@@ -383,7 +404,14 @@ function SessionsPage() {
         const matchRealIp = (s.real_ip || '').toLowerCase().includes(q)
         const matchNode = s.node_hostname.toLowerCase().includes(q)
         const matchDevice = (s.device_name || '').toLowerCase().includes(q)
-        if (!matchName && !matchEmail && !matchVpnIp && !matchRealIp && !matchNode && !matchDevice) {
+        if (
+          !matchName &&
+          !matchEmail &&
+          !matchVpnIp &&
+          !matchRealIp &&
+          !matchNode &&
+          !matchDevice
+        ) {
           return false
         }
       }
@@ -403,7 +431,8 @@ function SessionsPage() {
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground mt-0.5">VPN Sessions</h1>
           <p className="text-xs text-muted-foreground mt-1">
-            Real-time client telemetry, throughput monitoring, and historical session connection logs
+            Real-time client telemetry, throughput monitoring, and historical session connection
+            logs
           </p>
         </div>
 
@@ -416,13 +445,15 @@ function SessionsPage() {
             className="cursor-pointer h-9 px-3 text-xs shadow-xs"
             title="Refresh sessions telemetry"
           >
-            <RefreshCw className={`mr-1.5 size-3.5 ${isRefreshing ? 'animate-spin text-emerald-600' : ''}`} />
+            <RefreshCw
+              className={`mr-1.5 size-3.5 ${isRefreshing ? 'animate-spin text-emerald-600' : ''}`}
+            />
             Refresh
           </Button>
 
           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted/60 border border-border/70 text-muted-foreground text-xs font-medium rounded-lg">
             <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-            Auto-refresh 15s
+            Auto-refresh 10s
           </span>
         </div>
       </div>
@@ -446,7 +477,9 @@ function SessionsPage() {
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
           </div>
-          <p className="text-[11px] text-muted-foreground mt-1 truncate">Live connected endpoints</p>
+          <p className="text-[11px] text-muted-foreground mt-1 truncate">
+            Live connected endpoints
+          </p>
         </div>
 
         {/* Card 2: Sessions Today (24h) */}
@@ -475,7 +508,8 @@ function SessionsPage() {
             {formatBytes(stats?.bandwidth_today?.total ?? 0)}
           </div>
           <p className="text-[11px] text-muted-foreground font-mono mt-1 truncate">
-            ↑ {formatBytes(stats?.bandwidth_today?.sent ?? 0)} • ↓ {formatBytes(stats?.bandwidth_today?.received ?? 0)}
+            ↑ {formatBytes(stats?.bandwidth_today?.sent ?? 0)} • ↓{' '}
+            {formatBytes(stats?.bandwidth_today?.received ?? 0)}
           </p>
         </div>
 
@@ -490,7 +524,9 @@ function SessionsPage() {
           <div className="text-2xl font-bold text-foreground mt-2">
             {formatDurationFromSeconds(stats?.avg_duration_seconds ?? 0)}
           </div>
-          <p className="text-[11px] text-muted-foreground mt-1 truncate">Average session duration</p>
+          <p className="text-[11px] text-muted-foreground mt-1 truncate">
+            Average session duration
+          </p>
         </div>
       </div>
 
@@ -643,7 +679,9 @@ function SessionsPage() {
                           <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-3">
                             <Activity className="size-6 text-muted-foreground/60" />
                           </div>
-                          <h3 className="font-semibold text-foreground text-sm">No active sessions</h3>
+                          <h3 className="font-semibold text-foreground text-sm">
+                            No active sessions
+                          </h3>
                           <p className="text-xs text-muted-foreground mt-1 text-center">
                             {activeSearch || activeNodeFilter
                               ? 'No connected tunnels match your search or filter.'
@@ -677,7 +715,9 @@ function SessionsPage() {
                               {s.name.slice(0, 2).toUpperCase()}
                             </div>
                             <div className="min-w-0">
-                              <div className="font-semibold text-xs text-foreground truncate">{s.name}</div>
+                              <div className="font-semibold text-xs text-foreground truncate">
+                                {s.name}
+                              </div>
                               {s.real_ip ? (
                                 <div className="text-[11px] text-muted-foreground font-mono flex items-center gap-1 mt-0.5 truncate">
                                   <Globe className="size-3 text-muted-foreground/70 shrink-0" />
@@ -710,9 +750,13 @@ function SessionsPage() {
                           <div className="flex items-center gap-2">
                             <Server className="size-3.5 text-muted-foreground/70 shrink-0" />
                             <div className="min-w-0">
-                              <div className="text-xs font-medium text-foreground truncate">{s.node_hostname}</div>
+                              <div className="text-xs font-medium text-foreground truncate">
+                                {s.node_hostname}
+                              </div>
                               {s.node_region && (
-                                <div className="text-[10px] text-muted-foreground truncate">{s.node_region}</div>
+                                <div className="text-[10px] text-muted-foreground truncate">
+                                  {s.node_region}
+                                </div>
                               )}
                             </div>
                           </div>
@@ -934,7 +978,9 @@ function SessionsPage() {
                     </TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody className={`divide-y divide-border/60 transition-opacity duration-150 ${isPlaceholderHistory ? 'opacity-50 pointer-events-none' : ''}`}>
+                <TableBody
+                  className={`divide-y divide-border/60 transition-opacity duration-150 ${isPlaceholderHistory ? 'opacity-50 pointer-events-none' : ''}`}
+                >
                   {isLoadingHistory && !historyData ? (
                     Array.from({ length: 5 }).map((_, i) => (
                       <TableRow key={i}>
@@ -983,13 +1029,17 @@ function SessionsPage() {
                           <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-3">
                             <History className="size-6 text-muted-foreground/60" />
                           </div>
-                          <h3 className="font-semibold text-foreground text-sm">No session history</h3>
+                          <h3 className="font-semibold text-foreground text-sm">
+                            No session history
+                          </h3>
                           <p className="text-xs text-muted-foreground mt-1 text-center">
                             {historySearch || historyNodeFilter || historyReasonFilter !== 'all'
                               ? 'No completed sessions match your filter parameters.'
                               : 'No historical session records found.'}
                           </p>
-                          {(historySearch || historyNodeFilter || historyReasonFilter !== 'all') && (
+                          {(historySearch ||
+                            historyNodeFilter ||
+                            historyReasonFilter !== 'all') && (
                             <Button
                               size="sm"
                               variant="outline"
@@ -1021,14 +1071,18 @@ function SessionsPage() {
                                 {s.name.slice(0, 2).toUpperCase()}
                               </div>
                               <div className="min-w-0">
-                                <div className="font-semibold text-xs text-foreground truncate">{s.name}</div>
+                                <div className="font-semibold text-xs text-foreground truncate">
+                                  {s.name}
+                                </div>
                                 {s.real_ip ? (
                                   <div className="text-[11px] text-muted-foreground font-mono flex items-center gap-1 mt-0.5 truncate">
                                     <Globe className="size-3 text-muted-foreground/70 shrink-0" />
                                     <span className="truncate">{s.real_ip}</span>
                                   </div>
                                 ) : (
-                                  <div className="text-[11px] text-muted-foreground/70">Internal</div>
+                                  <div className="text-[11px] text-muted-foreground/70">
+                                    Internal
+                                  </div>
                                 )}
                               </div>
                             </div>
@@ -1053,7 +1107,9 @@ function SessionsPage() {
                           <TableCell className="py-3">
                             <div className="flex items-center gap-2">
                               <Server className="size-3.5 text-muted-foreground/70 shrink-0" />
-                              <span className="text-xs font-medium text-foreground truncate">{s.node_hostname}</span>
+                              <span className="text-xs font-medium text-foreground truncate">
+                                {s.node_hostname}
+                              </span>
                             </div>
                           </TableCell>
                           <TableCell className="py-3 whitespace-nowrap">
@@ -1071,7 +1127,7 @@ function SessionsPage() {
                                 {formatDuration(
                                   s.connected_at,
                                   s.disconnected_at,
-                                  s.connection_duration_seconds ?? s.duration_seconds
+                                  s.connection_duration_seconds ?? s.duration_seconds,
                                 )}
                               </span>
                             </div>
@@ -1128,8 +1184,10 @@ function SessionsPage() {
             {pagination && pagination.pages > 1 && (
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-border bg-muted/20">
                 <p className="text-xs text-muted-foreground">
-                  Showing page <span className="font-semibold text-foreground">{pagination.page}</span> of{' '}
-                  <span className="font-semibold text-foreground">{pagination.pages}</span> • {pagination.total} total sessions
+                  Showing page{' '}
+                  <span className="font-semibold text-foreground">{pagination.page}</span> of{' '}
+                  <span className="font-semibold text-foreground">{pagination.pages}</span> •{' '}
+                  {pagination.total} total sessions
                 </p>
                 <div className="flex items-center gap-2">
                   <Button
@@ -1164,7 +1222,11 @@ function SessionsPage() {
 
       {/* ─── MODAL: INSPECT SESSION ────────────────────────────────────────── */}
       {inspectSession && (
-        <Modal open={!!inspectSession} onClose={() => setInspectSession(null)} className="max-w-2xl">
+        <Modal
+          open={!!inspectSession}
+          onClose={() => setInspectSession(null)}
+          className="max-w-2xl"
+        >
           <ModalHeader
             title="Session Telemetry & Details"
             description="Diagnostic parameters, client information, and network throughput"
@@ -1180,7 +1242,9 @@ function SessionsPage() {
                   </div>
                   <div>
                     <h4 className="text-sm font-semibold text-foreground">{inspectSession.name}</h4>
-                    <p className="text-xs text-muted-foreground">{inspectSession.email || 'User Account'}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {inspectSession.email || 'User Account'}
+                    </p>
                   </div>
                 </div>
 
@@ -1303,7 +1367,7 @@ function SessionsPage() {
                     {formatDuration(
                       inspectSession.connected_at,
                       inspectSession.disconnected_at,
-                      inspectSession.connection_duration_seconds ?? inspectSession.duration_seconds
+                      inspectSession.connection_duration_seconds ?? inspectSession.duration_seconds,
                     )}
                   </div>
                 </div>
@@ -1399,10 +1463,12 @@ function SessionsPage() {
                     className="mt-0.5"
                   />
                   <div>
-                    <div className="font-semibold text-xs text-foreground">Temporary Block (5 minutes)</div>
+                    <div className="font-semibold text-xs text-foreground">
+                      Temporary Block (5 minutes)
+                    </div>
                     <p className="text-[11px] text-muted-foreground mt-0.5">
-                      Terminates connection immediately. Reconnect attempts will be rejected for 5 minutes and then
-                      automatically restored.
+                      Terminates connection immediately. Reconnect attempts will be rejected for 5
+                      minutes and then automatically restored.
                     </p>
                   </div>
                 </label>
@@ -1427,8 +1493,8 @@ function SessionsPage() {
                       Permanent Block (Until Unkick)
                     </div>
                     <p className="text-[11px] text-muted-foreground mt-0.5">
-                      Terminates connection immediately. The client remains blocked indefinitely until an administrator
-                      manually clicks "Unkick".
+                      Terminates connection immediately. The client remains blocked indefinitely
+                      until an administrator manually clicks "Unkick".
                     </p>
                   </div>
                 </label>
@@ -1480,8 +1546,9 @@ function SessionsPage() {
               </p>
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Are you sure you want to restore reconnect access for <strong>{unkickTarget.name}</strong>? They will be
-              permitted to authenticate and reconnect to the VPN network immediately.
+              Are you sure you want to restore reconnect access for{' '}
+              <strong>{unkickTarget.name}</strong>? They will be permitted to authenticate and
+              reconnect to the VPN network immediately.
             </p>
           </ModalBody>
           <ModalFooter>

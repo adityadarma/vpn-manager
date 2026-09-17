@@ -37,10 +37,10 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
    * Also validates user is active and within validity period.
    */
   app.post<{
-    Body: { 
-      username?: string    // OpenVPN: common_name = username
-      public_key?: string  // WireGuard: first 16 chars of peer public key
-      vpn_ip?: string      // optional — may be absent when client uses static CCD ifconfig-push
+    Body: {
+      username?: string // OpenVPN: common_name = username
+      public_key?: string // WireGuard: first 16 chars of peer public key
+      vpn_ip?: string // optional — may be absent when client uses static CCD ifconfig-push
       node_id: string
       common_name?: string
       real_ip?: string
@@ -53,7 +53,9 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
     { schema: { tags: ['vpn'], summary: 'Record VPN client connect event' } },
     async (request, reply) => {
       const { node_id, real_ip, client_version, device_name } = request.body
-      const connectedAtOverride = request.body.connected_at ? new Date(request.body.connected_at) : null
+      const connectedAtOverride = request.body.connected_at
+        ? new Date(request.body.connected_at)
+        : null
       let { vpn_ip } = request.body
 
       if (!node_id) {
@@ -66,21 +68,37 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
       // Resolve the credential first. A user can own multiple credentials and IPs.
       let credential: any
       if (request.body.username) {
-        credential = await app.db('user_node_certificates as c')
+        credential = await app
+          .db('user_node_certificates as c')
           .join('users as u', 'c.user_id', 'u.id')
-          .where({ 'c.node_id': node_id, 'c.common_name': request.body.username, 'c.is_revoked': false })
-          .select('c.id as credential_id', 'c.vpn_ip as credential_vpn_ip', 'c.credential_name as credential_name', 'u.*')
+          .where({
+            'c.node_id': node_id,
+            'c.common_name': request.body.username,
+            'c.is_revoked': false,
+          })
+          .select(
+            'c.id as credential_id',
+            'c.vpn_ip as credential_vpn_ip',
+            'c.credential_name as credential_name',
+            'u.*',
+          )
           .first()
       }
       if (!credential && request.body.public_key) {
         // WireGuard: lookup via user_node_certificates using public key prefix (16 chars)
         const keyPrefix = request.body.public_key.substring(0, 16)
-        credential = await app.db('user_node_certificates as c')
+        credential = await app
+          .db('user_node_certificates as c')
           .join('users as u', 'c.user_id', 'u.id')
           .where('c.node_id', node_id)
           .where('c.is_revoked', false)
           .whereRaw(`substr(c.client_cert, 1, 16) = ?`, [keyPrefix])
-          .select('c.id as credential_id', 'c.vpn_ip as credential_vpn_ip', 'c.credential_name as credential_name', 'u.*')
+          .select(
+            'c.id as credential_id',
+            'c.vpn_ip as credential_vpn_ip',
+            'c.credential_name as credential_name',
+            'u.*',
+          )
           .first()
       }
       const user = credential
@@ -99,111 +117,193 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
 
       // Validate user is active
       if (!user.is_active) {
-        app.log.warn(`[vpn/connect] Inactive user attempted connection: ${user.name} from ${clientIp}`)
-        
-        await app.db('connection_attempts').insert({
-          id: uuidv7(),
-          user_id: user.id,
-          node_id: node_id ?? null,
-          username: user.name,
-          real_ip: clientIp,
-          failure_reason: 'account_disabled',
-          error_details: 'User account is disabled',
-          attempted_at: new Date(),
-        }).catch(() => { /* non-fatal */ })
-        
+        app.log.warn(
+          `[vpn/connect] Inactive user attempted connection: ${user.name} from ${clientIp}`,
+        )
+
+        await app
+          .db('connection_attempts')
+          .insert({
+            id: uuidv7(),
+            user_id: user.id,
+            node_id: node_id ?? null,
+            username: user.name,
+            real_ip: clientIp,
+            failure_reason: 'account_disabled',
+            error_details: 'User account is disabled',
+            attempted_at: new Date(),
+          })
+          .catch(() => {
+            /* non-fatal */
+          })
+
         return reply.status(403).send({ error: 'Account disabled' })
       }
-      
+
       // Check validity window (valid_from / valid_to)
       const now = new Date()
       if (user.valid_from && new Date(user.valid_from) > now) {
-        await app.db('connection_attempts').insert({
-          id: uuidv7(),
-          user_id: user.id,
-          node_id: node_id ?? null,
-          username: user.name,
-          real_ip: clientIp,
-          failure_reason: 'account_not_active',
-          error_details: `Account not active until ${user.valid_from}`,
-          attempted_at: new Date(),
-        }).catch(() => { /* non-fatal */ })
-        
+        await app
+          .db('connection_attempts')
+          .insert({
+            id: uuidv7(),
+            user_id: user.id,
+            node_id: node_id ?? null,
+            username: user.name,
+            real_ip: clientIp,
+            failure_reason: 'account_not_active',
+            error_details: `Account not active until ${user.valid_from}`,
+            attempted_at: new Date(),
+          })
+          .catch(() => {
+            /* non-fatal */
+          })
+
         return reply.status(403).send({ error: 'Account not yet active' })
       }
-      
+
       if (user.valid_to && new Date(user.valid_to) < now) {
-        await app.db('connection_attempts').insert({
-          id: uuidv7(),
-          user_id: user.id,
-          node_id: node_id ?? null,
-          username: user.name,
-          real_ip: clientIp,
-          failure_reason: 'account_expired',
-          error_details: `Account expired on ${user.valid_to}`,
-          attempted_at: new Date(),
-        }).catch(() => { /* non-fatal */ })
-        
+        await app
+          .db('connection_attempts')
+          .insert({
+            id: uuidv7(),
+            user_id: user.id,
+            node_id: node_id ?? null,
+            username: user.name,
+            real_ip: clientIp,
+            failure_reason: 'account_expired',
+            error_details: `Account expired on ${user.valid_to}`,
+            attempted_at: new Date(),
+          })
+          .catch(() => {
+            /* non-fatal */
+          })
+
         return reply.status(403).send({ error: 'Account expired' })
       }
 
-      // Close previous sessions and create new one atomically.
-      // Without a transaction, a crash between closing old sessions and inserting
-      // the new one would leave the user with no active session while connected.
-      const sessionId = uuidv7()
-      
       // Fall back to the credential's device/label name (set when the
       // certificate was issued) when the Agent has no OS/device info to report.
       const resolvedDeviceName = device_name ?? credential.credential_name ?? null
+      let sessionId = uuidv7()
+      let createdSession = false
 
-      await app.db.transaction(async (trx) => {
-        // A user may own multiple credentials. Only reconnects of this
-        // credential replace its previous session; other devices stay online.
-        const previousSessions = await trx('vpn_sessions')
-          .where({ user_id: user.id, node_id })
-          .modify((query) => {
-            if (credential.credential_id) query.where({ credential_id: credential.credential_id })
-            else query.whereNull('credential_id')
-          })
-          .whereNull('disconnected_at')
-        
-        if (previousSessions.length > 0) {
-          const now = new Date()
-          for (const session of previousSessions) {
-            const connectedAt = new Date(session.connected_at)
-            const durationSeconds = Math.floor((now.getTime() - connectedAt.getTime()) / 1000)
-            
+      try {
+        await app.db.transaction(async (trx) => {
+          // A user may own multiple credentials. Only reconnects of this
+          // credential replace its previous session; other devices stay online.
+          const previousSessions = await trx('vpn_sessions')
+            .where({ user_id: user.id, node_id })
+            .modify((query) => {
+              if (credential.credential_id) query.where({ credential_id: credential.credential_id })
+              else query.whereNull('credential_id')
+            })
+            .whereNull('disconnected_at')
+
+          // Heartbeat recovery and the event monitor can report one OpenVPN
+          // connection seconds apart. Treat reports with the same connection time
+          // as updates, not reconnects.
+          const reportedConnectedAt = connectedAtOverride?.getTime()
+          const matchingSession =
+            reportedConnectedAt === undefined
+              ? undefined
+              : previousSessions.find(
+                  (session: { connected_at: Date | string }) =>
+                    Math.abs(new Date(session.connected_at).getTime() - reportedConnectedAt) <=
+                    1_000,
+                )
+
+          if (matchingSession) {
+            sessionId = matchingSession.id
             await trx('vpn_sessions')
-              .where({ id: session.id })
+              .where({ id: sessionId })
               .update({
+                vpn_ip,
+                real_ip: clientIp,
+                client_version: client_version ?? matchingSession.client_version,
+                device_name: device_name ?? matchingSession.device_name ?? resolvedDeviceName,
+                last_activity_at: new Date(),
+              })
+            if (credential.credential_id) {
+              await trx('user_node_certificates')
+                .where({ id: credential.credential_id })
+                .update({ last_vpn_connect: new Date() })
+            }
+            return
+          }
+
+          if (previousSessions.length > 0) {
+            const now = new Date()
+            for (const session of previousSessions) {
+              const connectedAt = new Date(session.connected_at)
+              const durationSeconds = Math.floor((now.getTime() - connectedAt.getTime()) / 1000)
+
+              await trx('vpn_sessions').where({ id: session.id }).update({
                 disconnected_at: now,
                 disconnect_reason: 'reconnect',
                 connection_duration_seconds: durationSeconds,
               })
+            }
           }
-        }
 
-        await trx('vpn_sessions').insert({
-          id: sessionId,
-          user_id: user.id,
-          node_id: node.id,
-          credential_id: credential.credential_id ?? null,
-          vpn_ip,
-          real_ip: clientIp,
-          client_version: client_version ?? null,
-          device_name: resolvedDeviceName,
-          bytes_sent: 0,
-          bytes_received: 0,
-          connected_at: connectedAtOverride ?? new Date(),
-          last_activity_at: new Date(),
+          await trx('vpn_sessions').insert({
+            id: sessionId,
+            user_id: user.id,
+            node_id: node.id,
+            credential_id: credential.credential_id ?? null,
+            vpn_ip,
+            real_ip: clientIp,
+            client_version: client_version ?? null,
+            device_name: resolvedDeviceName,
+            bytes_sent: 0,
+            bytes_received: 0,
+            connected_at: connectedAtOverride ?? new Date(),
+            last_activity_at: new Date(),
+          })
+          createdSession = true
+
+          if (credential.credential_id) {
+            await trx('user_node_certificates')
+              .where({ id: credential.credential_id })
+              .update({ last_vpn_connect: new Date() })
+          }
         })
+      } catch (error: any) {
+        if (error.code !== 'SQLITE_CONSTRAINT_UNIQUE' || !credential.credential_id) throw error
 
-        if (credential.credential_id) {
-          await trx('user_node_certificates').where({ id: credential.credential_id }).update({ last_vpn_connect: new Date() })
-        }
-      })
+        // A heartbeat and event-monitor request may both observe no active
+        // session before either inserts. The partial unique index is the final
+        // arbiter; use the winning row instead of returning a server error.
+        const concurrentSession = await app
+          .db('vpn_sessions')
+          .where({ node_id, credential_id: credential.credential_id })
+          .whereNull('disconnected_at')
+          .first()
+        if (!concurrentSession) throw error
 
-      app.log.info(`[vpn/connect] ${user.name} connected — session ${sessionId}, IP ${vpn_ip}, device: ${resolvedDeviceName ?? 'unknown'}`)
+        sessionId = concurrentSession.id
+        await app
+          .db('vpn_sessions')
+          .where({ id: sessionId })
+          .update({
+            vpn_ip,
+            real_ip: clientIp,
+            client_version: client_version ?? concurrentSession.client_version,
+            device_name: device_name ?? concurrentSession.device_name ?? resolvedDeviceName,
+            last_activity_at: new Date(),
+          })
+      }
+
+      if (!createdSession) {
+        app.log.info(
+          `[vpn/connect] ${user.name} connection report merged into session ${sessionId}`,
+        )
+        return reply.status(200).send({ session_id: sessionId, deduplicated: true })
+      }
+
+      app.log.info(
+        `[vpn/connect] ${user.name} connected — session ${sessionId}, IP ${vpn_ip}, device: ${resolvedDeviceName ?? 'unknown'}`,
+      )
 
       // Log successful connection audit
       await logAudit(app, {
@@ -218,12 +318,13 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
           node_hostname: node.hostname,
           client_version,
           device_name: resolvedDeviceName,
-          session_id: sessionId
-        }
+          session_id: sessionId,
+        },
       })
 
       // Get user's policy networks for route push (response to agent)
-      const networks = await app.db('vpn_policies as p')
+      const networks = await app
+        .db('vpn_policies as p')
         .join('users as u', 'p.user_id', 'u.id')
         .where('p.user_id', user.id)
         .where('p.action', 'allow')
@@ -243,7 +344,7 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
    * Closes the open session and records traffic stats.
    */
   app.post<{
-    Body: { 
+    Body: {
       username: string
       node_id: string
       bytes_sent?: number
@@ -254,13 +355,20 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
     '/vpn/disconnect',
     { schema: { tags: ['vpn'], summary: 'Record VPN client disconnect event' } },
     async (request, reply) => {
-      const { username, node_id, bytes_sent = 0, bytes_received = 0, disconnect_reason = 'normal' } = request.body
+      const {
+        username,
+        node_id,
+        bytes_sent = 0,
+        bytes_received = 0,
+        disconnect_reason = 'normal',
+      } = request.body
 
       if (!username || !node_id) {
         return reply.status(400).send({ error: 'username and node_id required' })
       }
 
-      const credential = await app.db('user_node_certificates as c')
+      const credential = await app
+        .db('user_node_certificates as c')
         .join('users as u', 'c.user_id', 'u.id')
         .where({ 'c.node_id': node_id, 'c.common_name': username, 'c.is_revoked': false })
         .select('c.id as credential_id', 'u.*')
@@ -272,7 +380,8 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
       // Using orderBy('connected_at', 'asc') ensures that if a reconnect created a
       // newer session before the old disconnect event arrives, we close the correct
       // (oldest) session rather than the newly created one.
-      const session = await app.db('vpn_sessions')
+      const session = await app
+        .db('vpn_sessions')
         .where({ user_id: user.id, node_id })
         .modify((query) => {
           if (credential?.credential_id) query.where({ credential_id: credential.credential_id })
@@ -287,17 +396,17 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
         const connectedAt = new Date(session.connected_at)
         const durationSeconds = Math.floor((now.getTime() - connectedAt.getTime()) / 1000)
 
-        await app.db('vpn_sessions')
-          .where({ id: session.id })
-          .update({
-            disconnected_at: now,
-            bytes_sent,
-            bytes_received,
-            disconnect_reason,
-            connection_duration_seconds: durationSeconds,
-          })
+        await app.db('vpn_sessions').where({ id: session.id }).update({
+          disconnected_at: now,
+          bytes_sent,
+          bytes_received,
+          disconnect_reason,
+          connection_duration_seconds: durationSeconds,
+        })
 
-        app.log.info(`[vpn/disconnect] ${username} disconnected — session ${session.id}, duration: ${durationSeconds}s, reason: ${disconnect_reason}`)
+        app.log.info(
+          `[vpn/disconnect] ${username} disconnected — session ${session.id}, duration: ${durationSeconds}s, reason: ${disconnect_reason}`,
+        )
 
         // Log audit
         await logAudit(app, {
@@ -312,8 +421,8 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
             bytes_sent,
             bytes_received,
             disconnect_reason,
-            session_id: session.id
-          }
+            session_id: session.id,
+          },
         })
       }
 
@@ -339,14 +448,16 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
     '/vpn/activity',
     { schema: { tags: ['vpn'], summary: 'Update session activity metrics' } },
     async (request, reply) => {
-      const { session_id, bytes_sent, bytes_received, latency_ms, packet_loss_percent } = request.body
+      const { session_id, bytes_sent, bytes_received, latency_ms, packet_loss_percent } =
+        request.body
 
       if (!session_id) {
         return reply.status(400).send({ error: 'session_id required' })
       }
 
       // Update session last_activity_at and totals
-      const session = await app.db('vpn_sessions')
+      const session = await app
+        .db('vpn_sessions')
         .where({ id: session_id })
         .whereNull('disconnected_at')
         .first()
@@ -356,19 +467,17 @@ const vpnRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const now = new Date()
-      
+
       // Calculate deltas
       const bytesSentDelta = bytes_sent - (session.bytes_sent || 0)
       const bytesReceivedDelta = bytes_received - (session.bytes_received || 0)
 
       // Update session
-      await app.db('vpn_sessions')
-        .where({ id: session_id })
-        .update({
-          last_activity_at: now,
-          bytes_sent,
-          bytes_received,
-        })
+      await app.db('vpn_sessions').where({ id: session_id }).update({
+        last_activity_at: now,
+        bytes_sent,
+        bytes_received,
+      })
 
       // Record activity snapshot
       await app.db('session_activities').insert({

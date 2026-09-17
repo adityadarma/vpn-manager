@@ -19,8 +19,8 @@ interface ClientEnvVars {
   trusted_ip?: string
   ifconfig_pool_remote_ip?: string
   // IV_ vars from TLS handshake peer info
-  IV_PLAT?: string   // "win" | "mac" | "linux" | "android" | "ios"
-  IV_VER?: string    // OpenVPN version e.g. "3.11.3"
+  IV_PLAT?: string // "win" | "mac" | "linux" | "android" | "ios"
+  IV_VER?: string // OpenVPN version e.g. "3.11.3"
   IV_GUI_VER?: string // GUI app + version e.g. "OCmacOS_3.8.1-5790"
   [key: string]: string | undefined
 }
@@ -59,7 +59,11 @@ function buildDeviceName(env: ClientEnvVars): string | null {
   const ver = env.IV_VER
   if (plat) {
     const platformMap: Record<string, string> = {
-      win: 'Windows', mac: 'macOS', linux: 'Linux', android: 'Android', ios: 'iOS',
+      win: 'Windows',
+      mac: 'macOS',
+      linux: 'Linux',
+      android: 'Android',
+      ios: 'iOS',
     }
     const platform = platformMap[plat] ?? plat
     return ver ? `${platform} (OpenVPN ${ver})` : platform
@@ -73,18 +77,19 @@ function buildDeviceName(env: ClientEnvVars): string | null {
  */
 async function getClientDetailsByUsername(driver: VpnDriver, username: string) {
   try {
-    const statusOutput = await (driver as any).sendCommand('status 3') as string
+    const statusOutput = (await (driver as any).sendCommand('status 3')) as string
     const lines = statusOutput.split('\n')
     for (const line of lines) {
       if (line.startsWith('CLIENT_LIST')) {
         const parts = line.split('\t')
-        if (parts.length >= 8 && parts[1] === username) {
+        if (parts.length >= 9 && parts[1] === username) {
           return {
             username: parts[1],
             realIp: parts[2].split(':')[0],
             vpnIp: parts[3],
             bytesSent: parseInt(parts[6], 10) || 0,
             bytesReceived: parseInt(parts[5], 10) || 0,
+            connectedAt: new Date((parseInt(parts[8], 10) || 0) * 1000),
           }
         }
       }
@@ -101,7 +106,7 @@ async function getClientDetailsByUsername(driver: VpnDriver, username: string) {
 async function handleConnect(
   env: AgentEnv,
   event: ClientConnectEvent,
-  _driver: VpnDriver,
+  driver: VpnDriver,
 ): Promise<void> {
   const vars = event.envVars ?? {}
   const username = vars.common_name
@@ -112,6 +117,10 @@ async function handleConnect(
 
   const deviceName = buildDeviceName(vars)
   const clientVersion = vars.IV_VER ?? null
+  // The management event timestamp is when the Agent received the event, not
+  // when OpenVPN established the tunnel. Use the status timestamp so this
+  // report shares an identity with heartbeat recovery.
+  const statusDetails = username ? await getClientDetailsByUsername(driver, username) : null
 
   console.log(`[event-monitor] 🔗 Connect: ${username} from ${realIp} → ${vpnIp}`)
   if (deviceName) console.log(`[event-monitor]    Device: ${deviceName}`)
@@ -131,6 +140,7 @@ async function handleConnect(
         node_id: env.AGENT_NODE_ID,
         device_name: deviceName,
         client_version: clientVersion,
+        connected_at: statusDetails?.connectedAt?.toISOString(),
       }),
       signal: AbortSignal.timeout(5000),
     })
@@ -141,7 +151,7 @@ async function handleConnect(
       return
     }
 
-    const data = await response.json() as { session_id: string }
+    const data = (await response.json()) as { session_id: string }
     console.log(`[event-monitor] ✓ Session created: ${username} → ${data.session_id}`)
   } catch (err) {
     console.error('[event-monitor] ✗ Connect API error:', (err as Error).message)
@@ -170,7 +180,9 @@ async function handleDisconnect(
       bytesReceived = details.bytesReceived
     }
   } else {
-    console.warn(`[event-monitor] Disconnect CID=${event.clientId} — username unknown (no driver cache hit)`)
+    console.warn(
+      `[event-monitor] Disconnect CID=${event.clientId} — username unknown (no driver cache hit)`,
+    )
     return
   }
 
@@ -234,9 +246,10 @@ async function syncExistingClients(env: AgentEnv, driver: VpnDriver): Promise<vo
                   vpn_ip: client.virtualAddress ?? null,
                   real_ip: client.realAddress?.split(':')[0] ?? null,
                   node_id: env.AGENT_NODE_ID,
-                  connected_at: client.connectedSince instanceof Date
-                    ? client.connectedSince.toISOString()
-                    : null,
+                  connected_at:
+                    client.connectedSince instanceof Date
+                      ? client.connectedSince.toISOString()
+                      : null,
                   client_version: 'WireGuard',
                   device_name: 'WireGuard Client',
                 }
@@ -245,24 +258,30 @@ async function syncExistingClients(env: AgentEnv, driver: VpnDriver): Promise<vo
                   vpn_ip: client.virtualAddress ?? null,
                   real_ip: client.realAddress?.split(':')[0] ?? null,
                   node_id: env.AGENT_NODE_ID,
-                  connected_at: client.connectedSince instanceof Date
-                    ? client.connectedSince.toISOString()
-                    : null,
+                  connected_at:
+                    client.connectedSince instanceof Date
+                      ? client.connectedSince.toISOString()
+                      : null,
                   client_version: 'OpenVPN',
                   device_name: null,
-                }
+                },
           ),
           signal: AbortSignal.timeout(5000),
         })
         if (response.ok) {
-          const data = await response.json() as { session_id: string }
+          const data = (await response.json()) as { session_id: string }
           console.log(`[event-monitor] ✓ Synced ${client.commonName} → session ${data.session_id}`)
         } else {
           const text = await response.text()
-          console.warn(`[event-monitor] ✗ Sync failed for ${client.commonName}: ${response.status} ${text}`)
+          console.warn(
+            `[event-monitor] ✗ Sync failed for ${client.commonName}: ${response.status} ${text}`,
+          )
         }
       } catch (err) {
-        console.error(`[event-monitor] ✗ Sync error for ${client.commonName}:`, (err as Error).message)
+        console.error(
+          `[event-monitor] ✗ Sync error for ${client.commonName}:`,
+          (err as Error).message,
+        )
       }
     }
   } catch (err) {
@@ -306,7 +325,9 @@ export function startEventMonitor(env: AgentEnv, driver: VpnDriver): void {
     setTimeout(() => void syncExistingClients(env, driver), 1000)
   })
 
-  driver.on('disconnected', () => console.log('[event-monitor] Driver disconnected — will reconnect...'))
+  driver.on('disconnected', () =>
+    console.log('[event-monitor] Driver disconnected — will reconnect...'),
+  )
 
   // ── Initial sync ──────────────────────────────────────────────────────────
   // Runs once at agent startup to pick up clients that were already connected
