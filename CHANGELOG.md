@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-09-17
+
+### Added
+
+- Added authenticated Server-Sent Events for live dashboard, VPN session, node, task, audit, DNS, user, certificate, network, policy, and group refreshes.
+- Added lightweight five-second Agent traffic telemetry so active VPN session counters update without increasing heartbeat frequency.
+
+### Changed
+
+- Batched changed traffic counters into chunked SQLite updates, supporting high-density VPN nodes without one database update per active client.
+- Changed Agent task polling to bounded 25-second long polling, reducing idle HTTP requests while preserving atomic task claims.
+
 ### Fixed
 
 - Prevented duplicate active OpenVPN sessions when heartbeat recovery and event-monitor connection reports describe the same tunnel.
