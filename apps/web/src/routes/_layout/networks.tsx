@@ -2,7 +2,20 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { Plus, Trash2, Pencil, Globe, Users, Server, Check, Network as NetworkIcon, Layers } from 'lucide-react'
+import {
+  Plus,
+  Trash2,
+  Pencil,
+  Globe,
+  Users,
+  Server,
+  Check,
+  Layers,
+  Search,
+  X,
+  MoreHorizontal,
+  Eye,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -11,6 +24,14 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal'
+import { Skeleton } from '@/components/ui/skeleton'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Table,
   TableBody,
@@ -70,6 +91,75 @@ interface GroupAllocation {
 
 interface FormState { name: string; cidr: string; description: string; node_ids: string[] }
 
+interface NodeSelectorProps {
+  selectedIds: string[]
+  nodes: VpnNode[]
+  onToggle: (nodeId: string) => void
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+function NodeSelector({ selectedIds, nodes, onToggle }: NodeSelectorProps) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <Label>Target Nodes</Label>
+        <span
+          className={`text-xs font-medium ${
+            selectedIds.length > 0
+              ? 'text-emerald-600 dark:text-emerald-400'
+              : 'text-muted-foreground'
+          }`}
+        >
+          {selectedIds.length > 0 ? `${selectedIds.length} selected` : 'Global: all nodes'}
+        </span>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Select specific nodes, or leave empty to apply this route to every node.
+      </p>
+      {nodes.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No nodes registered.</p>
+      ) : (
+        <div className="grid max-h-40 grid-cols-1 gap-1.5 overflow-y-auto rounded-lg border border-border p-2">
+          {nodes.map((node) => {
+            const selected = selectedIds.includes(node.id)
+            const online = node.status === 'online'
+            return (
+              <button
+                key={node.id}
+                type="button"
+                onClick={() => onToggle(node.id)}
+                className={`flex items-center gap-2.5 rounded-md border px-3 py-2 text-left text-sm transition-colors ${
+                  selected
+                    ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-800'
+                    : 'border-transparent hover:bg-muted'
+                }`}
+              >
+                <div
+                  className={`flex size-4 shrink-0 items-center justify-center rounded border ${
+                    selected ? 'border-emerald-500 bg-emerald-500' : 'border-white bg-white'
+                  }`}
+                >
+                  {selected && <Check className="h-3 w-3 text-white" />}
+                </div>
+                <Server className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium text-foreground">{node.hostname}</span>
+                </span>
+                <span className="text-xs text-muted-foreground">{node.ip_address}</span>
+                <span
+                  className={`size-1.5 shrink-0 rounded-full ${online ? 'bg-emerald-500' : 'bg-muted-foreground/60'}`}
+                  title={online ? 'Online' : 'Offline'}
+                />
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
 function NetworksPage() {
   const qc = useQueryClient()
   const [activeTab, setActiveTab] = useState<'routes' | 'allocations'>('routes')
@@ -79,10 +169,15 @@ function NetworksPage() {
   const [editNetwork, setEditNetwork] = useState<Network | null>(null)
   const [detailNetwork, setDetailNetwork] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>({ name: '', cidr: '', description: '', node_ids: [] })
+  const [networkSearch, setNetworkSearch] = useState('')
+  const [scopeFilter, setScopeFilter] = useState<'all' | 'global' | 'specific'>('all')
+  const [groupFilter, setGroupFilter] = useState<'all' | 'assigned' | 'unassigned'>('all')
 
   // Group Allocations state
   const [showAllocDialog, setShowAllocDialog] = useState(false)
   const [allocForm, setAllocForm] = useState({ group_id: '', node_id: '', vpn_subnet: '' })
+  const [allocSearch, setAllocSearch] = useState('')
+  const [dnsFilter, setDnsFilter] = useState<'all' | 'dns_on' | 'dns_off'>('all')
 
   const { data: networks = [], isLoading } = useQuery<Network[]>({
     queryKey: ['networks'],
@@ -184,86 +279,86 @@ function NetworksPage() {
     }))
   }
 
-  const selectedAllocNode = allNodes.find(n => n.id === allocForm.node_id)
+  const filteredNetworks = networks.filter((n) => {
+    const q = networkSearch.toLowerCase().trim()
+    const matchesSearch =
+      !q ||
+      n.name.toLowerCase().includes(q) ||
+      n.cidr.toLowerCase().includes(q) ||
+      (n.description && n.description.toLowerCase().includes(q))
 
-  const NodeSelector = ({ selectedIds }: { selectedIds: string[] }) => (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between gap-3">
-        <Label>Target Nodes</Label>
-        <span className={`text-xs font-medium ${selectedIds.length > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>
-          {selectedIds.length > 0 ? `${selectedIds.length} selected` : 'Global: all nodes'}
-        </span>
-      </div>
-      <p className="text-xs text-muted-foreground">Select specific nodes, or leave empty to apply this route to every node.</p>
-      {allNodes.length === 0 ? (
-        <p className="text-xs text-muted-foreground">No nodes registered.</p>
-      ) : (
-        <div className="grid max-h-40 grid-cols-1 gap-1.5 overflow-y-auto rounded-lg border border-border p-2">
-          {allNodes.map(node => {
-            const selected = selectedIds.includes(node.id)
-            const online = node.status === 'online'
-            return (
-            <button
-              key={node.id}
-              type="button"
-              onClick={() => toggleNode(node.id)}
-              className={`flex items-center gap-2.5 rounded-md border px-3 py-2 text-left text-sm transition-colors ${
-                selected
-                  ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-800'
-                  : 'border-transparent hover:bg-muted'
-              }`}
-            >
-              <div className={`flex size-4 shrink-0 items-center justify-center rounded border ${
-                selected ? 'border-emerald-500 bg-emerald-500' : 'border-white bg-white'
-              }`}>
-                {selected && <Check className="h-3 w-3 text-white" />}
-              </div>
-              <Server className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-medium text-foreground">{node.hostname}</span>
-              </span>
-              <span className="text-xs text-muted-foreground">{node.ip_address}</span>
-              <span className={`size-1.5 shrink-0 rounded-full ${online ? 'bg-emerald-500' : 'bg-muted-foreground/60'}`} title={online ? 'Online' : 'Offline'} />
-            </button>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
+    const matchesScope =
+      scopeFilter === 'all'
+        ? true
+        : scopeFilter === 'global'
+        ? n.node_count === 0
+        : n.node_count > 0
+
+    const matchesGroup =
+      groupFilter === 'all'
+        ? true
+        : groupFilter === 'assigned'
+        ? n.group_count > 0
+        : n.group_count === 0
+
+    return matchesSearch && matchesScope && matchesGroup
+  })
+
+  const hasNetworkFilters = Boolean(networkSearch || scopeFilter !== 'all' || groupFilter !== 'all')
+
+  const filteredAllocations = allocations.filter((a) => {
+    const q = allocSearch.toLowerCase().trim()
+    const matchesSearch =
+      !q ||
+      a.group_name.toLowerCase().includes(q) ||
+      a.node_hostname.toLowerCase().includes(q) ||
+      a.node_pool.toLowerCase().includes(q) ||
+      a.vpn_subnet.toLowerCase().includes(q)
+
+    const matchesDns =
+      dnsFilter === 'all'
+        ? true
+        : dnsFilter === 'dns_on'
+        ? a.managed_dns_enabled
+        : !a.managed_dns_enabled
+
+    return matchesSearch && matchesDns
+  })
+
+  const hasAllocFilters = Boolean(allocSearch || dnsFilter !== 'all')
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Networks & IP Management</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Manage target network routes and group VPN subnet allocations across node pools.
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Networks & IP Management</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {networks.length} network{networks.length !== 1 ? 's' : ''} defined • Manage target network routes and group VPN subnet allocations across node pools
           </p>
         </div>
         <div className="flex items-center gap-2">
           {activeTab === 'routes' ? (
             <Button
               id="btn-create-network"
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
               onClick={() => {
                 setShowCreate(true)
                 setForm({ name: '', cidr: '', description: '', node_ids: [] })
               }}
             >
-              <Plus className="mr-2 h-4 w-4" />
+              <Plus className="mr-1.5 h-4 w-4" />
               Add Network
             </Button>
           ) : (
             <Button
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
               onClick={() => {
                 setShowAllocDialog(true)
                 setAllocForm({ group_id: '', node_id: '', vpn_subnet: '' })
               }}
             >
-              <Plus className="mr-2 h-4 w-4" />
+              <Plus className="mr-1.5 h-4 w-4" />
               Allocate Subnet
             </Button>
           )}
@@ -283,229 +378,573 @@ function NetworksPage() {
         </TabsList>
 
         {/* ── TAB 1: TARGET NETWORKS ────────────────────────────────────── */}
-        <TabsContent value="routes" className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className={detailNetwork ? 'lg:col-span-2' : 'lg:col-span-3'}>
-              <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm overflow-hidden">
-                <div className="p-5 border-b border-border/50">
-                  <h2 className="font-semibold text-foreground">Network Segments</h2>
-                  <p className="text-xs text-muted-foreground/70 mt-0.5">{networks.length} network{networks.length !== 1 ? 's' : ''} defined</p>
-                </div>
-                <div className="p-0">
-                  {isLoading ? (
-                    <div className="p-8 text-center text-sm text-muted-foreground">Loading...</div>
-                  ) : networks.length === 0 ? (
-                    <div className="p-8 text-center space-y-2">
-                      <Globe className="h-8 w-8 mx-auto text-muted-foreground/50" />
-                      <p className="text-sm text-muted-foreground">No networks defined yet.</p>
-                      <p className="text-xs text-muted-foreground">Add internal subnets (e.g. 10.0.1.0/24) that VPN users should be able to access.</p>
-                    </div>
-                  ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Name</TableHead>
-                          <TableHead>CIDR</TableHead>
-                          <TableHead>Description</TableHead>
-                          <TableHead>Groups</TableHead>
-                          <TableHead>Nodes</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {networks.map(n => (
-                          <TableRow
-                            key={n.id}
-                            className={`cursor-pointer ${detailNetwork === n.id ? 'bg-muted/50' : ''}`}
-                            onClick={() => setDetailNetwork(detailNetwork === n.id ? null : n.id)}
-                          >
-                            <TableCell className="font-medium">{n.name}</TableCell>
-                            <TableCell>
-                              <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">{n.cidr}</code>
-                            </TableCell>
-                            <TableCell className="text-muted-foreground text-xs max-w-[200px] truncate">
-                              {n.description || '—'}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="secondary" className="gap-1 text-xs">
-                                <Users className="h-3 w-3" />
-                                {n.group_count}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              {n.node_count === 0 ? (
-                                <Badge variant="outline" className="text-xs text-muted-foreground">All Nodes</Badge>
-                              ) : (
-                                <Badge variant="secondary" className="gap-1 text-xs">
-                                  <Server className="h-3 w-3" />
-                                  {n.node_count} node{n.node_count !== 1 ? 's' : ''}
-                                </Badge>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                              <div className="flex items-center justify-end gap-1">
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                                  onClick={() => {
-                                    setEditNetwork(n)
-                                    setForm({
-                                      name: n.name,
-                                      cidr: n.cidr,
-                                      description: n.description || '',
-                                      node_ids: n.node_ids ?? [],
-                                    })
-                                  }}
-                                >
-                                  <Pencil className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-8 w-8 text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
-                                  onClick={() => {
-                                    if (confirm(`Delete network "${n.name}"? This will remove access for all associated groups.`)) {
-                                      deleteMutation.mutate(n.id)
-                                    }
-                                  }}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  )}
-                </div>
-              </div>
+        <TabsContent value="routes" className="space-y-4">
+          {/* Toolbar: Search and Filter Pills */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            {/* Search */}
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60 pointer-events-none" />
+              <Input
+                type="text"
+                placeholder="Search networks..."
+                value={networkSearch}
+                onChange={(e) => setNetworkSearch(e.target.value)}
+                className="pl-9 pr-8 h-9 text-sm"
+              />
+              {networkSearch && (
+                <button
+                  type="button"
+                  onClick={() => setNetworkSearch('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-muted-foreground/60 hover:text-foreground rounded cursor-pointer"
+                  aria-label="Clear search"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
 
-            {/* Network detail sidebar */}
-            {detailNetwork && networkDetail && (
-              <div className="space-y-4">
-                <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm p-5">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-semibold">{networkDetail.name}</h3>
-                    <code className="text-xs bg-muted px-2 py-0.5 rounded font-mono">{networkDetail.cidr}</code>
-                  </div>
-                  {networkDetail.description && (
-                    <p className="text-sm text-muted-foreground mb-4">{networkDetail.description}</p>
-                  )}
-
-                  <div className="space-y-4 pt-2 border-t border-border/50">
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Target Nodes</span>
-                        <Badge className="text-xs" variant="outline">
-                          {networkDetail.nodes.length === 0 ? 'All Nodes (Global)' : `${networkDetail.nodes.length} node(s)`}
-                        </Badge>
-                      </div>
-                      {networkDetail.nodes.length === 0 ? (
-                        <p className="text-xs text-muted-foreground bg-muted/30 p-2.5 rounded-lg">
-                          This route is pushed to connected clients on <strong>all nodes</strong>.
-                        </p>
-                      ) : (
-                        <div className="space-y-1.5">
-                          {networkDetail.nodes.map(node => (
-                            <div key={node.id} className="flex items-center justify-between text-xs p-2 rounded-lg bg-muted/30">
-                              <span className="font-medium">{node.hostname}</span>
-                              <span className="font-mono text-muted-foreground">{node.ip_address}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Associated Groups</span>
-                        <Badge className="text-xs bg-emerald-100 text-emerald-700">{networkDetail.groups.length}</Badge>
-                      </div>
-                      {networkDetail.groups.length === 0 ? (
-                        <p className="text-xs text-muted-foreground bg-muted/30 p-2.5 rounded-lg">
-                          No groups assigned yet. Assign in Groups menu.
-                        </p>
-                      ) : (
-                        <div className="space-y-1.5">
-                          {networkDetail.groups.map(g => (
-                            <div key={g.id} className="flex items-center justify-between text-xs p-2 rounded-lg bg-muted/30">
-                              <span className="font-medium">{g.name}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
+            {/* Quick Filters */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Scope filter pills */}
+              <div className="inline-flex rounded-lg border border-border bg-muted/40 p-0.5 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setScopeFilter('all')}
+                  className={`px-2.5 py-1 rounded-md font-medium transition-all ${
+                    scopeFilter === 'all'
+                      ? 'bg-card text-foreground shadow-xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  All Scopes
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScopeFilter('global')}
+                  className={`px-2.5 py-1 rounded-md font-medium transition-all ${
+                    scopeFilter === 'global'
+                      ? 'bg-card text-foreground shadow-xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Global (All Nodes)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScopeFilter('specific')}
+                  className={`px-2.5 py-1 rounded-md font-medium transition-all ${
+                    scopeFilter === 'specific'
+                      ? 'bg-card text-foreground shadow-xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Specific Nodes
+                </button>
               </div>
-            )}
+
+              {/* Group assignment filter pills */}
+              <div className="inline-flex rounded-lg border border-border bg-muted/40 p-0.5 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setGroupFilter('all')}
+                  className={`px-2.5 py-1 rounded-md font-medium transition-all ${
+                    groupFilter === 'all'
+                      ? 'bg-card text-foreground shadow-xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  All Networks
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGroupFilter('assigned')}
+                  className={`px-2.5 py-1 rounded-md font-medium transition-all ${
+                    groupFilter === 'assigned'
+                      ? 'bg-card text-foreground shadow-xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  With Groups
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGroupFilter('unassigned')}
+                  className={`px-2.5 py-1 rounded-md font-medium transition-all ${
+                    groupFilter === 'unassigned'
+                      ? 'bg-card text-foreground shadow-xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Unassigned
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Main Networks Table (Full Width) */}
+          <div className="bg-card text-card-foreground rounded-xl border border-border shadow-xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader className="bg-muted/40">
+                  <TableRow className="hover:bg-transparent border-b border-border">
+                    <TableHead className="w-12 text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      #
+                    </TableHead>
+                    <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground min-w-[200px]">
+                      Network Name
+                    </TableHead>
+                    <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground w-40">
+                      CIDR
+                    </TableHead>
+                    <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground min-w-[200px]">
+                      Description
+                    </TableHead>
+                    <TableHead className="text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground w-32">
+                      Groups
+                    </TableHead>
+                    <TableHead className="text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground w-36">
+                      Nodes
+                    </TableHead>
+                    <TableHead className="text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground pr-5 w-24">
+                      Actions
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="divide-y divide-border/60">
+                  {isLoading ? (
+                    Array.from({ length: 4 }).map((_, i) => (
+                      <TableRow key={i} className="hover:bg-transparent">
+                        <TableCell className="text-center">
+                          <Skeleton className="h-4 w-4 mx-auto rounded" />
+                        </TableCell>
+                        <TableCell className="py-3">
+                          <div className="flex items-center gap-3">
+                            <Skeleton className="h-9 w-9 rounded-lg shrink-0" />
+                            <Skeleton className="h-4 w-28" />
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-5 w-24 rounded-md" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-4 w-40" />
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Skeleton className="h-5 w-16 mx-auto rounded-md" />
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Skeleton className="h-5 w-20 mx-auto rounded-md" />
+                        </TableCell>
+                        <TableCell className="text-right pr-5">
+                          <Skeleton className="h-7 w-7 rounded-md ml-auto" />
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : filteredNetworks.length === 0 ? (
+                    <TableRow className="hover:bg-transparent">
+                      <TableCell colSpan={7} className="py-16 text-center">
+                        {hasNetworkFilters ? (
+                          <div className="flex flex-col items-center justify-center max-w-sm mx-auto">
+                            <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-3">
+                              <Search className="h-6 w-6 text-muted-foreground/70" />
+                            </div>
+                            <h3 className="font-semibold text-foreground text-base">No networks found</h3>
+                            <p className="text-xs text-muted-foreground mt-1 text-center">
+                              No networks match your current search or filter criteria. Try resetting them.
+                            </p>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="mt-4 text-xs"
+                              onClick={() => {
+                                setNetworkSearch('')
+                                setScopeFilter('all')
+                                setGroupFilter('all')
+                              }}
+                            >
+                              Clear all filters
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center justify-center max-w-sm mx-auto">
+                            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-3 text-emerald-600 dark:text-emerald-400">
+                              <Globe className="h-6 w-6" />
+                            </div>
+                            <h3 className="font-semibold text-foreground text-base">No networks defined yet</h3>
+                            <p className="text-xs text-muted-foreground mt-1 text-center">
+                              Define internal subnets (e.g. 10.0.1.0/24 or 172.31.0.0/20) that VPN users should be able to access.
+                            </p>
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                setShowCreate(true)
+                                setForm({ name: '', cidr: '', description: '', node_ids: [] })
+                              }}
+                              className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs shadow-xs"
+                            >
+                              <Plus className="mr-1.5 h-3.5 w-3.5" />
+                              Add First Network
+                            </Button>
+                          </div>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredNetworks.map((n, index) => (
+                      <TableRow
+                        key={n.id}
+                        className="hover:bg-muted/40 transition-colors group"
+                      >
+                        {/* # Number */}
+                        <TableCell className="text-center font-mono text-xs text-muted-foreground/70">
+                          {index + 1}
+                        </TableCell>
+
+                        {/* Network Name */}
+                        <TableCell className="py-3">
+                          <div className="flex items-center gap-3">
+                            <div className="h-9 w-9 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
+                              <Globe className="h-4.5 w-4.5" />
+                            </div>
+                            <span className="font-semibold text-sm text-foreground truncate">
+                              {n.name}
+                            </span>
+                          </div>
+                        </TableCell>
+
+                        {/* CIDR */}
+                        <TableCell>
+                          <code className="px-2 py-0.5 rounded-md font-mono text-xs font-medium bg-muted/60 text-foreground border border-border/70">
+                            {n.cidr}
+                          </code>
+                        </TableCell>
+
+                        {/* Description */}
+                        <TableCell className="text-sm text-muted-foreground max-w-[240px] truncate">
+                          {n.description ? (
+                            n.description
+                          ) : (
+                            <span className="text-muted-foreground/50 italic text-xs">No description</span>
+                          )}
+                        </TableCell>
+
+                        {/* Groups Shortcut Badge */}
+                        <TableCell className="text-center">
+                          <button
+                            type="button"
+                            onClick={() => setDetailNetwork(n.id)}
+                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-mono font-medium bg-muted/60 hover:bg-muted hover:border-border text-foreground border border-border/80 transition-colors shadow-2xs group/btn cursor-pointer"
+                            title="View associated groups"
+                          >
+                            <Users className="h-3 w-3 text-emerald-600 dark:text-emerald-400 group-hover/btn:scale-110 transition-transform" />
+                            <span>{n.group_count}</span>
+                            <span className="text-[10px] text-muted-foreground font-sans">
+                              group{n.group_count !== 1 ? 's' : ''}
+                            </span>
+                          </button>
+                        </TableCell>
+
+                        {/* Nodes Shortcut Badge */}
+                        <TableCell className="text-center">
+                          {n.node_count === 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => setDetailNetwork(n.id)}
+                              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium bg-muted/40 hover:bg-muted text-muted-foreground border border-border/60 transition-colors cursor-pointer"
+                              title="Pushed to all nodes (Global)"
+                            >
+                              <Globe className="h-3 w-3 text-muted-foreground/70" />
+                              <span>All Nodes</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setDetailNetwork(n.id)}
+                              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-mono font-medium bg-muted/60 hover:bg-muted hover:border-border text-foreground border border-border/80 transition-colors shadow-2xs group/btn cursor-pointer"
+                              title="View target nodes"
+                            >
+                              <Server className="h-3 w-3 text-emerald-600 dark:text-emerald-400 group-hover/btn:scale-110 transition-transform" />
+                              <span>{n.node_count}</span>
+                              <span className="text-[10px] text-muted-foreground font-sans">
+                                node{n.node_count !== 1 ? 's' : ''}
+                              </span>
+                            </button>
+                          )}
+                        </TableCell>
+
+                        {/* Actions Dropdown */}
+                        <TableCell className="text-right pr-5">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                className="ml-auto flex p-1.5 text-muted-foreground/70 hover:text-foreground hover:bg-muted rounded-md transition-colors cursor-pointer"
+                                aria-label={`Actions for ${n.name}`}
+                              >
+                                <MoreHorizontal className="h-4 w-4" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-52">
+                              <DropdownMenuItem onSelect={() => setDetailNetwork(n.id)}>
+                                <Eye className="mr-2 h-4 w-4 text-muted-foreground" />
+                                View Details
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onSelect={() => {
+                                  setEditNetwork(n)
+                                  setForm({
+                                    name: n.name,
+                                    cidr: n.cidr,
+                                    description: n.description || '',
+                                    node_ids: n.node_ids ?? [],
+                                  })
+                                }}
+                              >
+                                <Pencil className="mr-2 h-4 w-4 text-muted-foreground" />
+                                Edit Network
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onSelect={() => {
+                                  if (confirm(`Delete network "${n.name}"? This will remove access for all associated groups.`)) {
+                                    deleteMutation.mutate(n.id)
+                                  }
+                                }}
+                                className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4 text-destructive" />
+                                Delete Network
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         </TabsContent>
 
         {/* ── TAB 2: GROUP SUBNET ALLOCATIONS ───────────────────────────── */}
-        <TabsContent value="allocations" className="space-y-6">
-          <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm overflow-hidden">
-            <div className="p-5 border-b border-border/50 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="font-semibold text-foreground">Node Subnet Allocations</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Divide node IP pools into distinct subnets for each group. Members connecting to that node receive an IP from the allocated subnet.
-                </p>
-              </div>
-              <Badge variant="outline" className="text-xs self-start sm:self-auto font-mono">
-                {allocations.length} allocation{allocations.length !== 1 ? 's' : ''}
-              </Badge>
+        <TabsContent value="allocations" className="space-y-4">
+          {/* Toolbar */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            {/* Search */}
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60 pointer-events-none" />
+              <Input
+                type="text"
+                placeholder="Search allocations..."
+                value={allocSearch}
+                onChange={(e) => setAllocSearch(e.target.value)}
+                className="pl-9 pr-8 h-9 text-sm"
+              />
+              {allocSearch && (
+                <button
+                  type="button"
+                  onClick={() => setAllocSearch('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-muted-foreground/60 hover:text-foreground rounded cursor-pointer"
+                  aria-label="Clear search"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
 
-            <div className="p-0">
-              {isAllocLoading ? (
-                <div className="p-8 text-center text-sm text-muted-foreground">Loading allocations...</div>
-              ) : allocations.length === 0 ? (
-                <div className="p-8 text-center space-y-2">
-                  <Layers className="h-8 w-8 mx-auto text-muted-foreground/50" />
-                  <p className="text-sm text-muted-foreground">No group subnets allocated yet.</p>
-                  <p className="text-xs text-muted-foreground">
-                    Click "Allocate Subnet" to map a group to a dedicated subnet within a node's IP pool.
-                  </p>
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Group</TableHead>
-                      <TableHead>Target Node</TableHead>
-                      <TableHead>Node Pool</TableHead>
-                      <TableHead>Allocated Group Subnet</TableHead>
-                      <TableHead>Managed DNS</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {allocations.map(a => (
-                      <TableRow key={`${a.group_id}-${a.node_id}`}>
-                        <TableCell className="font-semibold text-sm">
-                          {a.group_name}
+            {/* DNS Filter pills */}
+            <div className="inline-flex rounded-lg border border-border bg-muted/40 p-0.5 text-xs">
+              <button
+                type="button"
+                onClick={() => setDnsFilter('all')}
+                className={`px-2.5 py-1 rounded-md font-medium transition-all ${
+                  dnsFilter === 'all'
+                    ? 'bg-card text-foreground shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                All DNS
+              </button>
+              <button
+                type="button"
+                onClick={() => setDnsFilter('dns_on')}
+                className={`px-2.5 py-1 rounded-md font-medium transition-all ${
+                  dnsFilter === 'dns_on'
+                    ? 'bg-card text-foreground shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                DNS Enabled
+              </button>
+              <button
+                type="button"
+                onClick={() => setDnsFilter('dns_off')}
+                className={`px-2.5 py-1 rounded-md font-medium transition-all ${
+                  dnsFilter === 'dns_off'
+                    ? 'bg-card text-foreground shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                DNS Off
+              </button>
+            </div>
+          </div>
+
+          {/* Allocations Table */}
+          <div className="bg-card text-card-foreground rounded-xl border border-border shadow-xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader className="bg-muted/40">
+                  <TableRow className="hover:bg-transparent border-b border-border">
+                    <TableHead className="w-12 text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      #
+                    </TableHead>
+                    <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground min-w-[180px]">
+                      Group
+                    </TableHead>
+                    <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground min-w-[180px]">
+                      Target Node
+                    </TableHead>
+                    <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground w-36">
+                      Node Pool
+                    </TableHead>
+                    <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground w-44">
+                      Allocated Subnet
+                    </TableHead>
+                    <TableHead className="text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground w-36">
+                      Managed DNS
+                    </TableHead>
+                    <TableHead className="text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground pr-5 w-24">
+                      Actions
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="divide-y divide-border/60">
+                  {isAllocLoading ? (
+                    Array.from({ length: 4 }).map((_, i) => (
+                      <TableRow key={i} className="hover:bg-transparent">
+                        <TableCell className="text-center">
+                          <Skeleton className="h-4 w-4 mx-auto rounded" />
                         </TableCell>
+                        <TableCell className="py-3">
+                          <div className="flex items-center gap-3">
+                            <Skeleton className="h-9 w-9 rounded-lg shrink-0" />
+                            <Skeleton className="h-4 w-28" />
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-4 w-32" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-5 w-24 rounded-md" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-5 w-28 rounded-md" />
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Skeleton className="h-5 w-16 mx-auto rounded-full" />
+                        </TableCell>
+                        <TableCell className="text-right pr-5">
+                          <Skeleton className="h-7 w-7 rounded-md ml-auto" />
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : filteredAllocations.length === 0 ? (
+                    <TableRow className="hover:bg-transparent">
+                      <TableCell colSpan={7} className="py-16 text-center">
+                        {hasAllocFilters ? (
+                          <div className="flex flex-col items-center justify-center max-w-sm mx-auto">
+                            <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-3">
+                              <Search className="h-6 w-6 text-muted-foreground/70" />
+                            </div>
+                            <h3 className="font-semibold text-foreground text-base">No allocations found</h3>
+                            <p className="text-xs text-muted-foreground mt-1 text-center">
+                              No subnet allocations match your current search or filter.
+                            </p>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="mt-4 text-xs"
+                              onClick={() => {
+                                setAllocSearch('')
+                                setDnsFilter('all')
+                              }}
+                            >
+                              Clear all filters
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center justify-center max-w-sm mx-auto">
+                            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-3 text-emerald-600 dark:text-emerald-400">
+                              <Layers className="h-6 w-6" />
+                            </div>
+                            <h3 className="font-semibold text-foreground text-base">No group subnets allocated yet</h3>
+                            <p className="text-xs text-muted-foreground mt-1 text-center">
+                              Divide node IP pools into distinct subnets for each group.
+                            </p>
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                setShowAllocDialog(true)
+                                setAllocForm({ group_id: '', node_id: '', vpn_subnet: '' })
+                              }}
+                              className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs shadow-xs"
+                            >
+                              <Plus className="mr-1.5 h-3.5 w-3.5" />
+                              Allocate Subnet
+                            </Button>
+                          </div>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredAllocations.map((a, index) => (
+                      <TableRow
+                        key={`${a.group_id}-${a.node_id}`}
+                        className="hover:bg-muted/40 transition-colors group"
+                      >
+                        {/* # Number */}
+                        <TableCell className="text-center font-mono text-xs text-muted-foreground/70">
+                          {index + 1}
+                        </TableCell>
+
+                        {/* Group */}
+                        <TableCell className="py-3">
+                          <div className="flex items-center gap-3">
+                            <div className="h-9 w-9 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
+                              <Layers className="h-4.5 w-4.5" />
+                            </div>
+                            <span className="font-semibold text-sm text-foreground truncate">
+                              {a.group_name}
+                            </span>
+                          </div>
+                        </TableCell>
+
+                        {/* Target Node */}
                         <TableCell className="text-xs">
-                          <div className="flex items-center gap-1.5 font-medium">
+                          <div className="flex items-center gap-1.5 font-medium text-foreground">
                             <Server className="size-3.5 text-muted-foreground" />
                             {a.node_hostname}
                           </div>
                         </TableCell>
+
+                        {/* Node Pool */}
                         <TableCell>
-                          <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono text-muted-foreground">
+                          <code className="text-xs bg-muted/60 text-muted-foreground border border-border/70 px-2 py-0.5 rounded font-mono">
                             {a.node_pool}
                           </code>
                         </TableCell>
+
+                        {/* Allocated Subnet */}
                         <TableCell>
                           <code className="text-xs bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded font-mono font-medium">
                             {a.vpn_subnet}
                           </code>
                         </TableCell>
-                        <TableCell>
+
+                        {/* Managed DNS */}
+                        <TableCell className="text-center">
                           {a.managed_dns_enabled ? (
                             <Badge variant="outline" className="text-[11px] bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
                               Enabled ({a.listener_ip || 'No IP'})
@@ -516,46 +955,192 @@ function NetworksPage() {
                             </Badge>
                           )}
                         </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                              onClick={() => {
-                                setAllocForm({
-                                  group_id: a.group_id,
-                                  node_id: a.node_id,
-                                  vpn_subnet: a.vpn_subnet,
-                                })
-                                setShowAllocDialog(true)
-                              }}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-8 w-8 text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
-                              onClick={() => {
-                                if (confirm(`Remove subnet allocation for group "${a.group_name}" on node "${a.node_hostname}"?`)) {
-                                  deleteAllocMutation.mutate({ groupId: a.group_id, nodeId: a.node_id })
-                                }
-                              }}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
+
+                        {/* Actions Dropdown */}
+                        <TableCell className="text-right pr-5">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                className="ml-auto flex p-1.5 text-muted-foreground/70 hover:text-foreground hover:bg-muted rounded-md transition-colors cursor-pointer"
+                                aria-label={`Actions for allocation on ${a.node_hostname}`}
+                              >
+                                <MoreHorizontal className="h-4 w-4" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-52">
+                              <DropdownMenuItem
+                                onSelect={() => {
+                                  setAllocForm({
+                                    group_id: a.group_id,
+                                    node_id: a.node_id,
+                                    vpn_subnet: a.vpn_subnet,
+                                  })
+                                  setShowAllocDialog(true)
+                                }}
+                              >
+                                <Pencil className="mr-2 h-4 w-4 text-muted-foreground" />
+                                Edit Allocation
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onSelect={() => {
+                                  if (confirm(`Remove subnet allocation for group "${a.group_name}" on node "${a.node_hostname}"?`)) {
+                                    deleteAllocMutation.mutate({ groupId: a.group_id, nodeId: a.node_id })
+                                  }
+                                }}
+                                className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4 text-destructive" />
+                                Remove Allocation
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </TableCell>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
+                    ))
+                  )}
+                </TableBody>
+              </Table>
             </div>
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Network Detail Modal */}
+      <Modal open={!!detailNetwork} onClose={() => setDetailNetwork(null)}>
+        <ModalHeader
+          title={networkDetail?.name ? `Network: ${networkDetail.name}` : 'Network Details'}
+          onClose={() => setDetailNetwork(null)}
+        />
+        <ModalBody>
+          {networkDetail ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-border/60">
+                <div>
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">CIDR Route</span>
+                  <div className="mt-1">
+                    <code className="px-2.5 py-1 rounded-md bg-muted font-mono text-sm font-semibold text-foreground border border-border">
+                      {networkDetail.cidr}
+                    </code>
+                  </div>
+                </div>
+                {networkDetail.created_at && (
+                  <div className="text-right">
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Created</span>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {new Date(networkDetail.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {networkDetail.description && (
+                <div className="space-y-1">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Description</span>
+                  <p className="text-sm text-foreground bg-muted/30 p-2.5 rounded-lg border border-border/50">
+                    {networkDetail.description}
+                  </p>
+                </div>
+              )}
+
+              {/* Target Nodes */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-foreground uppercase tracking-wide flex items-center gap-1.5">
+                    <Server className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                    Target Nodes
+                  </span>
+                  <Badge variant="outline" className="text-xs">
+                    {networkDetail.nodes.length === 0 ? 'All Nodes (Global)' : `${networkDetail.nodes.length} node(s)`}
+                  </Badge>
+                </div>
+                {networkDetail.nodes.length === 0 ? (
+                  <div className="text-xs text-muted-foreground bg-muted/40 p-3 rounded-lg border border-border/50">
+                    This route is pushed to connected VPN clients on <strong>all nodes</strong> automatically.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-1.5 max-h-48 overflow-y-auto">
+                    {networkDetail.nodes.map((node) => (
+                      <div
+                        key={node.id}
+                        className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-muted/30 border border-border/40"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className={`size-1.5 rounded-full ${node.status === 'online' ? 'bg-emerald-500' : 'bg-muted-foreground/60'}`} />
+                          <span className="font-medium text-foreground">{node.hostname}</span>
+                        </div>
+                        <span className="font-mono text-muted-foreground">{node.ip_address}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Associated Groups */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-foreground uppercase tracking-wide flex items-center gap-1.5">
+                    <Users className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                    Associated Groups
+                  </span>
+                  <Badge variant="outline" className="text-xs">
+                    {networkDetail.groups.length} group{networkDetail.groups.length !== 1 ? 's' : ''}
+                  </Badge>
+                </div>
+                {networkDetail.groups.length === 0 ? (
+                  <div className="text-xs text-muted-foreground bg-muted/40 p-3 rounded-lg border border-border/50">
+                    No groups currently have access to this route. Assign this network in Group Settings.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-1.5 max-h-48 overflow-y-auto">
+                    {networkDetail.groups.map((g) => (
+                      <div
+                        key={g.id}
+                        className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-muted/30 border border-border/40"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Layers className="h-3.5 w-3.5 text-muted-foreground" />
+                          <span className="font-medium text-foreground">{g.name}</span>
+                        </div>
+                        {g.description && (
+                          <span className="text-muted-foreground truncate max-w-[200px]">{g.description}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="py-8 text-center text-sm text-muted-foreground">Loading details...</div>
+          )}
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="outline" onClick={() => setDetailNetwork(null)}>
+            Close
+          </Button>
+          {networkDetail && (
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={() => {
+                const target = networkDetail
+                setDetailNetwork(null)
+                setEditNetwork(target)
+                setForm({
+                  name: target.name,
+                  cidr: target.cidr,
+                  description: target.description || '',
+                  node_ids: target.node_ids ?? [],
+                })
+              }}
+            >
+              <Pencil className="mr-1.5 h-3.5 w-3.5" />
+              Edit Network
+            </Button>
+          )}
+        </ModalFooter>
+      </Modal>
 
       {/* Allocate Subnet Modal */}
       <Modal open={showAllocDialog} onClose={() => setShowAllocDialog(false)}>
@@ -655,7 +1240,7 @@ function NetworksPage() {
               onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
             />
           </div>
-          <NodeSelector selectedIds={form.node_ids} />
+          <NodeSelector selectedIds={form.node_ids} nodes={allNodes} onToggle={toggleNode} />
         </ModalBody>
         <ModalFooter>
           <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
@@ -700,7 +1285,7 @@ function NetworksPage() {
               onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
             />
           </div>
-          <NodeSelector selectedIds={form.node_ids} />
+          <NodeSelector selectedIds={form.node_ids} nodes={allNodes} onToggle={toggleNode} />
         </ModalBody>
         <ModalFooter>
           <Button variant="outline" onClick={() => setEditNetwork(null)}>Cancel</Button>

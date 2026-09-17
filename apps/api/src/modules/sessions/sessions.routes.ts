@@ -83,7 +83,7 @@ const sessionRoutes: FastifyPluginAsync = async (app) => {
     async (request) => {
       const query = request.query as { page?: string; limit?: string; user_id?: string; node_id?: string }
       const page = parseInt(query.page ?? '1')
-      const limit = Math.min(parseInt(query.limit ?? '20'), 100)
+      const limit = Math.min(parseInt(query.limit ?? '10'), 100)
       const offset = (page - 1) * limit
 
       let queryBuilder = app.db('vpn_sessions as s')

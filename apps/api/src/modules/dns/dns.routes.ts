@@ -170,6 +170,14 @@ const dnsRoutes: FastifyPluginAsync = async (app) => {
     return app.db('dns_zones as z').join('group_dns_zones as gz', 'z.id', 'gz.zone_id').where('gz.group_id', group.id).select('z.*').orderBy('z.name')
   })
 
+  app.get('/dns/policies', { onRequest: [app.authenticateAdmin] }, async () => {
+    return app.db('dns_policies as p')
+      .leftJoin('groups as g', 'p.group_id', 'g.id')
+      .select('p.*', 'g.name as group_name')
+      .orderBy('p.priority', 'desc')
+      .orderBy('p.domain_pattern')
+  })
+
   app.get<{ Params: { id: string } }>('/groups/:id/dns/policies', { onRequest: [app.authenticateAdmin] }, async (request, reply) => {
     const group = await app.db('groups').where({ id: request.params.id }).first()
     if (!group) return reply.status(404).send({ error: 'Group not found' })

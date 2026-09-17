@@ -15,7 +15,7 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
       const query = request.query as { nodeId?: string; status?: string; page?: string; limit?: string }
       const paginated = query.page !== undefined || query.limit !== undefined
       const page = Math.max(1, Number.parseInt(query.page ?? '1', 10) || 1)
-      const limit = Math.min(100, Math.max(1, Number.parseInt(query.limit ?? '25', 10) || 25))
+      const limit = Math.min(100, Math.max(1, Number.parseInt(query.limit ?? '10', 10) || 10))
       const builder = app.db('tasks as t')
         .join('vpn_nodes as n', 't.node_id', 'n.id')
         .select('t.*', 'n.hostname as node_hostname')

@@ -12,11 +12,11 @@
   display: block;
   width: 100%;
   padding: 0.625rem 0.875rem;
-  background: #ffffff;
-  border: 1px solid #d1d5db;
+  background: var(--background);
+  border: 1px solid var(--border);
   border-radius: 0.5rem;
   font-size: 0.875rem;
-  color: #111827;
+  color: var(--foreground);
   outline: none;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
@@ -36,6 +36,7 @@
 }
 
 :root {
+  color-scheme: light;
   --background: oklch(0.9842 0.0034 247.8575);
   --foreground: oklch(0.2077 0.0398 265.7549);
   --card: oklch(1.0000 0 0);
@@ -79,6 +80,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: oklch(0.27 0.015 255);
   --foreground: oklch(0.97 0.005 255);
   --card: oklch(0.32 0.015 255);
@@ -176,5 +178,16 @@
   }
   html {
     @apply font-sans;
+  }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="range"]):not([type="file"]),
+  textarea,
+  select {
+    background-color: var(--background);
+  }
+  input[type="date"] {
+    color-scheme: light;
+  }
+  .dark input[type="date"] {
+    color-scheme: dark;
   }
 }

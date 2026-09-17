@@ -1,18 +1,43 @@
-import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
-
-export const Route = createFileRoute('/_layout/policies')({
-  component: PoliciesPage,
-})
-
-import { useState } from 'react'
+import { createFileRoute } from '@tanstack/react-router'
+import { useState, useMemo, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
-import { Plus, Trash2, Shield, X, Search, Users, UsersRound } from 'lucide-react'
+import {
+  Plus,
+  Trash2,
+  Shield,
+  X,
+  Search,
+  Users,
+  UsersRound,
+  Server,
+  CheckCircle2,
+  Ban,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from '@/components/ui/table'
+import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Modal,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+} from '@/components/ui/modal'
+
+export const Route = createFileRoute('/_layout/policies')({
+  component: PoliciesPage,
+})
 
 interface Policy {
   id: string
@@ -43,11 +68,279 @@ interface CreatePolicyForm {
   description: string
 }
 
+interface PolicyTableProps {
+  policies: Policy[]
+  type: 'user' | 'group' | 'global'
+  isLoading: boolean
+  hasFilters: boolean
+  onClearFilters: () => void
+  onDelete: (policy: Policy) => void
+  onAddPolicy: (type: 'user' | 'group' | 'global') => void
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+function PolicyTable({
+  policies: policyList,
+  type,
+  isLoading,
+  hasFilters,
+  onClearFilters,
+  onDelete,
+  onAddPolicy,
+}: PolicyTableProps) {
+  const targetLabel = type === 'global' ? 'Target' : type === 'user' ? 'User' : 'Group'
+
+  return (
+    <div className="bg-card text-card-foreground rounded-xl border border-border shadow-xs overflow-hidden">
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader className="bg-muted/40">
+            <TableRow className="hover:bg-transparent border-b border-border">
+              <TableHead className="w-12 text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                #
+              </TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground min-w-[200px]">
+                {targetLabel}
+              </TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Routing Node
+              </TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Target Network
+              </TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Port / Proto
+              </TableHead>
+              <TableHead className="text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Action
+              </TableHead>
+              <TableHead className="text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Priority
+              </TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground min-w-[150px]">
+                Description
+              </TableHead>
+              <TableHead className="text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground pr-5 w-24">
+                Action
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody className="divide-y divide-border/60">
+            {isLoading ? (
+              Array.from({ length: 4 }).map((_, i) => (
+                <TableRow key={i} className="hover:bg-transparent">
+                  <TableCell className="text-center">
+                    <Skeleton className="h-4 w-4 mx-auto rounded" />
+                  </TableCell>
+                  <TableCell className="py-3">
+                    <div className="flex items-center gap-3">
+                      <Skeleton className="h-9 w-9 rounded-lg shrink-0" />
+                      <Skeleton className="h-4 w-32" />
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-24 rounded-md" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-28 rounded-md" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-20 rounded-md" />
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Skeleton className="h-5 w-16 mx-auto rounded-full" />
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Skeleton className="h-5 w-8 mx-auto rounded" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-36" />
+                  </TableCell>
+                  <TableCell className="text-right pr-5">
+                    <Skeleton className="h-7 w-16 rounded-md ml-auto" />
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : policyList.length === 0 ? (
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={9} className="py-16 text-center">
+                  {hasFilters ? (
+                    <div className="flex flex-col items-center justify-center max-w-sm mx-auto">
+                      <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-3">
+                        <Search className="h-6 w-6 text-muted-foreground/70" />
+                      </div>
+                      <h3 className="font-semibold text-foreground text-base">No policies found</h3>
+                      <p className="text-xs text-muted-foreground mt-1 text-center">
+                        No {type} policies match your current search or filter criteria. Try clearing filters.
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-4 text-xs cursor-pointer"
+                        onClick={onClearFilters}
+                      >
+                        Clear all filters
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center max-w-sm mx-auto">
+                      <div className="w-12 h-12 rounded-full bg-emerald-500/10 flex items-center justify-center mb-3">
+                        <Shield className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+                      </div>
+                      <h3 className="font-semibold text-foreground text-base">No {type} policies</h3>
+                      <p className="text-xs text-muted-foreground mt-1 text-center">
+                        {type === 'group'
+                          ? 'No group network policies configured yet. Create a policy to restrict or permit access for groups.'
+                          : type === 'user'
+                          ? 'No per-user network policies configured yet. Create a policy to restrict or permit access for specific users.'
+                          : 'No global network policies configured yet. Global rules apply to all connected VPN clients.'}
+                      </p>
+                      <Button
+                        size="sm"
+                        className="mt-4 text-xs bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                        onClick={() => onAddPolicy(type)}
+                      >
+                        <Plus className="mr-1.5 h-3.5 w-3.5" />
+                        Add {type === 'group' ? 'Group' : type === 'user' ? 'User' : 'Global'} Policy
+                      </Button>
+                    </div>
+                  )}
+                </TableCell>
+              </TableRow>
+            ) : (
+              policyList.map((p, index) => (
+                <TableRow key={p.id} className="hover:bg-muted/40 transition-colors">
+                  {/* # Row Number */}
+                  <TableCell className="text-center font-mono text-xs text-muted-foreground/70">
+                    {index + 1}
+                  </TableCell>
+
+                  {/* Target Column with Icon Box */}
+                  <TableCell className="py-3">
+                    <div className="flex items-center gap-3">
+                      {type === 'group' ? (
+                        <div className="w-9 h-9 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                          <UsersRound className="size-4" />
+                        </div>
+                      ) : type === 'user' ? (
+                        <div className="w-9 h-9 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                          <Users className="size-4" />
+                        </div>
+                      ) : (
+                        <div className="w-9 h-9 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                          <Shield className="size-4" />
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <div className="font-semibold text-sm text-foreground truncate">
+                          {type === 'global'
+                            ? 'All Clients (Global)'
+                            : type === 'user'
+                            ? p.name ?? p.userId ?? 'Unknown User'
+                            : p.group_name ?? p.groupId ?? 'Unknown Group'}
+                        </div>
+                      </div>
+                    </div>
+                  </TableCell>
+
+                  {/* Routing Node */}
+                  <TableCell className="text-xs whitespace-nowrap">
+                    {p.node_name ? (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border border-indigo-500/20">
+                        <Server className="size-3" />
+                        {p.node_name}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs text-muted-foreground bg-muted/60 border border-border/70">
+                        All Nodes (Global)
+                      </span>
+                    )}
+                  </TableCell>
+
+                  {/* Target Network */}
+                  <TableCell>
+                    <code className="px-2 py-0.5 rounded-md font-mono text-xs font-medium bg-muted/60 text-foreground border border-border/70 whitespace-nowrap">
+                      {p.target_network}
+                    </code>
+                  </TableCell>
+
+                  {/* Port / Protocol */}
+                  <TableCell className="whitespace-nowrap">
+                    <div className="inline-flex items-center gap-1 font-mono text-xs">
+                      <span className="uppercase bg-muted text-muted-foreground px-1.5 py-0.5 rounded border border-border/60 font-medium">
+                        {p.protocol}
+                      </span>
+                      {p.target_port ? (
+                        <span className="text-foreground font-semibold">:{p.target_port}</span>
+                      ) : (
+                        <span className="text-muted-foreground/60">:all</span>
+                      )}
+                    </div>
+                  </TableCell>
+
+                  {/* Action Badge */}
+                  <TableCell className="text-center whitespace-nowrap">
+                    {p.action === 'allow' ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
+                        <CheckCircle2 className="size-3" />
+                        allow
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-500/10 text-red-700 dark:text-red-400 border border-red-500/20">
+                        <Ban className="size-3" />
+                        deny
+                      </span>
+                    )}
+                  </TableCell>
+
+                  {/* Priority */}
+                  <TableCell className="text-center">
+                    <span className="inline-flex items-center justify-center min-w-[28px] px-1.5 py-0.5 rounded text-xs font-mono text-muted-foreground bg-muted/40 border border-border/60">
+                      {p.priority}
+                    </span>
+                  </TableCell>
+
+                  {/* Description */}
+                  <TableCell>
+                    <span
+                      className="text-xs text-muted-foreground truncate block max-w-[200px]"
+                      title={p.description || undefined}
+                    >
+                      {p.description || '—'}
+                    </span>
+                  </TableCell>
+
+                  {/* Action: Delete */}
+                  <TableCell className="text-right pr-5 whitespace-nowrap">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 px-2.5 text-xs text-muted-foreground hover:text-red-600 hover:bg-red-500/10 cursor-pointer ml-auto"
+                      onClick={() => onDelete(p)}
+                    >
+                      <Trash2 className="mr-1.5 size-3.5" />
+                      Delete
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  )
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
 function PoliciesPage() {
   const qc = useQueryClient()
   const [showForm, setShowForm] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedPolicies, setSelectedPolicies] = useState<Set<string>>(new Set())
+  const [actionFilter, setActionFilter] = useState<'all' | 'allow' | 'deny'>('all')
+  const [nodeFilter, setNodeFilter] = useState<'all' | 'global' | 'specific'>('all')
+  const [activeTab, setActiveTab] = useState<'group' | 'user' | 'global'>('group')
+
   const [form, setForm] = useState<CreatePolicyForm>({
     targetType: 'group',
     userId: '',
@@ -82,21 +375,33 @@ function PoliciesPage() {
   })
 
   const createMutation = useMutation({
-    mutationFn: () => api.post('/api/v1/policies', {
-      userId: form.targetType === 'user' ? form.userId : undefined,
-      groupId: form.targetType === 'group' ? form.groupId : undefined,
-      nodeId: form.nodeId || undefined,
-      targetNetwork: form.targetNetwork,
-      protocol: form.protocol,
-      targetPort: form.targetPort || undefined,
-      action: form.action,
-      priority: parseInt(form.priority) || 100,
-      description: form.description || undefined,
-    }),
+    mutationFn: () =>
+      api.post('/api/v1/policies', {
+        userId: form.targetType === 'user' ? form.userId : undefined,
+        groupId: form.targetType === 'group' ? form.groupId : undefined,
+        nodeId: form.nodeId || undefined,
+        targetNetwork: form.targetNetwork,
+        protocol: form.protocol,
+        targetPort: form.targetPort || undefined,
+        action: form.action,
+        priority: parseInt(form.priority, 10) || 100,
+        description: form.description || undefined,
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['policies'] })
       setShowForm(false)
-      setForm({ targetType: 'group', userId: '', groupId: '', nodeId: '', targetNetwork: '', protocol: 'all', targetPort: '', action: 'allow', priority: '100', description: '' })
+      setForm({
+        targetType: 'group',
+        userId: '',
+        groupId: '',
+        nodeId: '',
+        targetNetwork: '',
+        protocol: 'all',
+        targetPort: '',
+        action: 'allow',
+        priority: '100',
+        description: '',
+      })
       toast.success('Policy created')
     },
     onError: (e: Error) => toast.error(e.message),
@@ -111,165 +416,69 @@ function PoliciesPage() {
     onError: (e: Error) => toast.error(e.message),
   })
 
-  const bulkDeleteMutation = useMutation({
-    mutationFn: async (ids: string[]) => {
-      await Promise.all(ids.map(id => api.delete(`/api/v1/policies/${id}`)))
+  const handleDeletePolicy = (p: Policy) => {
+    const targetDesc = p.group_name || p.name || (p.groupId ? 'Group' : p.userId ? 'User' : 'Global')
+    if (confirm(`Delete network policy for "${targetDesc}" (${p.target_network})?`)) {
+      deleteMutation.mutate(p.id)
+    }
+  }
+
+  // Segment policies by target type
+  const userPolicies = useMemo(() => policies.filter((p) => p.userId), [policies])
+  const groupPolicies = useMemo(() => policies.filter((p) => p.groupId), [policies])
+  const globalPolicies = useMemo(() => policies.filter((p) => !p.userId && !p.groupId), [policies])
+
+  // Filter helper
+  const filterList = useCallback(
+    (list: Policy[]) => {
+      return list.filter((p) => {
+        // Action filter
+        if (actionFilter !== 'all' && p.action !== actionFilter) return false
+
+        // Node filter
+        if (nodeFilter === 'global' && p.node_id) return false
+        if (nodeFilter === 'specific' && !p.node_id) return false
+
+        // Search query
+        if (searchQuery.trim()) {
+          const q = searchQuery.toLowerCase()
+          const matchName = (p.name || '').toLowerCase().includes(q)
+          const matchGroup = (p.group_name || '').toLowerCase().includes(q)
+          const matchNode = (p.node_name || '').toLowerCase().includes(q)
+          const matchNet = (p.target_network || '').toLowerCase().includes(q)
+          const matchPort = (p.target_port || '').toLowerCase().includes(q)
+          const matchDesc = (p.description || '').toLowerCase().includes(q)
+          const matchProto = (p.protocol || '').toLowerCase().includes(q)
+          if (!matchName && !matchGroup && !matchNode && !matchNet && !matchPort && !matchDesc && !matchProto) {
+            return false
+          }
+        }
+        return true
+      })
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['policies'] })
-      setSelectedPolicies(new Set())
-      toast.success('Policies deleted successfully')
-    },
-    onError: (e: Error) => toast.error(e.message),
-  })
+    [actionFilter, nodeFilter, searchQuery]
+  )
 
-  const togglePolicy = (policyId: string) => {
-    const newSelected = new Set(selectedPolicies)
-    if (newSelected.has(policyId)) {
-      newSelected.delete(policyId)
-    } else {
-      newSelected.add(policyId)
-    }
-    setSelectedPolicies(newSelected)
+  const filteredGroupPolicies = useMemo(() => filterList(groupPolicies), [groupPolicies, filterList])
+  const filteredUserPolicies = useMemo(() => filterList(userPolicies), [userPolicies, filterList])
+  const filteredGlobalPolicies = useMemo(() => filterList(globalPolicies), [globalPolicies, filterList])
+
+  const hasFilters = searchQuery.trim() !== '' || actionFilter !== 'all' || nodeFilter !== 'all'
+
+  const clearAllFilters = () => {
+    setSearchQuery('')
+    setActionFilter('all')
+    setNodeFilter('all')
   }
 
-  const toggleAll = (policyList: Policy[]) => {
-    const policyIds = policyList.map(p => p.id)
-    const allSelected = policyIds.every(id => selectedPolicies.has(id))
-    
-    if (allSelected) {
-      const newSelected = new Set(selectedPolicies)
-      policyIds.forEach(id => newSelected.delete(id))
-      setSelectedPolicies(newSelected)
-    } else {
-      setSelectedPolicies(new Set([...selectedPolicies, ...policyIds]))
-    }
-  }
-
-  const handleBulkDelete = () => {
-    if (confirm(`Delete ${selectedPolicies.size} polic${selectedPolicies.size === 1 ? 'y' : 'ies'}?`)) {
-      bulkDeleteMutation.mutate(Array.from(selectedPolicies))
-    }
-  }
-
-  // Filter policies
-  const userPolicies = policies.filter(p => p.userId)
-  const groupPolicies = policies.filter(p => p.groupId)
-  const globalPolicies = policies.filter(p => !p.userId && !p.groupId)
-
-  // Search filter
-  const filterPolicies = (policyList: Policy[]) => {
-    if (!searchQuery) return policyList
-    const query = searchQuery.toLowerCase()
-    return policyList.filter(p => 
-      (p.name?.toLowerCase().includes(query)) ||
-      (p.group_name?.toLowerCase().includes(query)) ||
-      p.target_network.toLowerCase().includes(query) ||
-      (p.target_port?.toLowerCase().includes(query)) ||
-      (p.description?.toLowerCase().includes(query))
-    )
-  }
-
-  const filteredUserPolicies = filterPolicies(userPolicies)
-  const filteredGroupPolicies = filterPolicies(groupPolicies)
-  const filteredGlobalPolicies = filterPolicies(globalPolicies)
-
-  const PolicyTable = ({ policies: policyList, type }: { policies: Policy[]; type: 'user' | 'group' | 'global' }) => {
-    const policyIds = policyList.map(p => p.id)
-    const allSelected = policyList.length > 0 && policyIds.every(id => selectedPolicies.has(id))
-
-    return (
-      <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm overflow-hidden">
-        {policyList.length === 0 ? (
-          <div className="py-16 text-center">
-            <Shield className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
-            <p className="font-medium text-foreground">No {type} policies found</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              {searchQuery ? 'Try a different search term' : `Create network access rules for ${type}s`}
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-muted/50 border-b border-border">
-                <th className="px-5 py-3 w-12">
-                  <input
-                    type="checkbox"
-                    checked={allSelected}
-                    onChange={() => toggleAll(policyList)}
-                    className="rounded border-input text-primary focus:ring-primary"
-                  />
-                </th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  {type === 'global' ? 'Target' : (type === 'user' ? 'User' : 'Group')}
-                </th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Routing Node</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Target Network</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Port/Proto</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Action</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Priority</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Description</th>
-                <th className="text-right px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {policyList.map((p) => (
-                <tr key={p.id} className="hover:bg-muted/50 transition-colors">
-                  <td className="px-5 py-4">
-                    <input
-                      type="checkbox"
-                      checked={selectedPolicies.has(p.id)}
-                      onChange={() => togglePolicy(p.id)}
-                      className="rounded border-input text-primary focus:ring-primary"
-                    />
-                  </td>
-                  <td className="px-5 py-4 text-foreground font-medium whitespace-nowrap">
-                    {type === 'global' ? <span className="text-muted-foreground italic">All Clients</span> : (type === 'user' ? (p.name ?? p.userId) : (p.group_name ?? p.groupId))}
-                  </td>
-                  <td className="px-5 py-4 whitespace-nowrap">
-                    {p.node_name ? (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
-                        {p.node_name}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground italic">Global</span>
-                    )}
-                  </td>
-                  <td className="px-5 py-4 font-mono text-xs text-muted-foreground whitespace-nowrap">{p.target_network}</td>
-                  <td className="px-5 py-4 whitespace-nowrap">
-                    <span className="font-mono text-xs text-muted-foreground uppercase bg-muted px-1.5 py-0.5 rounded">{p.protocol}</span>
-                    {p.target_port && <span className="font-mono text-xs text-muted-foreground ml-1">:{p.target_port}</span>}
-                  </td>
-                  <td className="px-5 py-4 whitespace-nowrap">
-                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-                      p.action === 'allow'
-                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                        : 'bg-red-500/10 text-red-600 dark:text-red-400'
-                    }`}>
-                      {p.action}
-                    </span>
-                  </td>
-                  <td className="px-5 py-4 text-muted-foreground">{p.priority}</td>
-                  <td className="px-5 py-4 text-muted-foreground max-w-xs truncate">
-                    {p.description && p.description.length > 0 ? p.description : '—'}
-                  </td>
-                  <td className="px-5 py-4 text-right">
-                    <button
-                      onClick={() => { if (confirm('Delete policy?')) deleteMutation.mutate(p.id) }}
-                      className="p-2 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          </div>
-        )}
-      </div>
-    )
+  const openAddPolicy = (type: 'user' | 'group' | 'global') => {
+    setForm((prev) => ({
+      ...prev,
+      targetType: type,
+      userId: '',
+      groupId: '',
+    }))
+    setShowForm(true)
   }
 
   return (
@@ -277,250 +486,393 @@ function PoliciesPage() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Network Policies</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">Network Policies</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {policies.length} rule{policies.length !== 1 ? 's' : ''} defined
-            {selectedPolicies.size > 0 && ` • ${selectedPolicies.size} selected`}
+            {policies.length} rule{policies.length !== 1 ? 's' : ''} defined • Control VPN traffic access by target network, port, and protocol
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {selectedPolicies.size > 0 && (
-            <Button
-              variant="outline"
-              className="text-red-600 hover:text-red-700 hover:bg-red-50"
-              onClick={handleBulkDelete}
-              disabled={bulkDeleteMutation.isPending}
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete ({selectedPolicies.size})
-            </Button>
-          )}
-          <Button
-            id="btn-add-policy"
-            className="bg-primary hover:bg-primary/90 text-primary-foreground"
-            onClick={() => setShowForm(true)}
-          >
-            <Plus className="mr-2 h-4 w-4" /> Add Policy
-          </Button>
-        </div>
-      </div>
-
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search policies by user, group, network, or description..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-10"
-        />
+        <Button
+          id="btn-add-policy"
+          className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs cursor-pointer self-start sm:self-auto"
+          onClick={() => openAddPolicy(activeTab)}
+        >
+          <Plus className="mr-1.5 h-4 w-4" /> Add Policy
+        </Button>
       </div>
 
       {/* Tabs */}
-      {isLoading ? (
-        <div className="py-12 text-center text-muted-foreground">Loading policies...</div>
-      ) : (
-        <Tabs defaultValue="user" className="space-y-4">
-          <div className="overflow-x-auto -mx-1 px-1">
-            <TabsList className="w-max">
-              <TabsTrigger value="group" className="gap-2">
-                <UsersRound className="h-4 w-4" />
-                Group Policies ({groupPolicies.length})
-              </TabsTrigger>
-              <TabsTrigger value="user" className="gap-2">
-                <Users className="h-4 w-4" />
-                User Policies ({userPolicies.length})
-              </TabsTrigger>
-              <TabsTrigger value="global" className="gap-2">
-                <Shield className="h-4 w-4" />
-                Global Policies ({globalPolicies.length})
-              </TabsTrigger>
-            </TabsList>
+      <Tabs
+        value={activeTab}
+        onValueChange={(val) => setActiveTab(val as 'group' | 'user' | 'global')}
+        className="space-y-4"
+      >
+        <div className="overflow-x-auto -mx-1 px-1">
+          <TabsList className="grid w-full max-w-lg grid-cols-3">
+            <TabsTrigger value="group" className="gap-2 cursor-pointer">
+              <UsersRound className="h-4 w-4" />
+              Group Policies ({groupPolicies.length})
+            </TabsTrigger>
+            <TabsTrigger value="user" className="gap-2 cursor-pointer">
+              <Users className="h-4 w-4" />
+              User Policies ({userPolicies.length})
+            </TabsTrigger>
+            <TabsTrigger value="global" className="gap-2 cursor-pointer">
+              <Shield className="h-4 w-4" />
+              Global Policies ({globalPolicies.length})
+            </TabsTrigger>
+          </TabsList>
+        </div>
+
+        {/* Toolbar: Search and Filter Pills (Matching Users and Groups) */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          {/* Search */}
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60 pointer-events-none" />
+            <Input
+              type="text"
+              placeholder="Search policies by user, group, network, or description..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 pr-8 h-9 text-sm"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-muted-foreground/60 hover:text-foreground rounded cursor-pointer"
+                aria-label="Clear search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
 
-          <TabsContent value="group">
-            <PolicyTable policies={filteredGroupPolicies} type="group" />
-          </TabsContent>
-
-          <TabsContent value="user">
-            <PolicyTable policies={filteredUserPolicies} type="user" />
-          </TabsContent>
-
-          <TabsContent value="global">
-            <PolicyTable policies={filteredGlobalPolicies} type="global" />
-          </TabsContent>
-        </Tabs>
-      )}
-
-      {/* Add Policy Modal */}
-      {showForm && (
-        <div className="fixed inset-0 bg-black/40 flex items-start justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-background rounded-xl shadow-xl border border-border w-full max-w-md my-auto">
-            <div className="flex items-center justify-between p-5 border-b border-border">
-              <div>
-                <h2 className="font-semibold text-foreground">Add Policy</h2>
-                <p className="text-sm text-muted-foreground mt-0.5">Define network access rules</p>
-              </div>
-              <button onClick={() => setShowForm(false)} className="p-1 text-muted-foreground hover:text-foreground rounded-md transition-colors">
-                <X className="h-5 w-5" />
+          {/* Quick Filters */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Action filter pills */}
+            <div className="inline-flex rounded-lg border border-border bg-muted/40 p-0.5 text-xs">
+              <button
+                type="button"
+                onClick={() => setActionFilter('all')}
+                className={`px-2.5 py-1 rounded-md font-medium transition-all cursor-pointer ${
+                  actionFilter === 'all'
+                    ? 'bg-card text-foreground shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                All Actions
+              </button>
+              <button
+                type="button"
+                onClick={() => setActionFilter('allow')}
+                className={`px-2.5 py-1 rounded-md font-medium transition-all cursor-pointer ${
+                  actionFilter === 'allow'
+                    ? 'bg-card text-foreground shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Allow
+              </button>
+              <button
+                type="button"
+                onClick={() => setActionFilter('deny')}
+                className={`px-2.5 py-1 rounded-md font-medium transition-all cursor-pointer ${
+                  actionFilter === 'deny'
+                    ? 'bg-card text-foreground shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Deny
               </button>
             </div>
-            <form
-              onSubmit={e => { e.preventDefault(); createMutation.mutate() }}
-              className="p-5 space-y-4"
-            >
-              <div>
-                <Label className="block text-sm font-medium mb-1.5">Target Node</Label>
-                <select
-                  value={form.nodeId}
-                  onChange={e => setForm({ ...form, nodeId: e.target.value })}
-                  className="w-full px-3 py-2 border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
-                >
-                  <option value="">Global (All Nodes)</option>
-                  {nodes.map(n => <option key={n.id} value={n.id}>{n.hostname}</option>)}
-                </select>
-                <p className="text-[11px] text-muted-foreground mt-1">Bind this policy to a specific node. Keep "Global" to apply evenly across all nodes.</p>
-              </div>
 
-              <div>
-                <Label className="block text-sm font-medium mb-1.5">Target Type <span className="text-red-500">*</span></Label>
-                <select
-                  value={form.targetType}
-                  onChange={e => setForm({ ...form, targetType: e.target.value as 'user' | 'group' | 'global', userId: '', groupId: '' })}
-                  className="w-full px-3 py-2 border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
-                >
-                  <option value="group">Group</option>
-                  <option value="user">User</option>
-                  <option value="global">Global (All Clients)</option>
-                </select>
-              </div>
-
-              {form.targetType === 'user' && (
-                <div>
-                  <Label className="block text-sm font-medium mb-1.5">User <span className="text-red-500">*</span></Label>
-                  <select
-                    value={form.userId}
-                    onChange={e => setForm({ ...form, userId: e.target.value })}
-                    required
-                    className="w-full px-3 py-2 border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
-                  >
-                    <option value="">Select user...</option>
-                    {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
-                </div>
-              )}
-
-              {form.targetType === 'group' && (
-                <div>
-                  <Label className="block text-sm font-medium mb-1.5">Group <span className="text-red-500">*</span></Label>
-                  <select
-                    value={form.groupId}
-                    onChange={e => setForm({ ...form, groupId: e.target.value })}
-                    required
-                    className="w-full px-3 py-2 border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
-                  >
-                    <option value="">Select group...</option>
-                    {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                  </select>
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <Label className="block text-sm font-medium mb-1.5">Target Network IP / CIDR <span className="text-red-500">*</span></Label>
-                  <Input
-                    type="text"
-                    value={form.targetNetwork}
-                    onChange={e => setForm({ ...form, targetNetwork: e.target.value })}
-                    placeholder="172.31.6.140/32"
-                    required
-                    className="font-mono bg-background text-foreground"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">Specify full CIDR block like /24 or /32 for single IP.</p>
-                </div>
-                <div>
-                  <Label className="block text-sm font-medium mb-1.5">Protocol</Label>
-                  <select
-                    value={form.protocol}
-                    onChange={e => setForm({ ...form, protocol: e.target.value as any })}
-                    className="w-full px-3 py-2 border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
-                  >
-                    <option value="all">Any Protocol</option>
-                    <option value="tcp">TCP</option>
-                    <option value="udp">UDP</option>
-                    <option value="icmp">ICMP (Ping)</option>
-                  </select>
-                </div>
-                <div>
-                  <Label className="block text-sm font-medium mb-1.5">Target Port</Label>
-                  <Input
-                    type="text"
-                    value={form.targetPort}
-                    onChange={e => setForm({ ...form, targetPort: e.target.value })}
-                    placeholder="e.g. 5432, 80:443"
-                    disabled={form.protocol === 'all' || form.protocol === 'icmp'}
-                    className={form.protocol === 'all' || form.protocol === 'icmp' ? 'opacity-50 cursor-not-allowed' : 'bg-background text-foreground'}
-                  />
-                  <p className="text-[10px] text-muted-foreground mt-1">Leave empty for all ports</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <Label className="block text-sm font-medium mb-1.5">Action</Label>
-                  <select
-                    value={form.action}
-                    onChange={e => setForm({ ...form, action: e.target.value as 'allow' | 'deny' })}
-                    className="w-full px-3 py-2 border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
-                  >
-                    <option value="allow">Allow</option>
-                    <option value="deny">Deny</option>
-                  </select>
-                </div>
-                <div>
-                  <Label className="block text-sm font-medium mb-1.5">Priority</Label>
-                  <Input
-                    type="number"
-                    value={form.priority}
-                    onChange={e => setForm({ ...form, priority: e.target.value })}
-                    placeholder="100"
-                    min="1"
-                    max="1000"
-                    className="bg-background text-foreground"
-                  />
-                </div>
-              </div>
-              <div>
-                <Label className="block text-sm font-medium mb-1.5">Description</Label>
-                <Input
-                  type="text"
-                  value={form.description}
-                  onChange={e => setForm({ ...form, description: e.target.value })}
-                  placeholder="Optional description"
-                  className="bg-background text-foreground"
-                />
-              </div>
-              <div className="flex gap-3 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowForm(false)}
-                  className="flex-1"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={createMutation.isPending}
-                  className="flex-1"
-                >
-                  {createMutation.isPending ? 'Adding...' : 'Add Policy'}
-                </Button>
-              </div>
-            </form>
+            {/* Node filter pills */}
+            <div className="inline-flex rounded-lg border border-border bg-muted/40 p-0.5 text-xs">
+              <button
+                type="button"
+                onClick={() => setNodeFilter('all')}
+                className={`px-2.5 py-1 rounded-md font-medium transition-all cursor-pointer ${
+                  nodeFilter === 'all'
+                    ? 'bg-card text-foreground shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                All Nodes
+              </button>
+              <button
+                type="button"
+                onClick={() => setNodeFilter('global')}
+                className={`px-2.5 py-1 rounded-md font-medium transition-all cursor-pointer ${
+                  nodeFilter === 'global'
+                    ? 'bg-card text-foreground shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Global
+              </button>
+              <button
+                type="button"
+                onClick={() => setNodeFilter('specific')}
+                className={`px-2.5 py-1 rounded-md font-medium transition-all cursor-pointer ${
+                  nodeFilter === 'specific'
+                    ? 'bg-card text-foreground shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Specific Nodes
+              </button>
+            </div>
           </div>
         </div>
-      )}
+
+        {/* Tab 1: Group Policies */}
+        <TabsContent value="group" className="space-y-4">
+          <PolicyTable
+            policies={filteredGroupPolicies}
+            type="group"
+            isLoading={isLoading}
+            hasFilters={hasFilters}
+            onClearFilters={clearAllFilters}
+            onDelete={handleDeletePolicy}
+            onAddPolicy={openAddPolicy}
+          />
+        </TabsContent>
+
+        {/* Tab 2: User Policies */}
+        <TabsContent value="user" className="space-y-4">
+          <PolicyTable
+            policies={filteredUserPolicies}
+            type="user"
+            isLoading={isLoading}
+            hasFilters={hasFilters}
+            onClearFilters={clearAllFilters}
+            onDelete={handleDeletePolicy}
+            onAddPolicy={openAddPolicy}
+          />
+        </TabsContent>
+
+        {/* Tab 3: Global Policies */}
+        <TabsContent value="global" className="space-y-4">
+          <PolicyTable
+            policies={filteredGlobalPolicies}
+            type="global"
+            isLoading={isLoading}
+            hasFilters={hasFilters}
+            onClearFilters={clearAllFilters}
+            onDelete={handleDeletePolicy}
+            onAddPolicy={openAddPolicy}
+          />
+        </TabsContent>
+      </Tabs>
+
+      {/* Add Policy Modal */}
+      <Modal open={showForm} onClose={() => setShowForm(false)} className="max-w-lg">
+        <ModalHeader title="Add Network Policy" onClose={() => setShowForm(false)} />
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            createMutation.mutate()
+          }}
+          className="flex flex-col flex-1 min-h-0 overflow-hidden"
+        >
+          <ModalBody className="space-y-4">
+            <div>
+              <Label className="block text-sm font-medium mb-1.5">Target Node</Label>
+              <select
+                value={form.nodeId}
+                onChange={(e) => setForm({ ...form, nodeId: e.target.value })}
+                className="h-10 w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              >
+                <option value="">Global (All Nodes)</option>
+                {nodes.map((n) => (
+                  <option key={n.id} value={n.id}>
+                    {n.hostname}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Bind this policy to a specific node. Keep "Global" to apply evenly across all nodes.
+              </p>
+            </div>
+
+            <div>
+              <Label className="block text-sm font-medium mb-1.5">
+                Target Type <span className="text-red-500">*</span>
+              </Label>
+              <select
+                value={form.targetType}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    targetType: e.target.value as 'user' | 'group' | 'global',
+                    userId: '',
+                    groupId: '',
+                  })
+                }
+                className="h-10 w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              >
+                <option value="group">Group</option>
+                <option value="user">User</option>
+                <option value="global">Global (All Clients)</option>
+              </select>
+            </div>
+
+            {form.targetType === 'user' && (
+              <div>
+                <Label className="block text-sm font-medium mb-1.5">
+                  User <span className="text-red-500">*</span>
+                </Label>
+                <select
+                  value={form.userId}
+                  onChange={(e) => setForm({ ...form, userId: e.target.value })}
+                  required
+                  className="h-10 w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                >
+                  <option value="">Select user...</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {form.targetType === 'group' && (
+              <div>
+                <Label className="block text-sm font-medium mb-1.5">
+                  Group <span className="text-red-500">*</span>
+                </Label>
+                <select
+                  value={form.groupId}
+                  onChange={(e) => setForm({ ...form, groupId: e.target.value })}
+                  required
+                  className="h-10 w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                >
+                  <option value="">Select group...</option>
+                  {groups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="col-span-1 sm:col-span-2">
+                <Label className="block text-sm font-medium mb-1.5">
+                  Target Network IP / CIDR <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  type="text"
+                  value={form.targetNetwork}
+                  onChange={(e) => setForm({ ...form, targetNetwork: e.target.value })}
+                  placeholder="e.g. 172.31.6.140/32 or 10.0.0.0/24"
+                  required
+                  className="font-mono text-sm"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Specify full CIDR block (e.g. /24 or /32 for a single IP).
+                </p>
+              </div>
+
+              <div>
+                <Label className="block text-sm font-medium mb-1.5">Protocol</Label>
+                <select
+                  value={form.protocol}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      protocol: e.target.value as 'tcp' | 'udp' | 'icmp' | 'all',
+                    })
+                  }
+                  className="h-10 w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                >
+                  <option value="all">Any Protocol</option>
+                  <option value="tcp">TCP</option>
+                  <option value="udp">UDP</option>
+                  <option value="icmp">ICMP (Ping)</option>
+                </select>
+              </div>
+
+              <div>
+                <Label className="block text-sm font-medium mb-1.5">Target Port</Label>
+                <Input
+                  type="text"
+                  value={form.targetPort}
+                  onChange={(e) => setForm({ ...form, targetPort: e.target.value })}
+                  placeholder="e.g. 5432, 80:443"
+                  disabled={form.protocol === 'all' || form.protocol === 'icmp'}
+                  className={`text-sm ${
+                    form.protocol === 'all' || form.protocol === 'icmp'
+                      ? 'opacity-50 cursor-not-allowed'
+                      : ''
+                  }`}
+                />
+                <p className="text-[10px] text-muted-foreground mt-1">Leave empty for all ports</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <Label className="block text-sm font-medium mb-1.5">Action</Label>
+                <select
+                  value={form.action}
+                  onChange={(e) =>
+                    setForm({ ...form, action: e.target.value as 'allow' | 'deny' })
+                  }
+                  className="h-10 w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                >
+                  <option value="allow">Allow</option>
+                  <option value="deny">Deny</option>
+                </select>
+              </div>
+
+              <div>
+                <Label className="block text-sm font-medium mb-1.5">Priority</Label>
+                <Input
+                  type="number"
+                  value={form.priority}
+                  onChange={(e) => setForm({ ...form, priority: e.target.value })}
+                  placeholder="100"
+                  min="1"
+                  max="1000"
+                  className="text-sm font-mono"
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label className="block text-sm font-medium mb-1.5">Description</Label>
+              <Input
+                type="text"
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                placeholder="Optional description"
+                className="text-sm"
+              />
+            </div>
+          </ModalBody>
+          <ModalFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowForm(false)}
+              className="cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={createMutation.isPending || !form.targetNetwork.trim()}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shadow-xs"
+            >
+              {createMutation.isPending ? 'Adding...' : 'Add Policy'}
+            </Button>
+          </ModalFooter>
+        </form>
+      </Modal>
     </div>
   )
 }

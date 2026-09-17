@@ -22,8 +22,10 @@ import { Route as LayoutProfileRouteImport } from './routes/_layout/profile'
 import { Route as LayoutSessionsRouteImport } from './routes/_layout/sessions'
 import { Route as LayoutTasksRouteImport } from './routes/_layout/tasks'
 import { Route as LayoutUsersRouteImport } from './routes/_layout/users'
+import { Route as LayoutGroupsIndexRouteImport } from './routes/_layout/groups/index'
+import { Route as LayoutGroupsGroupIdRouteImport } from './routes/_layout/groups/$groupId'
 import { Route as LayoutUsersIndexRouteImport } from './routes/_layout/users/index'
-import { Route as LayoutUsersUserIdCertificatesRouteImport } from './routes/_layout/users.$userId.certificates'
+import { Route as LayoutUsersUserIdCertificatesRouteImport } from './routes/_layout/users/$userId.certificates'
 
 const LayoutRoute = LayoutRouteImport.update({
   id: '/_layout',
@@ -89,6 +91,16 @@ const LayoutUsersRoute = LayoutUsersRouteImport.update({
   path: '/users',
   getParentRoute: () => LayoutRoute,
 } as any)
+const LayoutGroupsIndexRoute = LayoutGroupsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => LayoutGroupsRoute,
+} as any)
+const LayoutGroupsGroupIdRoute = LayoutGroupsGroupIdRouteImport.update({
+  id: '/$groupId',
+  path: '/$groupId',
+  getParentRoute: () => LayoutGroupsRoute,
+} as any)
 const LayoutUsersIndexRoute = LayoutUsersIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -106,7 +118,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/audit': typeof LayoutAuditRoute
   '/dns': typeof LayoutDnsRoute
-  '/groups': typeof LayoutGroupsRoute
+  '/groups': typeof LayoutGroupsRouteWithChildren
   '/networks': typeof LayoutNetworksRoute
   '/nodes': typeof LayoutNodesRoute
   '/policies': typeof LayoutPoliciesRoute
@@ -114,6 +126,8 @@ export interface FileRoutesByFullPath {
   '/sessions': typeof LayoutSessionsRoute
   '/tasks': typeof LayoutTasksRoute
   '/users': typeof LayoutUsersRouteWithChildren
+  '/groups/$groupId': typeof LayoutGroupsGroupIdRoute
+  '/groups/': typeof LayoutGroupsIndexRoute
   '/users/': typeof LayoutUsersIndexRoute
   '/users/$userId/certificates': typeof LayoutUsersUserIdCertificatesRoute
 }
@@ -121,7 +135,6 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/audit': typeof LayoutAuditRoute
   '/dns': typeof LayoutDnsRoute
-  '/groups': typeof LayoutGroupsRoute
   '/networks': typeof LayoutNetworksRoute
   '/nodes': typeof LayoutNodesRoute
   '/policies': typeof LayoutPoliciesRoute
@@ -129,6 +142,8 @@ export interface FileRoutesByTo {
   '/sessions': typeof LayoutSessionsRoute
   '/tasks': typeof LayoutTasksRoute
   '/': typeof LayoutIndexRoute
+  '/groups/$groupId': typeof LayoutGroupsGroupIdRoute
+  '/groups': typeof LayoutGroupsIndexRoute
   '/users': typeof LayoutUsersIndexRoute
   '/users/$userId/certificates': typeof LayoutUsersUserIdCertificatesRoute
 }
@@ -138,7 +153,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_layout/audit': typeof LayoutAuditRoute
   '/_layout/dns': typeof LayoutDnsRoute
-  '/_layout/groups': typeof LayoutGroupsRoute
+  '/_layout/groups': typeof LayoutGroupsRouteWithChildren
   '/_layout/networks': typeof LayoutNetworksRoute
   '/_layout/nodes': typeof LayoutNodesRoute
   '/_layout/policies': typeof LayoutPoliciesRoute
@@ -147,6 +162,8 @@ export interface FileRoutesById {
   '/_layout/tasks': typeof LayoutTasksRoute
   '/_layout/users': typeof LayoutUsersRouteWithChildren
   '/_layout/': typeof LayoutIndexRoute
+  '/_layout/groups/$groupId': typeof LayoutGroupsGroupIdRoute
+  '/_layout/groups/': typeof LayoutGroupsIndexRoute
   '/_layout/users/': typeof LayoutUsersIndexRoute
   '/_layout/users/$userId/certificates': typeof LayoutUsersUserIdCertificatesRoute
 }
@@ -165,6 +182,8 @@ export interface FileRouteTypes {
     | '/sessions'
     | '/tasks'
     | '/users'
+    | '/groups/$groupId'
+    | '/groups/'
     | '/users/'
     | '/users/$userId/certificates'
   fileRoutesByTo: FileRoutesByTo
@@ -172,7 +191,6 @@ export interface FileRouteTypes {
     | '/login'
     | '/audit'
     | '/dns'
-    | '/groups'
     | '/networks'
     | '/nodes'
     | '/policies'
@@ -180,6 +198,8 @@ export interface FileRouteTypes {
     | '/sessions'
     | '/tasks'
     | '/'
+    | '/groups/$groupId'
+    | '/groups'
     | '/users'
     | '/users/$userId/certificates'
   id:
@@ -197,6 +217,8 @@ export interface FileRouteTypes {
     | '/_layout/tasks'
     | '/_layout/users'
     | '/_layout/'
+    | '/_layout/groups/$groupId'
+    | '/_layout/groups/'
     | '/_layout/users/'
     | '/_layout/users/$userId/certificates'
   fileRoutesById: FileRoutesById
@@ -299,6 +321,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutUsersRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/_layout/groups/': {
+      id: '/_layout/groups/'
+      path: '/'
+      fullPath: '/groups/'
+      preLoaderRoute: typeof LayoutGroupsIndexRouteImport
+      parentRoute: typeof LayoutGroupsRoute
+    }
+    '/_layout/groups/$groupId': {
+      id: '/_layout/groups/$groupId'
+      path: '/$groupId'
+      fullPath: '/groups/$groupId'
+      preLoaderRoute: typeof LayoutGroupsGroupIdRouteImport
+      parentRoute: typeof LayoutGroupsRoute
+    }
     '/_layout/users/': {
       id: '/_layout/users/'
       path: '/'
@@ -315,6 +351,20 @@ declare module '@tanstack/react-router' {
     }
   }
 }
+
+interface LayoutGroupsRouteChildren {
+  LayoutGroupsGroupIdRoute: typeof LayoutGroupsGroupIdRoute
+  LayoutGroupsIndexRoute: typeof LayoutGroupsIndexRoute
+}
+
+const LayoutGroupsRouteChildren: LayoutGroupsRouteChildren = {
+  LayoutGroupsGroupIdRoute: LayoutGroupsGroupIdRoute,
+  LayoutGroupsIndexRoute: LayoutGroupsIndexRoute,
+}
+
+const LayoutGroupsRouteWithChildren = LayoutGroupsRoute._addFileChildren(
+  LayoutGroupsRouteChildren,
+)
 
 interface LayoutUsersRouteChildren {
   LayoutUsersIndexRoute: typeof LayoutUsersIndexRoute
@@ -333,7 +383,7 @@ const LayoutUsersRouteWithChildren = LayoutUsersRoute._addFileChildren(
 interface LayoutRouteChildren {
   LayoutAuditRoute: typeof LayoutAuditRoute
   LayoutDnsRoute: typeof LayoutDnsRoute
-  LayoutGroupsRoute: typeof LayoutGroupsRoute
+  LayoutGroupsRoute: typeof LayoutGroupsRouteWithChildren
   LayoutNetworksRoute: typeof LayoutNetworksRoute
   LayoutNodesRoute: typeof LayoutNodesRoute
   LayoutPoliciesRoute: typeof LayoutPoliciesRoute
@@ -347,7 +397,7 @@ interface LayoutRouteChildren {
 const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutAuditRoute: LayoutAuditRoute,
   LayoutDnsRoute: LayoutDnsRoute,
-  LayoutGroupsRoute: LayoutGroupsRoute,
+  LayoutGroupsRoute: LayoutGroupsRouteWithChildren,
   LayoutNetworksRoute: LayoutNetworksRoute,
   LayoutNodesRoute: LayoutNodesRoute,
   LayoutPoliciesRoute: LayoutPoliciesRoute,

@@ -25,7 +25,7 @@ const auditRoutes: FastifyPluginAsync = async (app) => {
       }
       
       const page = parseInt(query.page ?? '1')
-      const limit = Math.min(parseInt(query.limit ?? '50'), 200)
+      const limit = Math.min(parseInt(query.limit ?? '10'), 200)
       const offset = (page - 1) * limit
 
       let queryBuilder = app.db('audit_logs as a')
@@ -101,7 +101,7 @@ const auditRoutes: FastifyPluginAsync = async (app) => {
       }
       
       const page = parseInt(query.page ?? '1')
-      const limit = Math.min(parseInt(query.limit ?? '50'), 200)
+      const limit = Math.min(parseInt(query.limit ?? '10'), 200)
       const offset = (page - 1) * limit
 
       let queryBuilder = app.db('connection_attempts as ca')

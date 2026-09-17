@@ -102,4 +102,11 @@ describe('Private DNS API', () => {
     })
     expect(straySinkhole.statusCode).toBe(400)
   })
+
+  it('lists all domain policies across groups', async () => {
+    const list = await app.inject({ method: 'GET', url: '/api/v1/dns/policies', headers: { Cookie: cookie } })
+    expect(list.statusCode).toBe(200)
+    expect(list.json().length).toBeGreaterThanOrEqual(2)
+    expect(list.json()[0]).toHaveProperty('group_name', 'private-dns-group')
+  })
 })
