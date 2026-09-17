@@ -23,6 +23,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal'
+import { useConfirm } from '@/components/ui/confirm-dialog'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
   Table,
@@ -89,6 +90,7 @@ function GroupDetailPage() {
   const { groupId } = Route.useParams()
   const qc = useQueryClient()
   const navigate = useNavigate()
+  const confirm = useConfirm()
 
   const [activeTab, setActiveTab] = useState<string>('members')
   const [memberSearch, setMemberSearch] = useState('')
@@ -287,13 +289,15 @@ function GroupDetailPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => {
-              if (
-                groupDetail &&
-                confirm(`Are you sure you want to delete group "${groupDetail.name}"? This action cannot be undone.`)
-              ) {
-                deleteMutation.mutate()
-              }
+            onClick={async () => {
+              if (!groupDetail) return
+              const ok = await confirm({
+                title: 'Delete group',
+                description: `Are you sure you want to delete group "${groupDetail.name}"?`,
+                warning: 'This action cannot be undone.',
+                confirmLabel: 'Delete Group',
+              })
+              if (ok) deleteMutation.mutate()
             }}
             disabled={isLoading || !groupDetail || deleteMutation.isPending}
             className="text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30 shadow-xs"
@@ -552,10 +556,13 @@ function GroupDetailPage() {
                               variant="ghost"
                               size="sm"
                               className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 h-8 px-2.5 text-xs"
-                              onClick={() => {
-                                if (confirm(`Remove "${m.name}" from group "${groupDetail?.name}"?`)) {
-                                  removeMemberMutation.mutate(m.id)
-                                }
+                              onClick={async () => {
+                                const ok = await confirm({
+                                  title: 'Remove member',
+                                  description: `Remove "${m.name}" from group "${groupDetail?.name}"?`,
+                                  confirmLabel: 'Remove',
+                                })
+                                if (ok) removeMemberMutation.mutate(m.id)
                               }}
                               disabled={removeMemberMutation.isPending}
                             >
@@ -739,10 +746,13 @@ function GroupDetailPage() {
                               variant="ghost"
                               size="sm"
                               className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 h-8 px-2.5 text-xs"
-                              onClick={() => {
-                                if (confirm(`Remove network "${n.name}" (${n.cidr}) from group?`)) {
-                                  removeNetworkMutation.mutate(n.id)
-                                }
+                              onClick={async () => {
+                                const ok = await confirm({
+                                  title: 'Remove network',
+                                  description: `Remove network "${n.name}" (${n.cidr}) from group?`,
+                                  confirmLabel: 'Remove',
+                                })
+                                if (ok) removeNetworkMutation.mutate(n.id)
                               }}
                               disabled={removeNetworkMutation.isPending}
                             >

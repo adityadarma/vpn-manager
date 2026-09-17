@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal'
+import { useConfirm } from '@/components/ui/confirm-dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   DropdownMenu,
@@ -59,6 +60,7 @@ interface FormState {
 function GroupsPage() {
   const qc = useQueryClient()
   const navigate = useNavigate()
+  const confirm = useConfirm()
   const [showCreate, setShowCreate] = useState(false)
   const [editGroup, setEditGroup] = useState<Group | null>(null)
   const [form, setForm] = useState<FormState>({ name: '', description: '' })
@@ -450,10 +452,14 @@ function GroupsPage() {
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
-                              onSelect={() => {
-                                if (confirm(`Delete group "${g.name}"? This action cannot be undone.`)) {
-                                  deleteMutation.mutate(g.id)
-                                }
+                              onSelect={async () => {
+                                const ok = await confirm({
+                                  title: 'Delete group',
+                                  description: `Delete group "${g.name}"?`,
+                                  warning: 'This action cannot be undone.',
+                                  confirmLabel: 'Delete Group',
+                                })
+                                if (ok) deleteMutation.mutate(g.id)
                               }}
                               className="text-destructive focus:text-destructive focus:bg-destructive/10"
                             >

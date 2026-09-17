@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Changed
+
+- Replaced the remaining native browser `confirm()` prompts with themed in-app confirmation dialogs on Users, Groups, Group Details, Networks, Policies, and DNS pages.
+- Consolidated node decommission and permanent delete confirmations onto the shared confirmation dialog, replacing the hand-rolled overlays on the VPN Nodes page.
+
 ## [2.5.0] - 2026-09-17
 
 ### Added

@@ -24,6 +24,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal'
+import { useConfirm } from '@/components/ui/confirm-dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   DropdownMenu,
@@ -162,6 +163,7 @@ function NodeSelector({ selectedIds, nodes, onToggle }: NodeSelectorProps) {
 // eslint-disable-next-line react-refresh/only-export-components
 function NetworksPage() {
   const qc = useQueryClient()
+  const confirm = useConfirm()
   const [activeTab, setActiveTab] = useState<'routes' | 'allocations'>('routes')
 
   // Target Networks state
@@ -705,10 +707,14 @@ function NetworksPage() {
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
-                                onSelect={() => {
-                                  if (confirm(`Delete network "${n.name}"? This will remove access for all associated groups.`)) {
-                                    deleteMutation.mutate(n.id)
-                                  }
+                                onSelect={async () => {
+                                  const ok = await confirm({
+                                    title: 'Delete network',
+                                    description: `Delete network "${n.name}"?`,
+                                    warning: 'This will remove access for all associated groups.',
+                                    confirmLabel: 'Delete Network',
+                                  })
+                                  if (ok) deleteMutation.mutate(n.id)
                                 }}
                                 className="text-destructive focus:text-destructive focus:bg-destructive/10"
                               >
@@ -984,10 +990,13 @@ function NetworksPage() {
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
-                                onSelect={() => {
-                                  if (confirm(`Remove subnet allocation for group "${a.group_name}" on node "${a.node_hostname}"?`)) {
-                                    deleteAllocMutation.mutate({ groupId: a.group_id, nodeId: a.node_id })
-                                  }
+                                onSelect={async () => {
+                                  const ok = await confirm({
+                                    title: 'Remove allocation',
+                                    description: `Remove subnet allocation for group "${a.group_name}" on node "${a.node_hostname}"?`,
+                                    confirmLabel: 'Remove Allocation',
+                                  })
+                                  if (ok) deleteAllocMutation.mutate({ groupId: a.group_id, nodeId: a.node_id })
                                 }}
                                 className="text-destructive focus:text-destructive focus:bg-destructive/10"
                               >

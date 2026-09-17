@@ -40,6 +40,7 @@ import {
 } from '@/components/ui/table'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal'
+import { useConfirm } from '@/components/ui/confirm-dialog'
 import { toast } from 'sonner'
 import { formatBrowserDateTime } from '@vpn/shared'
 
@@ -457,6 +458,7 @@ function ConfigureDnsModal({
 function ManagedDnsPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const confirm = useConfirm()
   const realtimeConnected = useRealtimeConnected()
 
   // Queries
@@ -1222,13 +1224,15 @@ function ManagedDnsPage() {
                               variant="ghost"
                               className="size-8 text-muted-foreground/60 hover:text-red-600 hover:bg-red-500/10 cursor-pointer shrink-0"
                               aria-label={`Delete zone ${zone.name}`}
-                              onClick={(e) => {
+                              onClick={async (e) => {
                                 e.stopPropagation()
-                                if (
-                                  confirm(`Delete private zone "${zone.name}" and all its records?`)
-                                ) {
-                                  deleteZone.mutate(zone.id)
-                                }
+                                const ok = await confirm({
+                                  title: 'Delete private zone',
+                                  description: `Delete private zone "${zone.name}"?`,
+                                  warning: 'All records in this zone will be deleted as well.',
+                                  confirmLabel: 'Delete Zone',
+                                })
+                                if (ok) deleteZone.mutate(zone.id)
                               }}
                             >
                               <Trash2 className="size-3.5" />
@@ -1459,14 +1463,13 @@ function ManagedDnsPage() {
                                         variant="ghost"
                                         className="size-7 text-muted-foreground/60 hover:text-red-600 hover:bg-red-500/10 cursor-pointer"
                                         aria-label={`Delete record ${item.name}`}
-                                        onClick={() => {
-                                          if (
-                                            confirm(
-                                              `Delete record "${item.name}" (${item.type} ${item.value})?`,
-                                            )
-                                          ) {
-                                            deleteRecord.mutate(item.id)
-                                          }
+                                        onClick={async () => {
+                                          const ok = await confirm({
+                                            title: 'Delete DNS record',
+                                            description: `Delete record "${item.name}" (${item.type} ${item.value})?`,
+                                            confirmLabel: 'Delete Record',
+                                          })
+                                          if (ok) deleteRecord.mutate(item.id)
                                         }}
                                       >
                                         <Trash2 className="size-3.5" />
@@ -1745,10 +1748,13 @@ function ManagedDnsPage() {
                               variant="ghost"
                               className="h-8 px-2.5 text-xs text-muted-foreground hover:text-red-600 hover:bg-red-500/10 cursor-pointer ml-auto"
                               aria-label={`Delete policy ${item.domain_pattern}`}
-                              onClick={() => {
-                                if (confirm(`Delete domain policy for "${item.domain_pattern}"?`)) {
-                                  deletePolicy.mutate(item.id)
-                                }
+                              onClick={async () => {
+                                const ok = await confirm({
+                                  title: 'Delete domain policy',
+                                  description: `Delete domain policy for "${item.domain_pattern}"?`,
+                                  confirmLabel: 'Delete Policy',
+                                })
+                                if (ok) deletePolicy.mutate(item.id)
                               }}
                             >
                               <Trash2 className="mr-1.5 size-3.5" />

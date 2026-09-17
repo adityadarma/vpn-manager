@@ -34,6 +34,7 @@ import {
   ModalBody,
   ModalFooter,
 } from '@/components/ui/modal'
+import { useConfirm } from '@/components/ui/confirm-dialog'
 
 export const Route = createFileRoute('/_layout/policies')({
   component: PoliciesPage,
@@ -335,6 +336,7 @@ function PolicyTable({
 // eslint-disable-next-line react-refresh/only-export-components
 function PoliciesPage() {
   const qc = useQueryClient()
+  const confirm = useConfirm()
   const [showForm, setShowForm] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [actionFilter, setActionFilter] = useState<'all' | 'allow' | 'deny'>('all')
@@ -416,11 +418,14 @@ function PoliciesPage() {
     onError: (e: Error) => toast.error(e.message),
   })
 
-  const handleDeletePolicy = (p: Policy) => {
+  const handleDeletePolicy = async (p: Policy) => {
     const targetDesc = p.group_name || p.name || (p.groupId ? 'Group' : p.userId ? 'User' : 'Global')
-    if (confirm(`Delete network policy for "${targetDesc}" (${p.target_network})?`)) {
-      deleteMutation.mutate(p.id)
-    }
+    const ok = await confirm({
+      title: 'Delete network policy',
+      description: `Delete network policy for "${targetDesc}" (${p.target_network})?`,
+      confirmLabel: 'Delete Policy',
+    })
+    if (ok) deleteMutation.mutate(p.id)
   }
 
   // Segment policies by target type

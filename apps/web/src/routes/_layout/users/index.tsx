@@ -39,6 +39,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { useConfirm } from '@/components/ui/confirm-dialog'
 
 export const Route = createFileRoute('/_layout/users/')({
   component: UsersPage,
@@ -80,6 +81,7 @@ function UsersPage() {
   const qc = useQueryClient()
   const realtimeConnected = useRealtimeConnected()
   const navigate = useNavigate()
+  const confirm = useConfirm()
   const [showForm, setShowForm] = useState(false)
   const [showEditForm, setShowEditForm] = useState(false)
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<User | null>(null)
@@ -680,14 +682,14 @@ function UsersPage() {
                               {user.is_active ? 'Disable user' : 'Enable user'}
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              onSelect={() => {
-                                if (
-                                  confirm(
-                                    `Are you sure you want to delete user "${user.name}"? This action cannot be undone.`,
-                                  )
-                                ) {
-                                  deleteMutation.mutate(user.id)
-                                }
+                              onSelect={async () => {
+                                const ok = await confirm({
+                                  title: 'Delete user',
+                                  description: `Are you sure you want to delete user "${user.name}"?`,
+                                  warning: 'This action cannot be undone.',
+                                  confirmLabel: 'Delete User',
+                                })
+                                if (ok) deleteMutation.mutate(user.id)
                               }}
                               className="text-red-600 dark:text-red-400 focus:text-red-600"
                             >

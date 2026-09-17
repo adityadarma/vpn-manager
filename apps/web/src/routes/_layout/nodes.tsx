@@ -49,6 +49,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { useConfirm } from '@/components/ui/confirm-dialog'
 
 export const Route = createFileRoute('/_layout/nodes')({
   component: NodesPage,
@@ -94,6 +95,7 @@ type ViewMode = 'cards' | 'table'
 // eslint-disable-next-line react-refresh/only-export-components
 function NodesPage() {
   const qc = useQueryClient()
+  const confirm = useConfirm()
 
   // View & Filter States
   const [viewMode, setViewMode] = useState<ViewMode>('cards')
@@ -139,9 +141,32 @@ function NodesPage() {
   const [viewFirewallNode, setViewFirewallNode] = useState<VpnNode | null>(null)
   const [copiedFirewall, setCopiedFirewall] = useState(false)
 
-  // Accessible Confirmation Dialog States
-  const [decommissionNodeTarget, setDecommissionNodeTarget] = useState<VpnNode | null>(null)
-  const [deleteNodeTarget, setDeleteNodeTarget] = useState<VpnNode | null>(null)
+  const confirmDecommissionNode = async (node: VpnNode) => {
+    const ok = await confirm({
+      title: 'Decommission VPN Node?',
+      subtitle: 'Revoke agent and client access while preserving history',
+      icon: <Archive />,
+      tone: 'warning',
+      target: { label: 'Target VPN Node', value: node.hostname },
+      description:
+        'Its agent secret token and active VPN client credentials will be immediately revoked. Its configuration and history will be preserved and can be restored later.',
+      confirmLabel: 'Yes, Decommission Node',
+    })
+    if (ok) decommissionMutation.mutate(node.id)
+  }
+
+  const confirmDeleteNode = async (node: VpnNode) => {
+    const ok = await confirm({
+      title: 'Delete Node Permanently?',
+      subtitle: 'Remove this archived node and all of its historical records',
+      icon: <Trash2 />,
+      target: { label: 'Target Archived Node', value: node.hostname },
+      description: `Permanently delete archived node "${node.hostname}" and all its associated historical records?`,
+      warning: 'This action is irreversible.',
+      confirmLabel: 'Delete Permanently',
+    })
+    if (ok) deleteMutation.mutate(node.id)
+  }
 
   // Fetch Nodes
   const { data: nodes = [], isLoading, isFetching } = useQuery<VpnNode[]>({
@@ -192,7 +217,6 @@ function NodesPage() {
     mutationFn: (id: string) => api.post(`/api/v1/nodes/${id}/decommission`, {}),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['nodes'] })
-      setDecommissionNodeTarget(null)
       toast.success('Node decommissioned and access revoked')
     },
     onError: (e: Error) => toast.error(e.message),
@@ -214,7 +238,6 @@ function NodesPage() {
     mutationFn: (id: string) => api.delete(`/api/v1/nodes/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['nodes'] })
-      setDeleteNodeTarget(null)
       toast.success('Node permanently deleted')
     },
     onError: (e: Error) => toast.error(e.message),
@@ -781,7 +804,7 @@ function NodesPage() {
                             </DropdownMenuItem>
 
                             <DropdownMenuItem
-                              onClick={() => setDeleteNodeTarget(node)}
+                              onClick={() => confirmDeleteNode(node)}
                               className="gap-2 text-red-600 dark:text-red-400 cursor-pointer"
                             >
                               <Trash2 className="size-3.5" />
@@ -790,7 +813,7 @@ function NodesPage() {
                           </>
                         ) : (
                           <DropdownMenuItem
-                            onClick={() => setDecommissionNodeTarget(node)}
+                            onClick={() => confirmDecommissionNode(node)}
                             className="gap-2 text-amber-600 dark:text-amber-400 cursor-pointer"
                           >
                             <Archive className="size-3.5" />
@@ -1002,7 +1025,7 @@ function NodesPage() {
                                 </DropdownMenuItem>
 
                                 <DropdownMenuItem
-                                  onClick={() => setDeleteNodeTarget(node)}
+                                  onClick={() => confirmDeleteNode(node)}
                                   className="gap-2 text-red-600 dark:text-red-400 cursor-pointer"
                                 >
                                   <Trash2 className="size-3.5" />
@@ -1011,7 +1034,7 @@ function NodesPage() {
                               </>
                             ) : (
                               <DropdownMenuItem
-                                onClick={() => setDecommissionNodeTarget(node)}
+                                onClick={() => confirmDecommissionNode(node)}
                                 className="gap-2 text-amber-600 dark:text-amber-400 cursor-pointer"
                               >
                                 <Archive className="size-3.5" />
@@ -1623,79 +1646,6 @@ function NodesPage() {
             <div className="p-3 border-t border-border flex justify-end bg-card">
               <Button variant="outline" size="sm" onClick={() => setViewFirewallNode(null)} className="text-xs">
                 Close
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* --- MODAL 5: ACCESSIBLE DECOMMISSION DIALOG --- */}
-      {decommissionNodeTarget && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-card text-card-foreground rounded-xl border border-border shadow-2xl w-full max-w-md p-6 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center gap-3 text-amber-600 dark:text-amber-400 mb-3">
-              <div className="size-10 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0">
-                <Archive className="size-5" />
-              </div>
-              <h3 className="text-base font-bold text-foreground">Decommission VPN Node?</h3>
-            </div>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Are you sure you want to decommission <strong className="text-foreground">{decommissionNodeTarget.hostname}</strong>?
-              Its agent secret token and active VPN client credentials will be immediately revoked. Its configuration
-              and history will be preserved and can be restored later.
-            </p>
-            <div className="flex items-center justify-end gap-2.5 mt-6">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setDecommissionNodeTarget(null)}
-                className="text-xs"
-              >
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => decommissionMutation.mutate(decommissionNodeTarget.id)}
-                disabled={decommissionMutation.isPending}
-                className="bg-amber-600 hover:bg-amber-700 text-white text-xs"
-              >
-                {decommissionMutation.isPending ? 'Decommissioning...' : 'Yes, Decommission Node'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* --- MODAL 6: ACCESSIBLE DELETE DIALOG --- */}
-      {deleteNodeTarget && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-card text-card-foreground rounded-xl border border-border shadow-2xl w-full max-w-md p-6 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center gap-3 text-red-600 dark:text-red-400 mb-3">
-              <div className="size-10 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center shrink-0">
-                <Trash2 className="size-5" />
-              </div>
-              <h3 className="text-base font-bold text-foreground">Delete Node Permanently?</h3>
-            </div>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Permanently delete archived node <strong className="text-foreground">{deleteNodeTarget.hostname}</strong> and all
-              its associated historical records? This action is <strong className="text-red-600 dark:text-red-400">irreversible</strong>.
-            </p>
-            <div className="flex items-center justify-end gap-2.5 mt-6">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setDeleteNodeTarget(null)}
-                className="text-xs"
-              >
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => deleteMutation.mutate(deleteNodeTarget.id)}
-                disabled={deleteMutation.isPending}
-                className="bg-red-600 hover:bg-red-700 text-white text-xs"
-              >
-                {deleteMutation.isPending ? 'Deleting...' : 'Delete Permanently'}
               </Button>
             </div>
           </div>
