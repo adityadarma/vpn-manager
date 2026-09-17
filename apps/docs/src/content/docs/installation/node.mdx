@@ -87,7 +87,9 @@ AGENT_SECRET_TOKEN=replace-with-agent-secret
 VPN_TYPE=openvpn
 FIREWALL_ENGINE=iptables
 AGENT_POLL_INTERVAL_MS=5000
+AGENT_TASK_LONG_POLL_WAIT_SECONDS=25
 AGENT_HEARTBEAT_INTERVAL_MS=30000
+AGENT_TRAFFIC_TELEMETRY_INTERVAL_MS=5000
 ```
 
 For native mode, run the installer with the credentials above; it creates `vpn-agent.service`. For Docker mode, copy `docker-compose.agent.yml` to `/opt/vpn-agent/docker-compose.yml`, then create `/opt/vpn-agent/docker-compose.override.yml` for the host-specific mounts above. When `FIREWALL_ENGINE=firewalld`, also mount `/run/dbus/system_bus_socket` into the Agent. Run `docker compose up -d` from that directory.

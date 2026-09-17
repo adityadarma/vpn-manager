@@ -63,6 +63,31 @@ describe('Task Polling & Security', () => {
     expect(res2.json().tasks).toHaveLength(0)
   })
 
+  it('waits for a task and claims it as soon as it is created', async () => {
+    await app.db('tasks').where({ node_id: nodeId, status: 'pending' }).delete()
+    const taskId = uuidv7()
+    const poll = app.inject({
+      method: 'GET',
+      url: `/api/v1/nodes/${nodeId}/tasks?wait=2`,
+      headers: { Authorization: 'Bearer task-poll-token' },
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    await app.db('tasks').insert({
+      id: taskId,
+      node_id: nodeId,
+      action: 'test_action',
+      payload: JSON.stringify({ delayed: true }),
+      status: 'pending',
+      created_at: new Date(),
+    })
+
+    const res = await poll
+    expect(res.statusCode).toBe(200)
+    expect(res.json().tasks).toMatchObject([{ id: taskId, payload: { delayed: true } }])
+    expect((await app.db('tasks').where({ id: taskId }).first()).status).toBe('running')
+  })
+
   it('should accept task results correctly', async () => {
     const taskId = uuidv7()
     await app.db('tasks').insert({

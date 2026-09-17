@@ -110,7 +110,9 @@ async function main() {
   console.log(`   Manager:  ${env.AGENT_MANAGER_URL}`)
   console.log(`   Node ID:  ${env.AGENT_NODE_ID}`)
   console.log(`   VPN Type: ${env.VPN_TYPE}`)
-  console.log(`   Poll:     every ${env.AGENT_POLL_INTERVAL_MS}ms`)
+  console.log(
+    `   Task poll: long-poll ${env.AGENT_TASK_LONG_POLL_WAIT_SECONDS}s (retry after ${env.AGENT_POLL_INTERVAL_MS}ms)`,
+  )
   console.log(`   Heartbeat: every ${env.AGENT_HEARTBEAT_INTERVAL_MS}ms`)
   console.log(`   Traffic telemetry: every ${env.AGENT_TRAFFIC_TELEMETRY_INTERVAL_MS}ms`)
   console.log(`   Managed DNS: ${env.DNS_ENABLED ? 'enabled' : 'disabled'}`)

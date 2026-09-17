@@ -6,6 +6,7 @@ const AgentEnvSchema = z.object({
   AGENT_NODE_ID: z.string().min(36, 'AGENT_NODE_ID must be set after registration'),
   AGENT_SECRET_TOKEN: z.string().min(1, 'AGENT_SECRET_TOKEN is required'),
   AGENT_POLL_INTERVAL_MS: z.coerce.number().int().default(5_000),
+  AGENT_TASK_LONG_POLL_WAIT_SECONDS: z.coerce.number().int().min(1).max(30).default(25),
   AGENT_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().default(30_000),
   AGENT_TRAFFIC_TELEMETRY_INTERVAL_MS: z.coerce.number().int().positive().default(5_000),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),

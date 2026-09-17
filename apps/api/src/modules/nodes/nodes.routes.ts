@@ -12,6 +12,7 @@ import { secretsMatchTrimmed } from '../../utils/secret-compare'
 import { enqueueApplyPolicies } from '../policies/policies.routes'
 import { enqueueNodeDnsSync } from '../../services/managed-dns'
 import { cidrToRoute } from '../../services/ip-pool'
+import { claimPendingTasks, waitForPendingTasks } from '../../services/task-polling'
 
 interface NodeConfig {
   port: number
@@ -247,7 +248,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
   )
 
   // GET /api/v1/nodes/:id
-  app.get<{ Params: { id: string } }>(
+  app.get<{ Params: { id: string }; Querystring: { wait?: string } }>(
     '/nodes/:id',
     {
       onRequest: [app.authenticateAdmin],
@@ -1533,43 +1534,15 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         })
       }
 
-      // Use atomic update to claim pending tasks — prevents duplicate execution
-      // if the agent polls twice rapidly (e.g., network retry).
-      // The UPDATE with WHERE status='pending' acts as an optimistic lock.
-      const claimedIds = await app.db.transaction(async (trx) => {
-        const pendingTasks = await trx('tasks')
-          .where({ node_id: request.params.id, status: 'pending' })
-          .orderBy('created_at', 'asc')
-          .select('id')
-
-        const ids = pendingTasks.map((t: { id: string }) => t.id)
-        if (ids.length === 0) return []
-
-        // Atomically mark as running — only rows still 'pending' will be updated
-        await trx('tasks')
-          .whereIn('id', ids)
-          .where({ status: 'pending' })
-          .update({ status: 'running' })
-
-        return ids
-      })
-
-      // Fetch the full task data for the claimed tasks
-      let parsedTasks: any[] = []
-      if (claimedIds.length > 0) {
-        const tasks = await app
-          .db('tasks')
-          .whereIn('id', claimedIds)
-          .orderBy('created_at', 'asc')
-          .select('id', 'action', 'payload', 'created_at')
-
-        parsedTasks = tasks.map((task: any) => ({
-          ...task,
-          payload: typeof task.payload === 'string' ? JSON.parse(task.payload) : task.payload,
-        }))
-      }
-
-      return { tasks: parsedTasks }
+      // Claim immediately when work exists. Otherwise, retain this request for
+      // up to 25 seconds so an idle Agent creates far fewer HTTP requests.
+      let tasks = await claimPendingTasks(app.db, request.params.id)
+      const query = request.query as { wait?: string }
+      const requestedWait = Number.parseInt(query.wait ?? '0', 10)
+      const waitMs = Math.min(25_000, Math.max(0, requestedWait * 1_000))
+      if (tasks.length === 0 && waitMs > 0)
+        tasks = await waitForPendingTasks(app.db, request.params.id, waitMs)
+      return { tasks }
     },
   )
 

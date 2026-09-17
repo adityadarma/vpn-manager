@@ -23,20 +23,22 @@ Store `.env` files with restrictive permissions and never commit them to Git. Ro
 
 ## Agent
 
-| Variable                      | Default                        | Description                                                                                          |
-| ----------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `AGENT_PORT`                  | `3002`                         | Agent internal port                                                                                  |
-| `AGENT_MANAGER_URL`           | required                       | Valid Manager URL reachable from the node                                                            |
-| `AGENT_NODE_ID`               | required                       | Node ID after registration; at least 36 characters                                                   |
-| `AGENT_SECRET_TOKEN`          | required                       | Agent authentication bearer token                                                                    |
-| `VPN_TOKEN`                   | required                       | VPN event reporting token                                                                            |
-| `VPN_TYPE`                    | `openvpn`                      | `openvpn` or `wireguard`                                                                             |
-| `FIREWALL_ENGINE`             | `auto`                         | `auto`, `iptables`, `nftables`, `ufw`, `firewalld`, or `none`                                        |
-| `AGENT_POLL_INTERVAL_MS`      | `5000`                         | Task polling interval in milliseconds                                                                |
-| `AGENT_HEARTBEAT_INTERVAL_MS` | `30000`                        | Heartbeat interval in milliseconds                                                                   |
-| `DNS_ENABLED`                 | `false`                        | Starts the optional CoreDNS profile and accepts Manager-provided Managed DNS configuration           |
-| `DNS_BLOCK_DOT`               | `false`                        | Blocks DNS-over-TLS on port `853` for managed groups; it does not block DNS-over-HTTPS on port `443` |
-| `COREDNS_HEALTH_URL`          | `http://127.0.0.1:8181/health` | CoreDNS health endpoint checked by the Agent when Managed DNS is enabled                             |
+| Variable                              | Default                        | Description                                                                                          |
+| ------------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `AGENT_PORT`                          | `3002`                         | Agent internal port                                                                                  |
+| `AGENT_MANAGER_URL`                   | required                       | Valid Manager URL reachable from the node                                                            |
+| `AGENT_NODE_ID`                       | required                       | Node ID after registration; at least 36 characters                                                   |
+| `AGENT_SECRET_TOKEN`                  | required                       | Agent authentication bearer token                                                                    |
+| `VPN_TOKEN`                           | required                       | VPN event reporting token                                                                            |
+| `VPN_TYPE`                            | `openvpn`                      | `openvpn` or `wireguard`                                                                             |
+| `FIREWALL_ENGINE`                     | `auto`                         | `auto`, `iptables`, `nftables`, `ufw`, `firewalld`, or `none`                                        |
+| `AGENT_POLL_INTERVAL_MS`              | `5000`                         | Retry delay in milliseconds after a failed task long poll                                            |
+| `AGENT_TASK_LONG_POLL_WAIT_SECONDS`   | `25`                           | Seconds a task request waits for pending work before returning empty; `1`-`25`                       |
+| `AGENT_HEARTBEAT_INTERVAL_MS`         | `30000`                        | Heartbeat interval in milliseconds                                                                   |
+| `AGENT_TRAFFIC_TELEMETRY_INTERVAL_MS` | `5000`                         | Interval in milliseconds for reporting active session traffic counters                               |
+| `DNS_ENABLED`                         | `false`                        | Starts the optional CoreDNS profile and accepts Manager-provided Managed DNS configuration           |
+| `DNS_BLOCK_DOT`                       | `false`                        | Blocks DNS-over-TLS on port `853` for managed groups; it does not block DNS-over-HTTPS on port `443` |
+| `COREDNS_HEALTH_URL`                  | `http://127.0.0.1:8181/health` | CoreDNS health endpoint checked by the Agent when Managed DNS is enabled                             |
 
 Every Manager connection credential and `VPN_TOKEN` must be set. Do not use `localhost` for `AGENT_MANAGER_URL` when the Manager runs on a different host.
 
@@ -44,13 +46,13 @@ Every Manager connection credential and `VPN_TOKEN` must be set. Do not use `loc
 
 These values are consumed by `scripts/install-agent.sh` while it provisions or registers a node. They are not persistent Agent environment variables unless the installer writes an equivalent setting to `/opt/vpn-agent/.env`.
 
-| Variable      | Default          | Description                                                                                                                  |
-| ------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `VPN_SUBNET`  | Manager-assigned | Requested CIDR for a new node, such as `10.8.1.0/24`. It must not overlap LAN, Docker, other VPN, or common client networks. |
-| `TUNNEL_MODE` | `full`           | `full` routes client internet traffic through the VPN. `split` routes only configured internal CIDRs.                        |
-| `REG_KEY`     | none             | Alias for `NODE_REGISTRATION_KEY` during automatic node registration.                                                        |
+| Variable      | Default          | Description                                                                                                                                                                                |
+| ------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `VPN_SUBNET`  | Manager-assigned | Requested CIDR for a new node, such as `10.8.1.0/24`. It must not overlap LAN, Docker, other VPN, or common client networks.                                                               |
+| `TUNNEL_MODE` | `full`           | `full` routes client internet traffic through the VPN. `split` routes only configured internal CIDRs.                                                                                      |
+| `REG_KEY`     | none             | Alias for `NODE_REGISTRATION_KEY` during automatic node registration.                                                                                                                      |
 | `NODE_REGION` | country name     | Overrides the node location sent at registration. The installer detects the public IP country name, then falls back to AWS, GCP, or Azure region metadata when geolocation is unavailable. |
-| `CHANNEL`     | `latest`         | Image channel: `latest` for stable releases or `beta` for prereleases.                                                       |
+| `CHANNEL`     | `latest`         | Image channel: `latest` for stable releases or `beta` for prereleases.                                                                                                                     |
 
 Set `DNS_ENABLED=true` during installation to enable Managed DNS. The installer creates the required DNS Compose profile and host configuration. `DNS_BLOCK_DOT=true` adds the supported firewall restrictions for DNS-over-TLS; it cannot reliably prevent DNS-over-HTTPS.
 
