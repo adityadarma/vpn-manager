@@ -10,13 +10,22 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/v1/tasks  — list all tasks
   app.get(
     '/tasks',
-    { onRequest: [app.authenticateAdmin], schema: { tags: ['tasks'], summary: 'List all tasks', security: [{ bearerAuth: [] }] } },
+    {
+      onRequest: [app.authenticateAdmin],
+      schema: { tags: ['tasks'], summary: 'List all tasks', security: [{ bearerAuth: [] }] },
+    },
     async (request) => {
-      const query = request.query as { nodeId?: string; status?: string; page?: string; limit?: string }
+      const query = request.query as {
+        nodeId?: string
+        status?: string
+        page?: string
+        limit?: string
+      }
       const paginated = query.page !== undefined || query.limit !== undefined
       const page = Math.max(1, Number.parseInt(query.page ?? '1', 10) || 1)
       const limit = Math.min(100, Math.max(1, Number.parseInt(query.limit ?? '10', 10) || 10))
-      const builder = app.db('tasks as t')
+      const builder = app
+        .db('tasks as t')
         .join('vpn_nodes as n', 't.node_id', 'n.id')
         .select('t.*', 'n.hostname as node_hostname')
         .orderBy('t.created_at', 'desc')
@@ -33,17 +42,29 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
         return redactTaskRows(rows)
       }
 
-      const rows = await builder.clone().limit(limit).offset((page - 1) * limit)
+      const rows = await builder
+        .clone()
+        .limit(limit)
+        .offset((page - 1) * limit)
       const countBuilder = app.db('tasks as t')
       if (query.nodeId) countBuilder.where('t.node_id', query.nodeId)
       if (query.status) countBuilder.where('t.status', query.status)
       const totalRow = await countBuilder.count<{ count: string }>('* as count').first()
       const total = Number(totalRow?.count ?? 0)
 
-      const statusBuilder = app.db('tasks as t').select('t.status').count<{ count: string }>('* as count').groupBy('t.status')
+      const statusBuilder = app
+        .db('tasks as t')
+        .select('t.status')
+        .count<{ count: string }>('* as count')
+        .groupBy('t.status')
       if (query.nodeId) statusBuilder.where('t.node_id', query.nodeId)
-      const statusRows = await statusBuilder as unknown as Array<{ status: string; count: string | number }>
-      const statusCounts = Object.fromEntries(statusRows.map((row) => [row.status, Number(row.count)]))
+      const statusRows = (await statusBuilder) as unknown as Array<{
+        status: string
+        count: string | number
+      }>
+      const statusCounts = Object.fromEntries(
+        statusRows.map((row) => [row.status, Number(row.count)]),
+      )
 
       return {
         tasks: redactTaskRows(rows),
@@ -56,10 +77,10 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
   // POST /api/v1/tasks — create a new task
   app.post<{ Body: { node_id: string; action: string; payload: Record<string, unknown> } }>(
     '/tasks',
-    { 
-      onRequest: [app.authenticateAdmin], 
-      schema: { 
-        tags: ['tasks'], 
+    {
+      onRequest: [app.authenticateAdmin],
+      schema: {
+        tags: ['tasks'],
         summary: 'Create a new task',
         security: [{ bearerAuth: [] }],
         body: {
@@ -72,10 +93,10 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
               enum: TASK_ACTIONS,
               description: 'Task action type (must be a known action)',
             },
-            payload: { type: 'object', description: 'Task payload data (validated per action)' }
-          }
-        }
-      } 
+            payload: { type: 'object', description: 'Task payload data (validated per action)' },
+          },
+        },
+      },
     },
     async (request, reply) => {
       const { node_id, action, payload } = request.body
@@ -109,17 +130,18 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
         result: null,
         error_message: null,
         created_at: new Date(),
-        completed_at: null
+        completed_at: null,
       })
 
       app.log.info(`[tasks] Created task ${taskId} for node ${node_id}: ${action}`)
+      app.realtime.publish('task.created', taskId)
 
       return reply.status(201).send({
         id: taskId,
         node_id,
         action,
         status: 'pending',
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
       })
     },
   )
@@ -127,20 +149,31 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
   // POST /api/v1/tasks/:id/retry — retry failed work without stacking copies.
   app.post<{ Params: { id: string } }>(
     '/tasks/:id/retry',
-    { onRequest: [app.authenticateAdmin], schema: { tags: ['tasks'], summary: 'Retry a failed task', security: [{ bearerAuth: [] }] } },
+    {
+      onRequest: [app.authenticateAdmin],
+      schema: { tags: ['tasks'], summary: 'Retry a failed task', security: [{ bearerAuth: [] }] },
+    },
     async (request, reply) => {
       const task = await app.db('tasks').where({ id: request.params.id }).first()
       if (!task) return reply.status(404).send({ error: 'Not Found', message: 'Task not found' })
-      if (task.status !== 'failed') return reply.status(409).send({ error: 'Conflict', message: 'Only failed tasks can be retried' })
+      if (task.status !== 'failed')
+        return reply
+          .status(409)
+          .send({ error: 'Conflict', message: 'Only failed tasks can be retried' })
 
       let payload: Record<string, unknown>
       try {
         payload = typeof task.payload === 'string' ? JSON.parse(task.payload) : task.payload
       } catch {
-        return reply.status(409).send({ error: 'Conflict', message: 'Task payload is no longer available for retry' })
+        return reply
+          .status(409)
+          .send({ error: 'Conflict', message: 'Task payload is no longer available for retry' })
       }
       const validation = validateTaskPayload(task.action, payload)
-      if (!validation.ok) return reply.status(409).send({ error: 'Conflict', message: `Task cannot be retried: ${validation.error}` })
+      if (!validation.ok)
+        return reply
+          .status(409)
+          .send({ error: 'Conflict', message: `Task cannot be retried: ${validation.error}` })
       const normalizedPayload = JSON.stringify(validation.payload)
 
       const retry = await app.db.transaction(async (trx) => {
@@ -152,17 +185,26 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
         if (existing) return { task: existing, reused: true }
 
         const created = {
-          id: uuidv7(), node_id: task.node_id, action: validation.action,
-          payload: normalizedPayload, status: 'pending', result: null,
-          error_message: null, created_at: new Date(), completed_at: null,
+          id: uuidv7(),
+          node_id: task.node_id,
+          action: validation.action,
+          payload: normalizedPayload,
+          status: 'pending',
+          result: null,
+          error_message: null,
+          created_at: new Date(),
+          completed_at: null,
         }
         await trx('tasks').insert(created)
         return { task: created, reused: false }
       })
 
       return reply.status(retry.reused ? 200 : 201).send({
-        id: retry.task.id, node_id: retry.task.node_id, action: retry.task.action,
-        status: retry.task.status, reused: retry.reused,
+        id: retry.task.id,
+        node_id: retry.task.node_id,
+        action: retry.task.action,
+        status: retry.task.status,
+        reused: retry.reused,
       })
     },
   )
@@ -170,7 +212,7 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
   // POST /api/v1/tasks/:id/result  (called by agent)
   app.post<{ Params: { id: string } }>(
     '/tasks/:id/result',
-    { 
+    {
       schema: { tags: ['tasks'], summary: 'Report task result (agent)' },
     },
     async (request, reply) => {
@@ -179,7 +221,7 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
 
       const { id } = request.params
       app.log.info(`[tasks] Received result for task ${id}`)
-      
+
       const input = TaskResultSchema.parse(request.body)
 
       const task = await app.db('tasks').where({ id }).first()
@@ -188,8 +230,12 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(404).send({ error: 'Not Found', message: 'Task not found' })
       }
       if (task.node_id !== authenticatedNode.id) {
-        app.log.warn(`[tasks] Node ${authenticatedNode.id} attempted to update task ${id} owned by ${task.node_id}`)
-        return reply.status(403).send({ error: 'Forbidden', message: 'Task does not belong to this node' })
+        app.log.warn(
+          `[tasks] Node ${authenticatedNode.id} attempted to update task ${id} owned by ${task.node_id}`,
+        )
+        return reply
+          .status(403)
+          .send({ error: 'Forbidden', message: 'Task does not belong to this node' })
       }
 
       // A result may only be reported once. Without this a node could re-report
@@ -199,7 +245,8 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
       // The status filter is part of the UPDATE rather than a separate `if`, so
       // two concurrent reports cannot both pass a check and then both write:
       // the second one matches zero rows.
-      const updated = await app.db('tasks')
+      const updated = await app
+        .db('tasks')
         .where({ id })
         .whereIn('status', ['pending', 'running'])
         .update({
@@ -222,11 +269,13 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
 
       if (task.action === 'sync_group_dns') {
         const result = input.result ?? {}
-        const revision = typeof result['revision'] === 'number'
-          ? result['revision']
-          : JSON.parse(task.payload || '{}').revision
+        const revision =
+          typeof result['revision'] === 'number'
+            ? result['revision']
+            : JSON.parse(task.payload || '{}').revision
         const revisionStatus = input.status === 'success' ? 'healthy' : 'failed'
-        await app.db('node_dns_revisions')
+        await app
+          .db('node_dns_revisions')
           .where({ task_id: id })
           .update({
             status: revisionStatus,
@@ -234,13 +283,21 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
             applied_at: input.status === 'success' ? new Date() : null,
             updated_at: new Date(),
           })
-        await app.db('vpn_nodes').where({ id: authenticatedNode.id }).update({
-          dns_config_revision: input.status === 'success' ? revision : app.db.raw('dns_config_revision'),
-          dns_config_hash: input.status === 'success' && typeof result['config_hash'] === 'string' ? result['config_hash'] : app.db.raw('dns_config_hash'),
-          dns_sync_status: revisionStatus,
-          dns_last_sync_error: input.errorMessage ?? null,
-          dns_last_synced_at: input.status === 'success' ? new Date() : app.db.raw('dns_last_synced_at'),
-        })
+        await app
+          .db('vpn_nodes')
+          .where({ id: authenticatedNode.id })
+          .update({
+            dns_config_revision:
+              input.status === 'success' ? revision : app.db.raw('dns_config_revision'),
+            dns_config_hash:
+              input.status === 'success' && typeof result['config_hash'] === 'string'
+                ? result['config_hash']
+                : app.db.raw('dns_config_hash'),
+            dns_sync_status: revisionStatus,
+            dns_last_sync_error: input.errorMessage ?? null,
+            dns_last_synced_at:
+              input.status === 'success' ? new Date() : app.db.raw('dns_last_synced_at'),
+          })
       }
 
       // The agent has consumed the payload, so any secret in it (e.g. the
@@ -250,10 +307,14 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
       try {
         await stripTaskPayloadSecrets(app.db, id)
       } catch (err) {
-        app.log.warn(`[tasks] Failed to strip secrets from task ${id} payload: ${(err as Error).message}`)
+        app.log.warn(
+          `[tasks] Failed to strip secrets from task ${id} payload: ${(err as Error).message}`,
+        )
       }
 
       app.log.info(`[tasks] Task ${id} updated to ${input.status}`)
+      app.realtime.publish('task.updated', id)
+      if (task.action === 'sync_group_dns') app.realtime.publish('dns.updated')
       return { ok: true }
     },
   )

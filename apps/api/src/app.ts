@@ -5,6 +5,7 @@ import { NodeStatusChecker } from './services/node-status-checker'
 import { startCertExpiryWatcher } from './services/cert-expiry'
 import { TokenRevocationSweeper } from './services/token-revocation'
 import { pruneNodeDnsRevisions } from './services/managed-dns'
+import { registerRealtimeEvents } from './services/realtime'
 
 import corsPlugin from './plugins/cors'
 import cookiePlugin from './plugins/cookie'
@@ -27,6 +28,7 @@ import groupRoutes from './modules/groups/groups.routes'
 import networkRoutes from './modules/networks/networks.routes'
 import auditRoutes from './modules/audit/audit.routes'
 import dnsRoutes from './modules/dns/dns.routes'
+import realtimeRoutes from './modules/realtime/realtime.routes'
 
 export async function buildApp(env: Env) {
   const db = createDb({
@@ -41,20 +43,22 @@ export async function buildApp(env: Env) {
     // so request.ip reads from X-Forwarded-For instead of the Docker socket IP
     trustProxy: true,
   })
+  registerRealtimeEvents(app)
 
   // Plugins
   await app.register(corsPlugin)
-  await app.register(cookiePlugin)  // must be before jwtPlugin
+  await app.register(cookiePlugin) // must be before jwtPlugin
   await app.register(rateLimitPlugin, { nodeEnv: env.NODE_ENV })
   await app.register(dbPlugin, { db })
   await app.register(jwtPlugin, { secret: env.JWT_SECRET, expiresIn: env.JWT_EXPIRES_IN })
-  await app.register(nodeAuthPlugin)  // must be after dbPlugin
+  await app.register(nodeAuthPlugin) // must be after dbPlugin
   await app.register(swaggerPlugin, { nodeEnv: env.NODE_ENV })
 
   // Routes — all under /api/v1
   await app.register(
     async (v1) => {
       await v1.register(healthRoutes)
+      await v1.register(realtimeRoutes)
       await v1.register(authRoutes)
       await v1.register(userRoutes)
       await v1.register(nodeRoutes)
@@ -84,8 +88,8 @@ export async function buildApp(env: Env) {
   if (shouldStartSchedulers) {
     nodeStatusChecker = new NodeStatusChecker(
       db,
-      60000,  // Check every 1 minute
-      120000  // Mark offline after 2 minutes without heartbeat
+      60000, // Check every 1 minute
+      120000, // Mark offline after 2 minutes without heartbeat
     )
     nodeStatusChecker.start()
     certExpiryWatcher = startCertExpiryWatcher(db)
@@ -95,7 +99,10 @@ export async function buildApp(env: Env) {
     tokenRevocationSweeper.start()
     // Revision history is audit data, but cap it even when DNS config stops
     // changing so old terminal rows do not accumulate indefinitely.
-    dnsRevisionPruner = setInterval(() => void pruneNodeDnsRevisions({ db }).catch(() => undefined), 24 * 60 * 60 * 1000)
+    dnsRevisionPruner = setInterval(
+      () => void pruneNodeDnsRevisions({ db }).catch(() => undefined),
+      24 * 60 * 60 * 1000,
+    )
   }
 
   // Cleanup on shutdown

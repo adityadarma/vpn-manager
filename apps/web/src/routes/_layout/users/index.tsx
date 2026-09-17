@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { useRealtimeConnected } from '@/components/realtime-provider'
 import {
   Trash2,
   Shield,
@@ -77,6 +78,7 @@ interface EditUserPayload {
 // eslint-disable-next-line react-refresh/only-export-components
 function UsersPage() {
   const qc = useQueryClient()
+  const realtimeConnected = useRealtimeConnected()
   const navigate = useNavigate()
   const [showForm, setShowForm] = useState(false)
   const [showEditForm, setShowEditForm] = useState(false)
@@ -102,7 +104,11 @@ function UsersPage() {
   const [page, setPage] = useState(1)
   const pageSize = 10
 
-  const { data: usersData, isLoading, isPlaceholderData } = useQuery<{
+  const {
+    data: usersData,
+    isLoading,
+    isPlaceholderData,
+  } = useQuery<{
     users: UserWithMeta[]
     pagination: { page: number; pages: number; total: number }
   }>({
@@ -117,7 +123,7 @@ function UsersPage() {
   const { data: expiringCerts = [] } = useQuery<ExpiringCert[]>({
     queryKey: ['expiring-certs'],
     queryFn: () => api.get('/api/v1/users/expiring-certs?days=30'),
-    refetchInterval: 60000,
+    refetchInterval: realtimeConnected ? false : 60_000,
   })
 
   const [now] = useState(() => Date.now())
@@ -428,7 +434,9 @@ function UsersPage() {
                 </TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody className={`divide-y divide-border/60 transition-opacity duration-150 ${isPlaceholderData ? 'opacity-50 pointer-events-none' : ''}`}>
+            <TableBody
+              className={`divide-y divide-border/60 transition-opacity duration-150 ${isPlaceholderData ? 'opacity-50 pointer-events-none' : ''}`}
+            >
               {isLoading && !usersData ? (
                 /* Skeleton shimmer rows */
                 Array.from({ length: 5 }).map((_, i) => (
@@ -493,7 +501,8 @@ function UsersPage() {
                         </div>
                         <h3 className="font-semibold text-foreground text-base">No users yet</h3>
                         <p className="text-xs text-muted-foreground mt-1 text-center">
-                          Get started by creating your first VPN user to assign network certificates.
+                          Get started by creating your first VPN user to assign network
+                          certificates.
                         </p>
                         <Button
                           size="sm"
@@ -513,10 +522,7 @@ function UsersPage() {
                   const rowNumber = (page - 1) * pageSize + index + 1
                   const hasCerts = Boolean(user.clientCert)
                   return (
-                    <TableRow
-                      key={user.id}
-                      className="hover:bg-muted/40 transition-colors group"
-                    >
+                    <TableRow key={user.id} className="hover:bg-muted/40 transition-colors group">
                       {/* # Number */}
                       <TableCell className="text-center font-mono text-xs text-muted-foreground/70">
                         {rowNumber}
@@ -677,7 +683,7 @@ function UsersPage() {
                               onSelect={() => {
                                 if (
                                   confirm(
-                                    `Are you sure you want to delete user "${user.name}"? This action cannot be undone.`
+                                    `Are you sure you want to delete user "${user.name}"? This action cannot be undone.`,
                                   )
                                 ) {
                                   deleteMutation.mutate(user.id)
@@ -703,8 +709,8 @@ function UsersPage() {
         {pagination && pagination.pages > 1 && (
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-5 py-3.5 border-t border-border bg-muted/20">
             <p className="text-xs text-muted-foreground">
-              Showing <span className="font-medium text-foreground">{(page - 1) * pageSize + 1}</span>{' '}
-              to{' '}
+              Showing{' '}
+              <span className="font-medium text-foreground">{(page - 1) * pageSize + 1}</span> to{' '}
               <span className="font-medium text-foreground">
                 {Math.min(page * pageSize, pagination.total)}
               </span>{' '}

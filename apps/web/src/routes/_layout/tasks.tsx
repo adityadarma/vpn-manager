@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState, useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { useRealtimeConnected } from '@/components/realtime-provider'
 import {
   Clock,
   CheckCircle2,
@@ -177,6 +178,7 @@ const statusBadgeConfig = {
 // eslint-disable-next-line react-refresh/only-export-components
 function TasksPage() {
   const qc = useQueryClient()
+  const realtimeConnected = useRealtimeConnected()
   const [searchQuery, setSearchQuery] = useState('')
   const [page, setPage] = useState(1)
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'done' | 'failed'>('all')
@@ -214,7 +216,7 @@ function TasksPage() {
       return api.get(`/api/v1/tasks?${params}`)
     },
     placeholderData: keepPreviousData,
-    refetchInterval: 10_000,
+    refetchInterval: realtimeConnected ? false : 60_000,
   })
 
   const pagination = data?.pagination
@@ -231,7 +233,9 @@ function TasksPage() {
     mutationFn: (taskId: string) => api.post<{ reused: boolean }>(`/api/v1/tasks/${taskId}/retry`),
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ['tasks'] })
-      toast.success(result.reused ? 'An equivalent task is already queued' : 'Task queued for retry')
+      toast.success(
+        result.reused ? 'An equivalent task is already queued' : 'Task queued for retry',
+      )
       if (selectedTask) {
         setSelectedTask((prev) => (prev ? { ...prev, status: 'pending' } : null))
       }
@@ -275,7 +279,8 @@ function TasksPage() {
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground mt-0.5">Task Queue</h1>
           <p className="text-xs text-muted-foreground mt-1">
-            {totalTasks} total task{totalTasks !== 1 ? 's' : ''} recorded • {pendingCount} pending execution across {nodes.length} nodes
+            {totalTasks} total task{totalTasks !== 1 ? 's' : ''} recorded • {pendingCount} pending
+            execution across {nodes.length} nodes
           </p>
         </div>
 
@@ -288,7 +293,9 @@ function TasksPage() {
             className="cursor-pointer h-9 px-3 text-xs shadow-xs"
             title="Refresh tasks immediately"
           >
-            <RefreshCw className={`mr-1.5 size-3.5 ${isFetching ? 'animate-spin text-emerald-600' : ''}`} />
+            <RefreshCw
+              className={`mr-1.5 size-3.5 ${isFetching ? 'animate-spin text-emerald-600' : ''}`}
+            />
             Refresh
           </Button>
 
@@ -342,7 +349,9 @@ function TasksPage() {
             </div>
           </div>
           <div className="text-2xl font-bold text-foreground mt-2">{pendingCount}</div>
-          <p className="text-[11px] text-muted-foreground mt-1 truncate">Waiting for agent execution</p>
+          <p className="text-[11px] text-muted-foreground mt-1 truncate">
+            Waiting for agent execution
+          </p>
         </div>
 
         {/* Completed Card */}
@@ -535,7 +544,9 @@ function TasksPage() {
                 </TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody className={`divide-y divide-border/60 transition-opacity duration-150 ${isPlaceholderData ? 'opacity-50 pointer-events-none' : ''}`}>
+            <TableBody
+              className={`divide-y divide-border/60 transition-opacity duration-150 ${isPlaceholderData ? 'opacity-50 pointer-events-none' : ''}`}
+            >
               {isLoading && !data ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <TableRow key={i}>
@@ -605,7 +616,7 @@ function TasksPage() {
                   const ActionIcon = meta.icon
                   const statusInfo = statusBadgeConfig[task.status] ?? statusBadgeConfig.pending
                   const StatusIcon = statusInfo.icon
-                  const rowNumber = ((page - 1) * pageSize) + index + 1
+                  const rowNumber = (page - 1) * pageSize + index + 1
 
                   return (
                     <TableRow key={task.id} className="hover:bg-muted/40 transition-colors">
@@ -636,7 +647,10 @@ function TasksPage() {
                         </div>
                       </TableCell>
                       <TableCell className="py-3">
-                        <Badge variant="outline" className={`gap-1 px-2 py-0.5 text-[11px] font-medium ${statusInfo.className}`}>
+                        <Badge
+                          variant="outline"
+                          className={`gap-1 px-2 py-0.5 text-[11px] font-medium ${statusInfo.className}`}
+                        >
                           <StatusIcon className="size-3 shrink-0" />
                           {statusInfo.label}
                         </Badge>
@@ -689,9 +703,9 @@ function TasksPage() {
         {pagination && pagination.pages > 1 && (
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-border bg-muted/20">
             <p className="text-xs text-muted-foreground">
-              Showing page <span className="font-semibold text-foreground">{pagination.page}</span> of{' '}
-              <span className="font-semibold text-foreground">{pagination.pages}</span> • {pagination.total}{' '}
-              {statusFilter !== 'all' ? statusFilter : 'total'} tasks
+              Showing page <span className="font-semibold text-foreground">{pagination.page}</span>{' '}
+              of <span className="font-semibold text-foreground">{pagination.pages}</span> •{' '}
+              {pagination.total} {statusFilter !== 'all' ? statusFilter : 'total'} tasks
             </p>
             <div className="flex items-center gap-2">
               <Button
@@ -724,11 +738,7 @@ function TasksPage() {
 
       {/* ─── MODAL: TASK DETAIL INSPECTION ─────────────────────────────────── */}
       {selectedTask && (
-        <Modal
-          open={!!selectedTask}
-          onClose={() => setSelectedTask(null)}
-          className="max-w-2xl"
-        >
+        <Modal open={!!selectedTask} onClose={() => setSelectedTask(null)} className="max-w-2xl">
           <ModalHeader
             title="Task Details"
             description="Inspect execution parameters, result, and runtime diagnostic data"
@@ -764,7 +774,9 @@ function TasksPage() {
                   }`}
                 >
                   {(() => {
-                    const Icon = (statusBadgeConfig[selectedTask.status] ?? statusBadgeConfig.pending).icon
+                    const Icon = (
+                      statusBadgeConfig[selectedTask.status] ?? statusBadgeConfig.pending
+                    ).icon
                     return <Icon className="size-3.5" />
                   })()}
                   {(statusBadgeConfig[selectedTask.status] ?? statusBadgeConfig.pending).label}
@@ -803,13 +815,19 @@ function TasksPage() {
 
               {/* Task ID with Copy */}
               <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-background border border-border/60 text-xs">
-                <span className="text-muted-foreground font-mono truncate">ID: {selectedTask.id}</span>
+                <span className="text-muted-foreground font-mono truncate">
+                  ID: {selectedTask.id}
+                </span>
                 <button
                   type="button"
                   onClick={() => copyToClipboard(selectedTask.id, 'taskId', 'Task ID')}
                   className="flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer ml-2 shrink-0"
                 >
-                  {copiedKey === 'taskId' ? <Check className="size-3" /> : <Copy className="size-3" />}
+                  {copiedKey === 'taskId' ? (
+                    <Check className="size-3" />
+                  ) : (
+                    <Copy className="size-3" />
+                  )}
                   {copiedKey === 'taskId' ? 'Copied' : 'Copy ID'}
                 </button>
               </div>
@@ -832,7 +850,9 @@ function TasksPage() {
                     disabled={retryTask.isPending}
                     className="bg-red-600 hover:bg-red-700 text-white cursor-pointer h-7 text-xs shadow-xs"
                   >
-                    <RefreshCw className={`mr-1.5 size-3 ${retryTask.isPending ? 'animate-spin' : ''}`} />
+                    <RefreshCw
+                      className={`mr-1.5 size-3 ${retryTask.isPending ? 'animate-spin' : ''}`}
+                    />
                     Retry Task
                   </Button>
                 </div>
@@ -887,8 +907,8 @@ function TasksPage() {
                       inspectTab === 'payload'
                         ? JSON.stringify(parseJsonSafe(selectedTask.payload), null, 2)
                         : inspectTab === 'result'
-                        ? JSON.stringify(parseJsonSafe(selectedTask.result), null, 2)
-                        : JSON.stringify(selectedTask, null, 2)
+                          ? JSON.stringify(parseJsonSafe(selectedTask.result), null, 2)
+                          : JSON.stringify(selectedTask, null, 2)
                     copyToClipboard(content, inspectTab, 'JSON content')
                   }}
                 >
@@ -922,7 +942,9 @@ function TasksPage() {
                 disabled={retryTask.isPending}
                 className="bg-red-600 hover:bg-red-700 text-white cursor-pointer shadow-xs text-xs"
               >
-                <RefreshCw className={`mr-1.5 size-3.5 ${retryTask.isPending ? 'animate-spin' : ''}`} />
+                <RefreshCw
+                  className={`mr-1.5 size-3.5 ${retryTask.isPending ? 'animate-spin' : ''}`}
+                />
                 Retry Task
               </Button>
             )}

@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { useRealtimeConnected } from '@/components/realtime-provider'
 import { toast } from 'sonner'
 import {
   Activity,
@@ -220,6 +221,7 @@ function DisconnectReasonBadge({ reason }: { reason?: string }) {
 
 // eslint-disable-next-line react-refresh/only-export-components
 function SessionsPage() {
+  const realtimeConnected = useRealtimeConnected()
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<'active' | 'history'>('active')
 
@@ -254,7 +256,7 @@ function SessionsPage() {
   } = useQuery<SessionStats>({
     queryKey: ['sessions-stats'],
     queryFn: () => api.get('/api/v1/sessions/stats'),
-    refetchInterval: 10_000,
+    refetchInterval: realtimeConnected ? false : 60_000,
   })
 
   // 3. Fetch Active Sessions
@@ -266,7 +268,7 @@ function SessionsPage() {
   } = useQuery<Session[]>({
     queryKey: ['sessions'],
     queryFn: () => api.get('/api/v1/sessions'),
-    refetchInterval: 10_000,
+    refetchInterval: realtimeConnected ? false : 60_000,
   })
 
   // 4. Fetch History Sessions

@@ -24,30 +24,49 @@ export const HeartbeatSchema = z.object({
   firewallEngine: z.string().optional(),
   startup: z.boolean().optional(),
   dns: DnsStatusSchema.optional(),
-  
+
   // Real-time VPN data from management interface
-  clients: z.array(z.object({
-    commonName: z.string(),
-    realAddress: z.string(),
-    virtualAddress: z.string(),
-    bytesReceived: z.number(),
-    bytesSent: z.number(),
-    connectedSince: z.string().or(z.date()),
-    lastActivity: z.string().or(z.date()).optional(),
-  })).optional(),
-  
-  metrics: z.object({
-    totalClients: z.number(),
-    totalBytesReceived: z.number(),
-    totalBytesSent: z.number(),
-    uptime: z.number(),
-  }).optional(),
-  
-  serverInfo: z.object({
-    version: z.string(),
-    uptime: z.number(),
-    mode: z.string(),
-  }).optional(),
+  clients: z
+    .array(
+      z.object({
+        commonName: z.string(),
+        realAddress: z.string(),
+        virtualAddress: z.string(),
+        bytesReceived: z.number(),
+        bytesSent: z.number(),
+        connectedSince: z.string().or(z.date()),
+        lastActivity: z.string().or(z.date()).optional(),
+      }),
+    )
+    .optional(),
+
+  metrics: z
+    .object({
+      totalClients: z.number(),
+      totalBytesReceived: z.number(),
+      totalBytesSent: z.number(),
+      uptime: z.number(),
+    })
+    .optional(),
+
+  serverInfo: z
+    .object({
+      version: z.string(),
+      uptime: z.number(),
+      mode: z.string(),
+    })
+    .optional(),
+})
+
+export const TrafficTelemetrySchema = z.object({
+  nodeId: z.string().uuid(),
+  clients: z.array(
+    z.object({
+      commonName: z.string(),
+      bytesReceived: z.number().nonnegative(),
+      bytesSent: z.number().nonnegative(),
+    }),
+  ),
 })
 
 export const NodeIdParamSchema = z.object({
@@ -56,3 +75,4 @@ export const NodeIdParamSchema = z.object({
 
 export type RegisterNodeInput = z.infer<typeof RegisterNodeSchema>
 export type HeartbeatInput = z.infer<typeof HeartbeatSchema>
+export type TrafficTelemetryInput = z.infer<typeof TrafficTelemetrySchema>

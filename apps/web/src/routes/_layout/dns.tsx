@@ -23,6 +23,7 @@ import {
   ExternalLink,
 } from 'lucide-react'
 import { api } from '@/lib/api'
+import { useRealtimeConnected } from '@/components/realtime-provider'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -38,12 +39,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  Modal,
-  ModalHeader,
-  ModalBody,
-  ModalFooter,
-} from '@/components/ui/modal'
+import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal'
 import { toast } from 'sonner'
 import { formatBrowserDateTime } from '@vpn/shared'
 
@@ -141,7 +137,9 @@ function ConfigureDnsFormContent({
 }: ConfigureDnsFormContentProps) {
   const queryClient = useQueryClient()
   const [form, setForm] = useState(initialValues)
-  const [selectedZoneIds, setSelectedZoneIds] = useState<Set<string>>(() => new Set(initialAssignedZoneIds))
+  const [selectedZoneIds, setSelectedZoneIds] = useState<Set<string>>(
+    () => new Set(initialAssignedZoneIds),
+  )
 
   const toggleZone = (zoneId: string) => {
     setSelectedZoneIds((prev) => {
@@ -365,12 +363,17 @@ function ConfigureDnsModal({
   onClose: () => void
   zones: Zone[]
 }) {
-  const allocKey = useMemo(() => ['group-node-dns', alloc.group_id, alloc.node_id], [alloc.group_id, alloc.node_id])
+  const allocKey = useMemo(
+    () => ['group-node-dns', alloc.group_id, alloc.node_id],
+    [alloc.group_id, alloc.node_id],
+  )
 
   const { data: existingAlloc, isLoading: isAllocLoading } = useQuery<Allocation | null>({
     queryKey: allocKey,
     queryFn: () =>
-      api.get<Allocation>(`/api/v1/groups/${alloc.group_id}/nodes/${alloc.node_id}/dns`).catch(() => null),
+      api
+        .get<Allocation>(`/api/v1/groups/${alloc.group_id}/nodes/${alloc.node_id}/dns`)
+        .catch(() => null),
   })
 
   const { data: assignedZones = [], isLoading: isZonesLoading } = useQuery<Zone[]>({
@@ -454,12 +457,13 @@ function ConfigureDnsModal({
 function ManagedDnsPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const realtimeConnected = useRealtimeConnected()
 
   // Queries
   const { data: nodes = [], isLoading: isNodesLoading } = useQuery<Node[]>({
     queryKey: ['nodes'],
     queryFn: () => api.get('/api/v1/nodes'),
-    refetchInterval: 10_000,
+    refetchInterval: realtimeConnected ? false : 60_000,
   })
 
   const { data: zones = [], isLoading: isZonesLoading } = useQuery<Zone[]>({
@@ -479,7 +483,8 @@ function ManagedDnsPage() {
 
   // Sync Mutation
   const sync = useMutation({
-    mutationFn: (nodeId: string) => api.post<{ task_id: string }>(`/api/v1/nodes/${nodeId}/dns/sync`),
+    mutationFn: (nodeId: string) =>
+      api.post<{ task_id: string }>(`/api/v1/nodes/${nodeId}/dns/sync`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['nodes'] })
       toast.success('DNS sync queued')
@@ -488,7 +493,10 @@ function ManagedDnsPage() {
   })
 
   const managed = useMemo(() => nodes.filter((node) => node.managed_dns_enabled), [nodes])
-  const healthy = useMemo(() => managed.filter((node) => node.dns_sync_status === 'healthy').length, [managed])
+  const healthy = useMemo(
+    () => managed.filter((node) => node.dns_sync_status === 'healthy').length,
+    [managed],
+  )
 
   // Tab State
   const [activeTab, setActiveTab] = useState<'allocations' | 'zones' | 'policies'>('allocations')
@@ -521,14 +529,19 @@ function ManagedDnsPage() {
   const [showAddRecordModal, setShowAddRecordModal] = useState(false)
   const [record, setRecord] = useState({ name: '', type: 'A', value: '', ttl: '60' })
   const [recordSearch, setRecordSearch] = useState('')
-  const [recordTypeFilter, setRecordTypeFilter] = useState<'all' | 'A' | 'AAAA' | 'CNAME' | 'TXT'>('all')
+  const [recordTypeFilter, setRecordTypeFilter] = useState<'all' | 'A' | 'AAAA' | 'CNAME' | 'TXT'>(
+    'all',
+  )
 
   const activeZoneId = useMemo(() => {
     if (selectedZone && zones.some((z) => z.id === selectedZone)) return selectedZone
     return zones.length > 0 ? zones[0].id : null
   }, [selectedZone, zones])
 
-  const selectedZoneObj = useMemo(() => zones.find((z) => z.id === activeZoneId), [zones, activeZoneId])
+  const selectedZoneObj = useMemo(
+    () => zones.find((z) => z.id === activeZoneId),
+    [zones, activeZoneId],
+  )
 
   const { data: records = [], isLoading: isRecordsLoading } = useQuery<DnsRecord[]>({
     queryKey: ['dns-records', activeZoneId],
@@ -601,7 +614,9 @@ function ManagedDnsPage() {
   // ─── TAB 3: DOMAIN POLICIES STATE ─────────────────────────────────────────
   const [policyGroupFilter, setPolicyGroupFilter] = useState('')
   const [policySearch, setPolicySearch] = useState('')
-  const [policyActionFilter, setPolicyActionFilter] = useState<'all' | 'block' | 'sinkhole' | 'allow'>('all')
+  const [policyActionFilter, setPolicyActionFilter] = useState<
+    'all' | 'block' | 'sinkhole' | 'allow'
+  >('all')
   const [showAddPolicyModal, setShowAddPolicyModal] = useState(false)
   const [policy, setPolicy] = useState({
     group_id: '',
@@ -681,9 +696,12 @@ function ManagedDnsPage() {
               DNS Infrastructure
             </span>
           </div>
-          <h1 className="mt-1 text-2xl sm:text-3xl font-bold tracking-tight text-foreground">Managed DNS</h1>
+          <h1 className="mt-1 text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
+            Managed DNS
+          </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Configure CoreDNS node resolvers, per-group subnet allocations, private authoritative zones, and domain policies.
+            Configure CoreDNS node resolvers, per-group subnet allocations, private authoritative
+            zones, and domain policies.
           </p>
         </div>
 
@@ -695,7 +713,9 @@ function ManagedDnsPage() {
               <div className="text-xs font-bold text-foreground">
                 {healthy} / {managed.length}
               </div>
-              <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Healthy Nodes</div>
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                Healthy Nodes
+              </div>
             </div>
           </div>
 
@@ -703,7 +723,9 @@ function ManagedDnsPage() {
             <Globe className="size-4 text-blue-600 dark:text-blue-400" />
             <div>
               <div className="text-xs font-bold text-foreground">{zones.length}</div>
-              <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Private Zones</div>
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                Private Zones
+              </div>
             </div>
           </div>
 
@@ -711,7 +733,9 @@ function ManagedDnsPage() {
             <Network className="size-4 text-indigo-600 dark:text-indigo-400" />
             <div>
               <div className="text-xs font-bold text-foreground">{allocations.length}</div>
-              <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Allocations</div>
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                Allocations
+              </div>
             </div>
           </div>
         </div>
@@ -730,7 +754,10 @@ function ManagedDnsPage() {
         {isNodesLoading ? (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="rounded-xl border border-border bg-card p-4 shadow-xs space-y-3">
+              <div
+                key={i}
+                className="rounded-xl border border-border bg-card p-4 shadow-xs space-y-3"
+              >
                 <Skeleton className="h-5 w-32" />
                 <Skeleton className="h-4 w-20" />
                 <Skeleton className="h-6 w-full" />
@@ -740,7 +767,8 @@ function ManagedDnsPage() {
         ) : managed.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border/80 bg-card p-8 text-center text-sm text-muted-foreground">
             <Server className="mx-auto size-8 text-muted-foreground/40 mb-2" />
-            No nodes currently have Managed DNS enabled. Enable Managed DNS in Node Settings to activate CoreDNS.
+            No nodes currently have Managed DNS enabled. Enable Managed DNS in Node Settings to
+            activate CoreDNS.
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -777,7 +805,10 @@ function ManagedDnsPage() {
                           Revision {node.dns_config_revision || '0'}
                         </p>
                       </div>
-                      <Badge variant="outline" className={`gap-1 capitalize text-xs ${statusColor}`}>
+                      <Badge
+                        variant="outline"
+                        className={`gap-1 capitalize text-xs ${statusColor}`}
+                      >
                         <Icon className="size-3" />
                         {node.dns_sync_status}
                       </Badge>
@@ -803,7 +834,9 @@ function ManagedDnsPage() {
                       onClick={() => sync.mutate(node.id)}
                       disabled={sync.isPending}
                     >
-                      <RefreshCw className={`mr-1.5 size-3 ${sync.isPending ? 'animate-spin' : ''}`} />
+                      <RefreshCw
+                        className={`mr-1.5 size-3 ${sync.isPending ? 'animate-spin' : ''}`}
+                      />
                       Sync
                     </Button>
                   </div>
@@ -979,7 +1012,9 @@ function ManagedDnsPage() {
                           <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-3">
                             <Network className="h-6 w-6 text-muted-foreground/70" />
                           </div>
-                          <h3 className="font-semibold text-foreground text-base">No allocations found</h3>
+                          <h3 className="font-semibold text-foreground text-base">
+                            No allocations found
+                          </h3>
                           <p className="text-xs text-muted-foreground mt-1 text-center">
                             {allocSearch || allocDnsFilter !== 'all'
                               ? 'No subnet allocations match your search or filter criteria.'
@@ -998,14 +1033,19 @@ function ManagedDnsPage() {
                               }
                             }}
                           >
-                            {allocSearch || allocDnsFilter !== 'all' ? 'Clear filters' : 'Go to Networks'}
+                            {allocSearch || allocDnsFilter !== 'all'
+                              ? 'Clear filters'
+                              : 'Go to Networks'}
                           </Button>
                         </div>
                       </TableCell>
                     </TableRow>
                   ) : (
                     filteredAllocations.map((a, index) => (
-                      <TableRow key={`${a.group_id}-${a.node_id}`} className="hover:bg-muted/40 transition-colors">
+                      <TableRow
+                        key={`${a.group_id}-${a.node_id}`}
+                        className="hover:bg-muted/40 transition-colors"
+                      >
                         <TableCell className="text-center font-mono text-xs text-muted-foreground/70">
                           {index + 1}
                         </TableCell>
@@ -1017,8 +1057,12 @@ function ManagedDnsPage() {
                               <UsersRound className="size-4" />
                             </div>
                             <div>
-                              <div className="font-semibold text-sm text-foreground">{a.group_name}</div>
-                              <div className="text-[11px] text-muted-foreground">Pool: {a.node_pool}</div>
+                              <div className="font-semibold text-sm text-foreground">
+                                {a.group_name}
+                              </div>
+                              <div className="text-[11px] text-muted-foreground">
+                                Pool: {a.node_pool}
+                              </div>
                             </div>
                           </div>
                         </TableCell>
@@ -1162,7 +1206,9 @@ function ManagedDnsPage() {
                               <div className="font-mono text-sm font-semibold text-foreground truncate flex items-center gap-1.5">
                                 <Globe
                                   className={`size-3.5 shrink-0 ${
-                                    isSelected ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'
+                                    isSelected
+                                      ? 'text-emerald-600 dark:text-emerald-400'
+                                      : 'text-muted-foreground'
                                   }`}
                                 />
                                 {zone.name}
@@ -1178,7 +1224,9 @@ function ManagedDnsPage() {
                               aria-label={`Delete zone ${zone.name}`}
                               onClick={(e) => {
                                 e.stopPropagation()
-                                if (confirm(`Delete private zone "${zone.name}" and all its records?`)) {
+                                if (
+                                  confirm(`Delete private zone "${zone.name}" and all its records?`)
+                                ) {
                                   deleteZone.mutate(zone.id)
                                 }
                               }}
@@ -1321,9 +1369,12 @@ function ManagedDnsPage() {
                                     <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center mb-2">
                                       <Layers className="size-5 text-muted-foreground/60" />
                                     </div>
-                                    <div className="font-medium text-foreground text-sm">No records in this zone</div>
+                                    <div className="font-medium text-foreground text-sm">
+                                      No records in this zone
+                                    </div>
                                     <p className="text-xs text-muted-foreground mt-1">
-                                      Create your first record to begin mapping domain names inside {selectedZoneObj.name}.
+                                      Create your first record to begin mapping domain names inside{' '}
+                                      {selectedZoneObj.name}.
                                     </p>
                                     <Button
                                       size="sm"
@@ -1363,13 +1414,16 @@ function ManagedDnsPage() {
                                   item.type === 'A'
                                     ? 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20'
                                     : item.type === 'AAAA'
-                                    ? 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/20'
-                                    : item.type === 'CNAME'
-                                    ? 'bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/20'
-                                    : 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20'
+                                      ? 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/20'
+                                      : item.type === 'CNAME'
+                                        ? 'bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/20'
+                                        : 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20'
 
                                 return (
-                                  <TableRow key={item.id} className="hover:bg-muted/40 transition-colors">
+                                  <TableRow
+                                    key={item.id}
+                                    className="hover:bg-muted/40 transition-colors"
+                                  >
                                     <TableCell className="text-center font-mono text-xs text-muted-foreground/70">
                                       {index + 1}
                                     </TableCell>
@@ -1377,12 +1431,17 @@ function ManagedDnsPage() {
                                       <div className="flex items-center gap-1 flex-wrap">
                                         <span>{item.name}</span>
                                         <span className="text-[10px] text-muted-foreground/80 font-normal">
-                                          {item.name === '@' ? `(${selectedZoneObj.name})` : `.${selectedZoneObj.name}`}
+                                          {item.name === '@'
+                                            ? `(${selectedZoneObj.name})`
+                                            : `.${selectedZoneObj.name}`}
                                         </span>
                                       </div>
                                     </TableCell>
                                     <TableCell>
-                                      <Badge variant="outline" className={`font-mono text-[10px] uppercase ${typeColor}`}>
+                                      <Badge
+                                        variant="outline"
+                                        className={`font-mono text-[10px] uppercase ${typeColor}`}
+                                      >
                                         {item.type}
                                       </Badge>
                                     </TableCell>
@@ -1401,7 +1460,11 @@ function ManagedDnsPage() {
                                         className="size-7 text-muted-foreground/60 hover:text-red-600 hover:bg-red-500/10 cursor-pointer"
                                         aria-label={`Delete record ${item.name}`}
                                         onClick={() => {
-                                          if (confirm(`Delete record "${item.name}" (${item.type} ${item.value})?`)) {
+                                          if (
+                                            confirm(
+                                              `Delete record "${item.name}" (${item.type} ${item.value})?`,
+                                            )
+                                          ) {
                                             deleteRecord.mutate(item.id)
                                           }
                                         }}
@@ -1587,7 +1650,9 @@ function ManagedDnsPage() {
                           <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-3">
                             <Shield className="size-6 text-muted-foreground/60" />
                           </div>
-                          <h3 className="font-semibold text-foreground text-sm">No domain policies found</h3>
+                          <h3 className="font-semibold text-foreground text-sm">
+                            No domain policies found
+                          </h3>
                           <p className="text-xs text-muted-foreground mt-1 text-center">
                             {policySearch || policyActionFilter !== 'all' || policyGroupFilter
                               ? 'No rules match your search or filter criteria.'
@@ -1597,7 +1662,11 @@ function ManagedDnsPage() {
                             size="sm"
                             className="mt-4 text-xs bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
                             onClick={() => {
-                              if (policySearch || policyActionFilter !== 'all' || policyGroupFilter) {
+                              if (
+                                policySearch ||
+                                policyActionFilter !== 'all' ||
+                                policyGroupFilter
+                              ) {
                                 setPolicySearch('')
                                 setPolicyActionFilter('all')
                                 setPolicyGroupFilter('')
@@ -1623,8 +1692,8 @@ function ManagedDnsPage() {
                         item.action === 'block'
                           ? 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'
                           : item.action === 'sinkhole'
-                          ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20'
-                          : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                            ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20'
+                            : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
 
                       return (
                         <TableRow key={item.id} className="hover:bg-muted/40 transition-colors">
@@ -1645,9 +1714,14 @@ function ManagedDnsPage() {
                             {item.domain_pattern}
                           </TableCell>
                           <TableCell>
-                            <Badge variant="outline" className={`capitalize text-[11px] ${actionBadge}`}>
+                            <Badge
+                              variant="outline"
+                              className={`capitalize text-[11px] ${actionBadge}`}
+                            >
                               {item.action === 'block' && <Ban className="mr-1 size-3" />}
-                              {item.action === 'sinkhole' && <ShieldAlert className="mr-1 size-3" />}
+                              {item.action === 'sinkhole' && (
+                                <ShieldAlert className="mr-1 size-3" />
+                              )}
                               {item.action === 'allow' && <CheckCircle2 className="mr-1 size-3" />}
                               {item.action}
                               {item.sinkhole_ipv4 ? ` (${item.sinkhole_ipv4})` : ''}
@@ -1657,8 +1731,8 @@ function ManagedDnsPage() {
                             {item.scope === 'public'
                               ? 'Public DNS only'
                               : item.scope === 'internal'
-                              ? 'Private zones only'
-                              : 'All queries'}
+                                ? 'Private zones only'
+                                : 'All queries'}
                           </TableCell>
                           <TableCell className="text-center font-mono text-xs text-muted-foreground">
                             <span className="inline-flex items-center justify-center min-w-[24px] px-1.5 py-0.5 rounded text-xs bg-muted/40 border border-border/60">
@@ -1694,15 +1768,15 @@ function ManagedDnsPage() {
 
       {/* ─── MODAL: CONFIGURE GROUP DNS SETTINGS ───────────────────────────── */}
       {configAlloc && (
-        <ConfigureDnsModal
-          alloc={configAlloc}
-          onClose={() => setConfigAlloc(null)}
-          zones={zones}
-        />
+        <ConfigureDnsModal alloc={configAlloc} onClose={() => setConfigAlloc(null)} zones={zones} />
       )}
 
       {/* ─── MODAL: ADD RECORD TO ZONE ────────────────────────────────────── */}
-      <Modal open={showAddRecordModal} onClose={() => setShowAddRecordModal(false)} className="max-w-md">
+      <Modal
+        open={showAddRecordModal}
+        onClose={() => setShowAddRecordModal(false)}
+        className="max-w-md"
+      >
         <ModalHeader
           title={selectedZoneObj ? `Add Record to ${selectedZoneObj.name}` : 'Add DNS Record'}
           description="Map hostnames to IPv4, IPv6, canonical names, or text"
@@ -1758,10 +1832,10 @@ function ManagedDnsPage() {
                   record.type === 'A'
                     ? '10.20.10.15'
                     : record.type === 'AAAA'
-                    ? '2001:db8::1'
-                    : record.type === 'CNAME'
-                    ? 'git-backend.corp.internal.'
-                    : 'v=spf1 ...'
+                      ? '2001:db8::1'
+                      : record.type === 'CNAME'
+                        ? 'git-backend.corp.internal.'
+                        : 'v=spf1 ...'
                 }
                 required
                 className="font-mono text-sm"
@@ -1802,7 +1876,11 @@ function ManagedDnsPage() {
       </Modal>
 
       {/* ─── MODAL: ADD DOMAIN POLICY ─────────────────────────────────────── */}
-      <Modal open={showAddPolicyModal} onClose={() => setShowAddPolicyModal(false)} className="max-w-md">
+      <Modal
+        open={showAddPolicyModal}
+        onClose={() => setShowAddPolicyModal(false)}
+        className="max-w-md"
+      >
         <ModalHeader
           title="Add Domain Policy"
           description="Filter or redirect DNS queries for a client group"
@@ -1827,14 +1905,18 @@ function ManagedDnsPage() {
                 onChange={(e) => setPolicy({ ...policy, group_id: e.target.value })}
                 required
               >
-                <option value="" disabled>Select group...</option>
+                <option value="" disabled>
+                  Select group...
+                </option>
                 {groups.map((group) => (
                   <option key={group.id} value={group.id}>
                     {group.name}
                   </option>
                 ))}
               </select>
-              <p className="text-xs text-muted-foreground">Select the client group this domain rule applies to.</p>
+              <p className="text-xs text-muted-foreground">
+                Select the client group this domain rule applies to.
+              </p>
             </div>
 
             <div className="space-y-1.5">
@@ -1849,7 +1931,9 @@ function ManagedDnsPage() {
                 required
                 className="font-mono text-sm"
               />
-              <p className="text-xs text-muted-foreground">Wildcard pattern to match queried domain names.</p>
+              <p className="text-xs text-muted-foreground">
+                Wildcard pattern to match queried domain names.
+              </p>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">

@@ -10,6 +10,7 @@ dotenv.config({
 import { loadAgentEnv } from './config/env'
 import { startPoller } from './core/poller'
 import { startHeartbeat } from './core/heartbeat'
+import { startTrafficTelemetry } from './core/traffic-telemetry'
 import { OpenVpnDriver, WireGuardDriver, type VpnDriver } from './drivers'
 import { handleSyncCertificates } from './handlers/sync-certificates'
 import { handleSyncServerConfig } from './handlers/sync-server-config'
@@ -111,6 +112,7 @@ async function main() {
   console.log(`   VPN Type: ${env.VPN_TYPE}`)
   console.log(`   Poll:     every ${env.AGENT_POLL_INTERVAL_MS}ms`)
   console.log(`   Heartbeat: every ${env.AGENT_HEARTBEAT_INTERVAL_MS}ms`)
+  console.log(`   Traffic telemetry: every ${env.AGENT_TRAFFIC_TELEMETRY_INTERVAL_MS}ms`)
   console.log(`   Managed DNS: ${env.DNS_ENABLED ? 'enabled' : 'disabled'}`)
 
   // Lets coredns start immediately on a fresh volume, before the first
@@ -143,6 +145,7 @@ async function main() {
 
   // Start services
   startHeartbeat(env, driver)
+  startTrafficTelemetry(env, driver)
   startPoller(env, driver)
 
   if (env.VPN_TYPE === 'openvpn') {

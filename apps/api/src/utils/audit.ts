@@ -44,13 +44,17 @@ export async function logAudit(
     ipAddress?: string
     userAgent?: string
     metadata?: Record<string, any>
-  }
+  },
 ) {
   try {
     // Skip stale user references, but retain system and node lifecycle events.
-    const userExists = options.userId ? await app.db('users').where({ id: options.userId }).first() : true
+    const userExists = options.userId
+      ? await app.db('users').where({ id: options.userId }).first()
+      : true
     if (!userExists) {
-      app.log.warn(`[audit] Skipping audit log — user_id '${options.userId}' not found in users table`)
+      app.log.warn(
+        `[audit] Skipping audit log — user_id '${options.userId}' not found in users table`,
+      )
       return
     }
 
@@ -67,6 +71,8 @@ export async function logAudit(
       metadata: options.metadata ? JSON.stringify(options.metadata) : null,
       created_at: new Date(),
     })
+    app.realtime.publish(`${options.resourceType}.updated`, options.resourceId)
+    app.realtime.publish('audit.created')
   } catch (err) {
     app.log.error(err, 'Failed to write audit log')
   }

@@ -44,7 +44,10 @@ describe('Node token authentication (shared decorator)', () => {
   })
 
   /** Every endpoint that authenticates via a node token. */
-  const endpoints: Array<{ name: string; call: (auth?: string) => Promise<{ statusCode: number }> }> = [
+  const endpoints: Array<{
+    name: string
+    call: (auth?: string) => Promise<{ statusCode: number }>
+  }> = [
     {
       name: 'GET /nodes/me',
       call: (auth) =>
@@ -128,6 +131,16 @@ describe('Node token authentication (shared decorator)', () => {
           payload: { status: 'success', result: {} },
         })
       },
+    },
+    {
+      name: 'POST /nodes/telemetry',
+      call: (auth) =>
+        app.inject({
+          method: 'POST',
+          url: '/api/v1/nodes/telemetry',
+          ...(auth ? { headers: { Authorization: auth } } : {}),
+          payload: { nodeId, clients: [] },
+        }),
     },
   ]
 

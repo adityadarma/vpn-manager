@@ -24,21 +24,21 @@ services:
     command: sh -c "apk add --no-cache python3 make g++ && npm install -g pnpm && pnpm install && export JWT_SECRET=$${JWT_SECRET:-$$(node -e 'console.log(require(`crypto`).randomBytes(32).toString(`hex`))')} && pnpm --filter @vpn/api dev"
     environment:
       NODE_ENV: development
-      PORT: "3000"
+      PORT: '3000'
       JWT_SECRET: ${JWT_SECRET:-}
       JWT_EXPIRES_IN: 7d
       NODE_REGISTRATION_KEY: ${NODE_REGISTRATION_KEY:-dev-registration-key}
       VPN_TOKEN: ${VPN_TOKEN:-dev-vpn-token}
       WEB_URL: ${WEB_URL:-http://localhost:3000}
     ports:
-      - "3000:3000"
+      - '3000:3000'
     volumes:
       - .:/app
       - api_dev_data:/data
       - pnpm_store:/root/.local/share/pnpm/store
       - node_modules_cache:/app/node_modules
     healthcheck:
-      test: [ "CMD-SHELL", "wget -qO- http://localhost:3000/api/v1/health || exit 1" ]
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:3000/api/v1/health || exit 1']
       interval: 15s
       timeout: 10s
       retries: 10
@@ -58,7 +58,7 @@ services:
       # (Vite embeds this into the JS bundle at build time via import.meta.env)
       VITE_API_URL: http://localhost:3000
     ports:
-      - "5173:5173"
+      - '5173:5173'
     volumes:
       - .:/app
       - pnpm_store:/root/.local/share/pnpm/store
@@ -85,6 +85,7 @@ services:
       VPN_TOKEN: ${VPN_TOKEN:-dev-vpn-token}
       AGENT_POLL_INTERVAL_MS: 5000
       AGENT_HEARTBEAT_INTERVAL_MS: 30000
+      AGENT_TRAFFIC_TELEMETRY_INTERVAL_MS: 5000
       FIREWALL_ENGINE: ${FIREWALL_ENGINE:-auto}
       VPN_TYPE: ${VPN_TYPE:-openvpn}
     volumes:
@@ -97,7 +98,7 @@ services:
       # - /var/log/openvpn:/var/log/openvpn:ro
       # ⚠️  Host network required for VPN management interface access
     network_mode: host
-    profiles: [ agent ]
+    profiles: [agent]
 
 networks:
   vpn-dev-network:

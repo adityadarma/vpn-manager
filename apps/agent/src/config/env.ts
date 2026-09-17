@@ -7,6 +7,7 @@ const AgentEnvSchema = z.object({
   AGENT_SECRET_TOKEN: z.string().min(1, 'AGENT_SECRET_TOKEN is required'),
   AGENT_POLL_INTERVAL_MS: z.coerce.number().int().default(5_000),
   AGENT_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().default(30_000),
+  AGENT_TRAFFIC_TELEMETRY_INTERVAL_MS: z.coerce.number().int().positive().default(5_000),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 
   VPN_TOKEN: z.string().min(1, 'VPN_TOKEN is required for event reporting'),

@@ -1,7 +1,12 @@
 import { v7 as uuidv7 } from 'uuid'
 import type { FastifyPluginAsync } from 'fastify'
 import crypto from 'node:crypto'
-import { HeartbeatSchema, TunnelModeSchema, validateTaskPayload } from '@vpn/shared'
+import {
+  HeartbeatSchema,
+  TrafficTelemetrySchema,
+  TunnelModeSchema,
+  validateTaskPayload,
+} from '@vpn/shared'
 import { logAudit, getClientIp } from '../../utils/audit'
 import { secretsMatchTrimmed } from '../../utils/secret-compare'
 import { enqueueApplyPolicies } from '../policies/policies.routes'
@@ -581,12 +586,10 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       const config = validation.payload as unknown as NodeConfig
 
       if (!config.allow_client_to_client && config.firewall_engine === 'none') {
-        return reply
-          .status(400)
-          .send({
-            error: 'Bad Request',
-            message: 'A firewall engine is required when client-to-client traffic is disabled',
-          })
+        return reply.status(400).send({
+          error: 'Bad Request',
+          message: 'A firewall engine is required when client-to-client traffic is disabled',
+        })
       }
 
       // Check if vpn_network actually changed
@@ -828,17 +831,20 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
           !existing.decommissioned_at
         ) {
           const token = crypto.randomBytes(32).toString('hex')
-          await app.db('vpn_nodes').where({ id: existing.id }).update({
-            token,
-            token_revoked_at: null,
-            last_seen: new Date(),
-            version: version ?? existing.version,
-            ...(region !== undefined ? { region } : {}),
-            ...(vpnType ? { vpn_type: vpnType } : {}),
-            ...(publicKey !== undefined ? { public_key: publicKey } : {}),
-            ...(privateKey !== undefined ? { private_key: privateKey } : {}),
-            ...(endpointPort !== undefined ? { endpoint_port: endpointPort } : {}),
-          })
+          await app
+            .db('vpn_nodes')
+            .where({ id: existing.id })
+            .update({
+              token,
+              token_revoked_at: null,
+              last_seen: new Date(),
+              version: version ?? existing.version,
+              ...(region !== undefined ? { region } : {}),
+              ...(vpnType ? { vpn_type: vpnType } : {}),
+              ...(publicKey !== undefined ? { public_key: publicKey } : {}),
+              ...(privateKey !== undefined ? { private_key: privateKey } : {}),
+              ...(endpointPort !== undefined ? { endpoint_port: endpointPort } : {}),
+            })
           return reply.status(200).send({
             id: existing.id,
             token,
@@ -947,8 +953,17 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       const authenticatedNode = await app.authenticateNodeToken(request, reply)
       if (!authenticatedNode) return
 
-      const { nodeId, agentVersion, caCert, taKey, firewallRules, firewallEngine, clients, startup, dns } =
-        HeartbeatSchema.parse(request.body)
+      const {
+        nodeId,
+        agentVersion,
+        caCert,
+        taKey,
+        firewallRules,
+        firewallEngine,
+        clients,
+        startup,
+        dns,
+      } = HeartbeatSchema.parse(request.body)
       if (authenticatedNode.id !== nodeId) {
         return reply.status(403).send({
           error: 'Forbidden',
@@ -1015,6 +1030,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         updates.dns_last_sync_error = null
       }
       await app.db('vpn_nodes').where({ id: nodeId }).update(updates)
+      app.realtime.publish('node.updated', nodeId)
 
       if (activatingManagedDns) {
         const groupSubnets = (await app
@@ -1374,6 +1390,8 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         }
       }
 
+      app.realtime.publish('vpn_session.updated')
+
       // If node was offline and now online, trigger syncs
       if (wasOffline) {
         const tasksToCreate = []
@@ -1412,6 +1430,92 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       }
 
       return { ok: true }
+    },
+  )
+
+  // POST /api/v1/nodes/telemetry  (called by agent every 5 seconds)
+  // Traffic counters are intentionally separate from heartbeat so frequent UI
+  // updates do not repeatedly send certificates, DNS health, or firewall dumps.
+  app.post(
+    '/nodes/telemetry',
+    { schema: { tags: ['nodes'], summary: 'Agent traffic telemetry' } },
+    async (request, reply) => {
+      const authenticatedNode = await app.authenticateNodeToken(request, reply)
+      if (!authenticatedNode) return
+
+      const { nodeId, clients } = TrafficTelemetrySchema.parse(request.body)
+      if (authenticatedNode.id !== nodeId) {
+        return reply
+          .status(403)
+          .send({ error: 'Forbidden', message: 'Token does not match nodeId in telemetry payload' })
+      }
+      if (clients.length === 0) return { ok: true, sessions_updated: 0 }
+
+      const [activeSessions, credentials] = await Promise.all([
+        app.db('vpn_sessions').where({ node_id: nodeId }).whereNull('disconnected_at'),
+        app
+          .db('user_node_certificates')
+          .where({ node_id: nodeId, is_revoked: false })
+          .select('id', 'common_name', 'client_cert'),
+      ])
+      const sessionByCredential = new Map(
+        activeSessions.map((session: any) => [session.credential_id, session]),
+      )
+      const credentialByName = new Map(
+        credentials.map((credential: any) => [credential.common_name, credential]),
+      )
+      const credentialByKeyPrefix = new Map(
+        credentials
+          .filter((credential: any) => credential.client_cert)
+          .map((credential: any) => [credential.client_cert.trim().substring(0, 16), credential]),
+      )
+
+      const changedSessions: Array<{ id: string; bytesSent: number; bytesReceived: number }> = []
+      for (const client of clients) {
+        const credential =
+          credentialByName.get(client.commonName) ?? credentialByKeyPrefix.get(client.commonName)
+        const session = credential && sessionByCredential.get(credential.id)
+        if (!session) continue
+        if (
+          session.bytes_sent === client.bytesSent &&
+          session.bytes_received === client.bytesReceived
+        )
+          continue
+        changedSessions.push({
+          id: session.id,
+          bytesSent: client.bytesSent,
+          bytesReceived: client.bytesReceived,
+        })
+      }
+
+      // SQLite has a bound-parameter limit. Chunking keeps one telemetry report
+      // to a small number of atomic CASE updates even for large VPN nodes.
+      const chunkSize = 100
+      await app.db.transaction(async (trx) => {
+        for (let offset = 0; offset < changedSessions.length; offset += chunkSize) {
+          const chunk = changedSessions.slice(offset, offset + chunkSize)
+          const sentCases = chunk.map(() => 'WHEN ? THEN ?').join(' ')
+          const receivedCases = chunk.map(() => 'WHEN ? THEN ?').join(' ')
+          const ids = chunk.map(() => '?').join(', ')
+          const bindings = [
+            ...chunk.flatMap((session) => [session.id, session.bytesSent]),
+            ...chunk.flatMap((session) => [session.id, session.bytesReceived]),
+            new Date(),
+            ...chunk.map((session) => session.id),
+          ]
+          await trx.raw(
+            `UPDATE vpn_sessions
+             SET bytes_sent = CASE id ${sentCases} END,
+                 bytes_received = CASE id ${receivedCases} END,
+                 last_activity_at = ?
+             WHERE id IN (${ids})`,
+            bindings,
+          )
+        }
+      })
+
+      if (changedSessions.length > 0) app.realtime.publish('vpn_session.updated')
+      return { ok: true, sessions_updated: changedSessions.length }
     },
   )
 
@@ -1555,12 +1659,10 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
       const node = await app.db('vpn_nodes').where({ id: request.params.id }).first()
       if (!node) return reply.status(404).send({ error: 'Not Found', message: 'Node not found' })
       if (!node.decommissioned_at) {
-        return reply
-          .status(409)
-          .send({
-            error: 'Conflict',
-            message: 'Decommission the node before permanently deleting it',
-          })
+        return reply.status(409).send({
+          error: 'Conflict',
+          message: 'Decommission the node before permanently deleting it',
+        })
       }
       await app.db('vpn_nodes').where({ id: node.id }).delete()
 

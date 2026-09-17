@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { buildApp } from '../src/app'
 import type { FastifyInstance } from 'fastify'
 import { loginAsAdmin } from './helpers'
+import { v7 as uuidv7 } from 'uuid'
 
 describe('Nodes API', () => {
   let app: FastifyInstance
@@ -30,7 +31,13 @@ describe('Nodes API', () => {
       method: 'POST',
       url: '/api/v1/nodes/register',
       headers: { Cookie: adminCookie },
-      payload: { hostname: 'Test Node', ip: '10.0.0.1', port: 1194, region: 'us-east', version: '1.0.0' }
+      payload: {
+        hostname: 'Test Node',
+        ip: '10.0.0.1',
+        port: 1194,
+        region: 'us-east',
+        version: '1.0.0',
+      },
     })
 
     expect(res.statusCode).toBe(201)
@@ -46,7 +53,7 @@ describe('Nodes API', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/v1/nodes',
-      headers: { Cookie: adminCookie }
+      headers: { Cookie: adminCookie },
     })
 
     expect(res.statusCode).toBe(200)
@@ -60,7 +67,13 @@ describe('Nodes API', () => {
       method: 'POST',
       url: '/api/v1/nodes/register',
       headers: { Cookie: adminCookie },
-      payload: { hostname: 'Archived Test Node', ip: '10.0.0.2', port: 1194, region: 'us-east', version: '1.0.0' },
+      payload: {
+        hostname: 'Archived Test Node',
+        ip: '10.0.0.2',
+        port: 1194,
+        region: 'us-east',
+        version: '1.0.0',
+      },
     })
     expect(archivedNode.statusCode).toBe(201)
 
@@ -82,12 +95,83 @@ describe('Nodes API', () => {
       method: 'POST',
       url: '/api/v1/nodes/heartbeat',
       headers: { Authorization: `Bearer ${nodeToken}` },
-      payload: { nodeId, agentVersion: '2.4.1' }
+      payload: { nodeId, agentVersion: '2.4.1' },
     })
 
     expect(res.statusCode).toBe(200)
     const node = await app.db('vpn_nodes').where({ id: nodeId }).first()
     expect(node.version).toBe('2.4.1')
+  })
+
+  it('updates active session traffic through lightweight telemetry', async () => {
+    const userId = uuidv7()
+    const credentialId = uuidv7()
+    const sessionId = uuidv7()
+    const secondCredentialId = uuidv7()
+    const secondSessionId = uuidv7()
+    await app
+      .db('users')
+      .insert({ id: userId, name: 'Telemetry User', role: 'user', is_active: true })
+    await app.db('user_node_certificates').insert({
+      id: credentialId,
+      user_id: userId,
+      node_id: nodeId,
+      credential_name: 'Telemetry Client',
+      common_name: 'telemetry_user',
+      vpn_ip: '10.8.0.99',
+      is_revoked: false,
+    })
+    await app.db('vpn_sessions').insert({
+      id: sessionId,
+      user_id: userId,
+      node_id: nodeId,
+      credential_id: credentialId,
+      vpn_ip: '10.8.0.99',
+      bytes_sent: 10,
+      bytes_received: 20,
+      connected_at: new Date(),
+    })
+    await app.db('user_node_certificates').insert({
+      id: secondCredentialId,
+      user_id: userId,
+      node_id: nodeId,
+      credential_name: 'Second Telemetry Client',
+      common_name: 'telemetry_user_two',
+      vpn_ip: '10.8.0.100',
+      is_revoked: false,
+    })
+    await app.db('vpn_sessions').insert({
+      id: secondSessionId,
+      user_id: userId,
+      node_id: nodeId,
+      credential_id: secondCredentialId,
+      vpn_ip: '10.8.0.100',
+      bytes_sent: 30,
+      bytes_received: 40,
+      connected_at: new Date(),
+    })
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/nodes/telemetry',
+      headers: { Authorization: `Bearer ${nodeToken}` },
+      payload: {
+        nodeId,
+        clients: [
+          { commonName: 'telemetry_user', bytesSent: 5_000, bytesReceived: 8_000 },
+          { commonName: 'telemetry_user_two', bytesSent: 9_000, bytesReceived: 12_000 },
+        ],
+      },
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toMatchObject({ ok: true, sessions_updated: 2 })
+    const session = await app.db('vpn_sessions').where({ id: sessionId }).first()
+    expect(session.bytes_sent).toBe(5_000)
+    expect(session.bytes_received).toBe(8_000)
+    const secondSession = await app.db('vpn_sessions').where({ id: secondSessionId }).first()
+    expect(secondSession.bytes_sent).toBe(9_000)
+    expect(secondSession.bytes_received).toBe(12_000)
   })
 
   it('records Managed DNS health only when an admin enables it for the node', async () => {
@@ -99,7 +183,8 @@ describe('Nodes API', () => {
     })
     expect(enable.statusCode).toBe(200)
 
-    const configTask = await app.db('tasks')
+    const configTask = await app
+      .db('tasks')
       .where({ node_id: nodeId, action: 'update_server_config', status: 'pending' })
       .orderBy('created_at', 'desc')
       .first()
@@ -123,7 +208,11 @@ describe('Nodes API', () => {
   })
 
   it('returns Managed DNS status without exposing node secrets', async () => {
-    const res = await app.inject({ method: 'GET', url: `/api/v1/nodes/${nodeId}/dns/status`, headers: { Cookie: adminCookie } })
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/nodes/${nodeId}/dns/status`,
+      headers: { Cookie: adminCookie },
+    })
     expect(res.statusCode).toBe(200)
     expect(res.json()).toMatchObject({ enabled: true, status: 'healthy' })
     expect(res.body).not.toContain(nodeToken)
@@ -189,7 +278,8 @@ describe('Nodes API', () => {
     })
 
     expect(res.statusCode).toBe(200)
-    const task = await app.db('tasks')
+    const task = await app
+      .db('tasks')
       .where({ node_id: nodeId, action: 'apply_network_policy' })
       .orderBy('created_at', 'desc')
       .first()
@@ -335,7 +425,8 @@ describe('Nodes API', () => {
     })
 
     it('does not enqueue a task for a rejected config', async () => {
-      const countBefore = await app.db('tasks')
+      const countBefore = await app
+        .db('tasks')
         .where({ node_id: nodeId, action: 'update_server_config' })
         .count({ n: '*' })
         .first()
@@ -343,7 +434,8 @@ describe('Nodes API', () => {
       const res = await putConfig({ cipher: 'AES-256-GCM; rm -rf /' })
       expect(res.statusCode).toBe(400)
 
-      const countAfter = await app.db('tasks')
+      const countAfter = await app
+        .db('tasks')
         .where({ node_id: nodeId, action: 'update_server_config' })
         .count({ n: '*' })
         .first()
@@ -367,23 +459,37 @@ describe('Nodes API', () => {
       lifecycleToken = registered.json().token
       adminId = (await app.db('users').where({ email: 'admin@vpn.local' }).first()).id
       await app.db('user_node_certificates').insert({
-        id: 'lifecycle-certificate', user_id: adminId, node_id: lifecycleNodeId,
-        credential_name: 'default', common_name: 'lifecycle-user', vpn_ip: '10.8.99.2',
-        client_cert: 'lifecycle-certificate-data', is_revoked: false,
+        id: 'lifecycle-certificate',
+        user_id: adminId,
+        node_id: lifecycleNodeId,
+        credential_name: 'default',
+        common_name: 'lifecycle-user',
+        vpn_ip: '10.8.99.2',
+        client_cert: 'lifecycle-certificate-data',
+        is_revoked: false,
       })
       await app.db('vpn_sessions').insert({
-        id: 'lifecycle-session', user_id: adminId, node_id: lifecycleNodeId,
-        vpn_ip: '10.8.99.2', connected_at: new Date(),
+        id: 'lifecycle-session',
+        user_id: adminId,
+        node_id: lifecycleNodeId,
+        vpn_ip: '10.8.99.2',
+        connected_at: new Date(),
       })
       await app.db('tasks').insert({
-        id: 'lifecycle-task', node_id: lifecycleNodeId, action: 'reload_openvpn',
-        payload: JSON.stringify({}), status: 'pending', created_at: new Date(),
+        id: 'lifecycle-task',
+        node_id: lifecycleNodeId,
+        action: 'reload_openvpn',
+        payload: JSON.stringify({}),
+        status: 'pending',
+        created_at: new Date(),
       })
     })
 
     it('decommissions a node, revokes credentials, closes sessions, and rejects its old token', async () => {
       const res = await app.inject({
-        method: 'POST', url: `/api/v1/nodes/${lifecycleNodeId}/decommission`, headers: { Cookie: adminCookie },
+        method: 'POST',
+        url: `/api/v1/nodes/${lifecycleNodeId}/decommission`,
+        headers: { Cookie: adminCookie },
       })
       expect(res.statusCode).toBe(204)
 
@@ -391,25 +497,67 @@ describe('Nodes API', () => {
       expect(node.decommissioned_at).toBeTruthy()
       expect(node.token_revoked_at).toBeTruthy()
       expect(node.private_key).toBeNull()
-      expect((await app.db('user_node_certificates').where({ id: 'lifecycle-certificate' }).first()).is_revoked).toBe(1)
-      expect((await app.db('vpn_sessions').where({ id: 'lifecycle-session' }).first()).disconnect_reason).toBe('node_decommissioned')
+      expect(
+        (await app.db('user_node_certificates').where({ id: 'lifecycle-certificate' }).first())
+          .is_revoked,
+      ).toBe(1)
+      expect(
+        (await app.db('vpn_sessions').where({ id: 'lifecycle-session' }).first()).disconnect_reason,
+      ).toBe('node_decommissioned')
       expect((await app.db('tasks').where({ id: 'lifecycle-task' }).first()).status).toBe('failed')
-      expect((await app.inject({ method: 'GET', url: '/api/v1/nodes/me', headers: { Authorization: `Bearer ${lifecycleToken}` } })).statusCode).toBe(401)
+      expect(
+        (
+          await app.inject({
+            method: 'GET',
+            url: '/api/v1/nodes/me',
+            headers: { Authorization: `Bearer ${lifecycleToken}` },
+          })
+        ).statusCode,
+      ).toBe(401)
     })
 
     it('restores a node with a new token but leaves old credentials revoked', async () => {
-      const res = await app.inject({ method: 'POST', url: `/api/v1/nodes/${lifecycleNodeId}/restore`, headers: { Cookie: adminCookie } })
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/nodes/${lifecycleNodeId}/restore`,
+        headers: { Cookie: adminCookie },
+      })
       expect(res.statusCode).toBe(200)
       expect(res.json().token).toBeTruthy()
       expect(res.json().token).not.toBe(lifecycleToken)
-      expect((await app.db('vpn_nodes').where({ id: lifecycleNodeId }).first()).decommissioned_at).toBeNull()
-      expect((await app.db('user_node_certificates').where({ id: 'lifecycle-certificate' }).first()).is_revoked).toBe(1)
+      expect(
+        (await app.db('vpn_nodes').where({ id: lifecycleNodeId }).first()).decommissioned_at,
+      ).toBeNull()
+      expect(
+        (await app.db('user_node_certificates').where({ id: 'lifecycle-certificate' }).first())
+          .is_revoked,
+      ).toBe(1)
     })
 
     it('only permanently deletes a decommissioned node', async () => {
-      expect((await app.inject({ method: 'DELETE', url: `/api/v1/nodes/${lifecycleNodeId}`, headers: { Cookie: adminCookie } })).statusCode).toBe(409)
-      await app.inject({ method: 'POST', url: `/api/v1/nodes/${lifecycleNodeId}/decommission`, headers: { Cookie: adminCookie } })
-      expect((await app.inject({ method: 'DELETE', url: `/api/v1/nodes/${lifecycleNodeId}`, headers: { Cookie: adminCookie } })).statusCode).toBe(204)
+      expect(
+        (
+          await app.inject({
+            method: 'DELETE',
+            url: `/api/v1/nodes/${lifecycleNodeId}`,
+            headers: { Cookie: adminCookie },
+          })
+        ).statusCode,
+      ).toBe(409)
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/nodes/${lifecycleNodeId}/decommission`,
+        headers: { Cookie: adminCookie },
+      })
+      expect(
+        (
+          await app.inject({
+            method: 'DELETE',
+            url: `/api/v1/nodes/${lifecycleNodeId}`,
+            headers: { Cookie: adminCookie },
+          })
+        ).statusCode,
+      ).toBe(204)
       expect(await app.db('vpn_nodes').where({ id: lifecycleNodeId }).first()).toBeUndefined()
     })
   })
