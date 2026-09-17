@@ -6,46 +6,33 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-09-17
+
 ### Added
 
-- Added a dedicated Group Details page at `/groups/$groupId` with full-width tabbed management for member assignments and network routing, replacing the compact side drawer.
-- Added an interactive Agent deployment-mode prompt so manual node installation can choose native systemd or Docker Compose without setting `AGENT_INSTALL_MODE`.
-
-### Fixed
-
-- Fixed pagination navigation glitch when clicking "Next" for the first time by configuring TanStack Query with `placeholderData: keepPreviousData` across all paginated tables (Users, Tasks, Audit Logs, and Session History), preventing unmounting of the pagination footer and flickering skeleton rows during page transitions, automatically disabling navigation buttons during background fetch, and resetting the active page to 1 whenever search queries or filters change.
-- Fixed modal dialog vertical clipping on compact viewports by pinning headers and footers, constraining card max-height to `100dvh`, and enabling smooth internal body scrolling.
-- Fixed group selector in DNS Domain Policies (`/dns`) that forcibly selected the first group and prevented selecting "Select a group..." or clearing the active selection.
-
-- Removed the unused "Assigned VPN IP" column from the Group Members table since IP addresses belong to client certificates and active sessions rather than group membership.
-- Removed obsolete subnet references and "No dedicated subnet" / "Default Subnet" placeholders from the groups directory table and group details page, replacing the stat card with Active Members.
-- Fixed native date input calendar picker indicator not adapting to dark mode in the certificate creation modal.
-- Used the credential label instead of `Unknown Device` when the Agent synchronizes an already-connected OpenVPN client.
+- Added a dedicated Group Details page at `/groups/$groupId` with full-width tabbed management for member assignments and network routing.
+- Added an interactive Agent deployment-mode prompt during manual node installation to choose native systemd or Docker Compose.
 
 ### Changed
 
-- Overhauled the User Profile page at `/profile` into an administrative command center: added an interactive hero profile card featuring an avatar with user initials and gradient styling, live status badge with pulsating indicator, role badge, one-click copyable User ID pill, and an account metadata bar (status, role, member since, and last sign-in timestamp); added an editable Personal Information form allowing real-time updates to full name and email address with dirty checking, reset support, and live synchronization with `useAuthStore` and `/api/v1/auth/me`; added an upgraded Security & Password change card with password visibility toggles (`Eye`/`EyeOff`), real-time password criteria validation badges (length & matching confirmation), and instant error handling; added a Session & Security Telemetry overview displaying active cookie protection, JTI token revocation status, per-IP rate limiting algorithms, and VPN certificate counts with a direct link to certificate management; and added a Recent Administrative Actions audit feed displaying the administrator's latest 4 activity records with semantic action badges, resource targets, IP addresses, and direct navigation to `/audit`.
-- Standardized the default table pagination size to 10 rows per page across all application tables (Tasks `/tasks`, Session History `/sessions`, Audit Logs and Failed Connection Attempts `/audit`, joining Users `/users`), updated backend API query fallback limits to 10 across `/api/v1/tasks`, `/api/v1/sessions/history`, and `/api/v1/audit/logs` & `/connection-attempts`, and added explicit monospace page number indicators between Previous and Next navigation buttons.
-- Overhauled the Audit Logs page at `/audit` into a dual-tab security audit center: added support for inspecting both Administrative Logs (`logs`) and Failed Connection Attempts (`attempts`), powered by `/api/v1/audit/connection-attempts` and `/api/v1/audit/connection-attempts/stats`; fixed server-side resource filtering query parameter (`resource_type`) and pagination total parsing; added 4 real-time metric cards (Total Events, Config Updates, Failed Auth 24h, and Active Actors); provided search toolbars with clear buttons (`X`), action category pills, and resource dropdowns; standardized tables with row numbering (`#`), action badges, and animated skeleton loaders; and added deep inspection modals for both administrative events (with formatted metadata JSON viewer and one-click copy) and rejected connection handshakes.
-- Overhauled the VPN Sessions page at `/sessions` to align with the modern design system: added 4 real-time overview metric cards (Active Tunnels with pulsing indicator, Sessions Today 24h, Bandwidth Today with upload/download breakdown, and Avg Connection Time) backed by `/api/v1/sessions/stats`; integrated dedicated toolbars with real-time search and clear buttons (`X`) and a VPN Node filter dropdown for both Active and History tabs; added quick disconnect reason filter pills for History; standardized both tables using `@/components/ui/table` with row numbering (`#`), monospace IP and traffic badges, and animated skeleton loaders; added a comprehensive Session Telemetry & Details modal (`Inspect`) for deep diagnostic inspection; and replaced brittle window-coordinate dropdowns and native browser `confirm()` popups with styled, accessible Block and Unkick confirmation dialogs.
-- Overhauled the Task Queue page at `/tasks` to align with the modern design system: replaced the native `<details>` accordion with a full-width directory table featuring row numbering (`#`), human-readable action labels and category icon boxes, target node badges, and status pills; added 4 interactive stat cards (Total, Pending, Completed, Failed) that filter the table on click; added an "All Tasks" view alongside quick status pills, a target node dropdown filter (`?nodeId=`), an instant search bar with a clear button (`X`), a manual refresh button with spinning feedback, and a comprehensive Task Details modal with tabbed Payload, Result, Error diagnostic alert, and one-click JSON clipboard copying.
-- Updated the DNS Domain Policies tab on `/dns` to display all policies across all client groups by default with a group badge column, a group filter dropdown in the toolbar (`All Groups` / specific group), and an explicit `Target Group` selector inside the "Add Domain Policy" modal.
-- Replaced the action dropdown menu in Network Policies (`/policies`) with a direct 'Delete' button featuring a trash icon and confirmation dialog, streamlining table rows since delete is the sole available action.
-- Redesigned the Network Policies table at `/policies` to align with the Users, Groups, and Networks design system, removing bulk checkboxes and bulk delete in favor of row numbering (`#`), standardized 60px row heights with icon boxes, segmented quick filter pills (Action: All/Allow/Deny, Nodes: All/Global/Specific), animated skeleton loaders, and illustrated empty states.
-- Updated input and textarea component styling to use the darker background token (matching select dropdowns and theme background), providing consistent contrast and visual depth across all forms and modals in dark mode.
-- Redesigned the Networks & IP Management tables (Target Networks and Group Subnet Allocations) to align with the Users and Groups design system, featuring full-width table containers, dedicated search and filter toolbars, row numbering, consistent 60px row heights with icon boxes, monospace CIDR/subnet badges, interactive group/node shortcut badges, streamlined dropdown action menus (`...`), non-clickable table rows, animated skeleton loaders, and illustrated empty states.
-- Updated the groups directory table row behavior to match the users table, removing whole-row navigation in favor of explicit navigation via the action menu (`...`) and shortcut badges.
-- Standardized route file hierarchy so all sub-pages are cleanly organized within their respective route folders (`routes/_layout/groups/` for directory and detail views, and `routes/_layout/users/` for directory and certificate views).
-- Restructured `/groups` into a full-width Groups directory with direct navigation to the dedicated `/groups/$groupId` detail view.
-- Aligned the `/groups` header and toolbar with the VPN Users layout, placing the search bar alongside quick filter pills (membership and routing) directly under the header outside the table container.
-- Redesigned the groups table with a modern UI layout, inline group icon badges, interactive member and network shortcut buttons, a dropdown actions menu (`...`), row numbering, animated skeleton loaders, comprehensive empty states, and enhanced dark mode support.
-- Redesigned the VPN users table with a cleaner modern UI, improved dark mode support, skeleton loaders, and quick filter tabs, removing redundant credential column in favor of streamlined actions.
-- Redesigned the user certificates table with a modern layout, dedicated status column, skeleton loaders, and theme token styling.
-- Replaced raw VPN session disconnect reasons in history with user-friendly status labels and explanations.
-- Updated the certificate list to use the standard DataTable layout and the same action menu pattern as the user list.
-- Standardized Admin and Staff role badges with consistent contrast and icon treatment in light and dark themes.
-- Removed bulk certificate generation from the user list; certificates are now managed per user from the certificate page.
-- Replaced user bulk controls with per-user status actions and row numbering in user and certificate tables.
+- Overhauled UI and UX across core management pages—Profile (`/profile`), Tasks (`/tasks`), VPN Sessions (`/sessions`), Audit Logs (`/audit`), Groups (`/groups`), Networks (`/networks`), and Policies (`/policies`)—standardizing on real-time metric cards, full-width tables with row numbering, semantic action/status badges, and deep inspection modals.
+- Standardized default table pagination to 10 rows per page across all views (Users, Tasks, Sessions, and Audit Logs) and aligned backend API query fallback limits.
+- Updated browser favicon (`favicon.svg`) to match the emerald rounded shield brand icon from the sidebar and login screen.
+- Updated DNS Domain Policies (`/dns`) to show all policies across client groups by default with group filtering and explicit group assignment.
+- Standardized route file hierarchy, dark-mode form inputs, and direct action buttons across application views.
+
+### Fixed
+
+- Fixed pagination navigation glitch on first "Next" click by preserving previous query data during page transitions across all tables.
+- Fixed modal dialog vertical clipping on compact viewports with pinned headers/footers and smooth internal scrolling.
+- Fixed DNS domain policy group selector forcibly selecting the first group.
+- Fixed dark mode appearance for the native date picker indicator in certificate creation modals.
+- Preserved client credential labels instead of defaulting to `Unknown Device` during OpenVPN client synchronization.
+
+### Removed
+
+- Removed obsolete subnet references and "Assigned VPN IP" column from group views in favor of certificate- and session-level IP tracking.
+- Removed user bulk controls in favor of per-item management and dedicated certificate administration.
 
 ## [2.3.3] - 2026-09-16
 
