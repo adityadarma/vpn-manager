@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { v7 as uuidv7 } from 'uuid'
 import { buildApp } from '../src/app'
 import type { FastifyInstance } from 'fastify'
 import { loginAsAdmin } from './helpers'
@@ -46,7 +47,6 @@ describe('Groups & Networks API', () => {
   })
 
   it('manages group subnet allocations on nodes through networks module', async () => {
-    const { v7: uuidv7 } = await import('uuid')
     const nodeId = uuidv7()
     const groupId = uuidv7()
 
@@ -97,5 +97,165 @@ describe('Groups & Networks API', () => {
       headers: { Cookie: adminCookie },
     })
     expect(delRes.statusCode).toBe(204)
+  })
+
+  describe('per-node route scoping', () => {
+    /**
+     * Build a group with one credential on each of two online nodes, plus a
+     * network assigned to the group. Node assignment is left to the caller.
+     */
+    let seedIndex = 0
+
+    async function seedTwoNodeScenario(prefix: string) {
+      // networks.cidr and vpn_nodes.ip_address are UNIQUE, so each scenario
+      // needs its own address space.
+      const slot = seedIndex++
+      const cidr = `172.${20 + slot}.0.0/20`
+      const nodeA = uuidv7()
+      const nodeB = uuidv7()
+      const groupId = uuidv7()
+      const networkId = uuidv7()
+      const userId = uuidv7()
+
+      await app.db('vpn_nodes').insert([
+        {
+          id: nodeA,
+          hostname: `${prefix}-node-a`,
+          ip_address: `198.51.${100 + slot}.51`,
+          token: `${prefix}-token-a`,
+          vpn_network: `10.${50 + slot * 2}.0.0`,
+          vpn_netmask: '255.255.0.0',
+          status: 'online',
+        },
+        {
+          id: nodeB,
+          hostname: `${prefix}-node-b`,
+          ip_address: `198.51.${100 + slot}.52`,
+          token: `${prefix}-token-b`,
+          vpn_network: `10.${51 + slot * 2}.0.0`,
+          vpn_netmask: '255.255.0.0',
+          status: 'online',
+        },
+      ])
+
+      await app.db('groups').insert({ id: groupId, name: `${prefix}-group` })
+      await app.db('networks').insert({
+        id: networkId,
+        name: `${prefix}-net`,
+        cidr,
+      })
+      await app.db('group_networks').insert({ group_id: groupId, network_id: networkId })
+
+      await app.db('users').insert({
+        id: userId,
+        name: `${prefix}-user`,
+        email: `${prefix}@vpn.local`,
+        password: 'x',
+        role: 'user',
+        is_active: true,
+      })
+      await app.db('user_groups').insert({ user_id: userId, group_id: groupId })
+
+      await app.db('user_node_certificates').insert([
+        {
+          id: uuidv7(),
+          user_id: userId,
+          node_id: nodeA,
+          common_name: `${prefix}-cn-a`,
+          vpn_ip: `10.${50 + slot * 2}.0.10`,
+          group_id: groupId,
+          is_revoked: false,
+        },
+        {
+          id: uuidv7(),
+          user_id: userId,
+          node_id: nodeB,
+          common_name: `${prefix}-cn-b`,
+          vpn_ip: `10.${51 + slot * 2}.0.10`,
+          group_id: groupId,
+          is_revoked: false,
+        },
+      ])
+
+      return { nodeA, nodeB, groupId, networkId, cidr }
+    }
+
+    function ccdTasksFor(tasks: any[], nodeId: string): any[] {
+      return tasks.filter((t) => t.node_id === nodeId && t.action === 'write_client_ccd')
+    }
+
+    function ccdRoutesFor(tasks: any[], nodeId: string): string[] {
+      return ccdTasksFor(tasks, nodeId).flatMap((t) => JSON.parse(t.payload).extra_lines ?? [])
+    }
+
+    it('does not push routes for a network with no target nodes', async () => {
+      const { nodeA, nodeB, groupId, networkId } = await seedTwoNodeScenario('unassigned')
+
+      await app.db('tasks').delete()
+
+      // Re-assign the network to the group to trigger CCD regeneration.
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/groups/${groupId}/networks`,
+        headers: { Cookie: adminCookie },
+        payload: { network_id: networkId },
+      })
+      expect(res.statusCode).toBe(201)
+
+      const tasks = await app.db('tasks').select('node_id', 'action', 'payload')
+
+      // Guard against a vacuous pass: CCD tasks must exist for both nodes.
+      expect(ccdTasksFor(tasks, nodeA).length).toBeGreaterThan(0)
+      expect(ccdTasksFor(tasks, nodeB).length).toBeGreaterThan(0)
+
+      // With zero node assignments the route is unreachable and must not be pushed.
+      expect(ccdRoutesFor(tasks, nodeA)).toEqual([])
+      expect(ccdRoutesFor(tasks, nodeB)).toEqual([])
+    })
+
+    it('pushes a route only to the node it is assigned to', async () => {
+      const { nodeA, nodeB, networkId, cidr } = await seedTwoNodeScenario('scoped')
+
+      await app.db('tasks').delete()
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/networks/${networkId}/nodes`,
+        headers: { Cookie: adminCookie },
+        payload: { node_id: nodeA },
+      })
+      expect(res.statusCode).toBe(201)
+
+      const tasks = await app.db('tasks').select('node_id', 'action', 'payload')
+      const network = cidr.split('/')[0]
+
+      expect(ccdRoutesFor(tasks, nodeA)).toEqual([`push "route ${network} 255.255.240.0"`])
+      expect(ccdRoutesFor(tasks, nodeB)).toEqual([])
+    })
+
+    it('adds server.conf routes only for the assigned node', async () => {
+      const { nodeA, nodeB, networkId, cidr } = await seedTwoNodeScenario('serverconf')
+
+      await app.db('tasks').delete()
+
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/networks/${networkId}/nodes`,
+        headers: { Cookie: adminCookie },
+        payload: { node_id: nodeA },
+      })
+
+      const configTasks = await app.db('tasks')
+        .where({ action: 'update_server_config' })
+        .select('node_id', 'payload')
+
+      const subnetsFor = (nodeId: string) =>
+        configTasks
+          .filter((t: any) => t.node_id === nodeId)
+          .flatMap((t: any) => JSON.parse(t.payload).group_subnets ?? [])
+
+      expect(subnetsFor(nodeA)).toContain(cidr)
+      expect(subnetsFor(nodeB)).not.toContain(cidr)
+    })
   })
 })

@@ -506,14 +506,6 @@ function UsersPage() {
                           Get started by creating your first VPN user to assign network
                           certificates.
                         </p>
-                        <Button
-                          size="sm"
-                          className="mt-4 text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
-                          onClick={() => setShowForm(true)}
-                        >
-                          <Plus className="mr-1.5 h-3.5 w-3.5" />
-                          Add User
-                        </Button>
                       </div>
                     )}
                   </TableCell>

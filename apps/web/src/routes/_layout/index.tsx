@@ -449,9 +449,6 @@ function DashboardPage() {
                 <Server className="size-10 mx-auto mb-3 opacity-30" />
                 <p className="text-sm font-medium">No VPN nodes registered yet</p>
                 <p className="text-xs text-muted-foreground mt-1">Deploy an agent node to get started</p>
-                <Button asChild size="sm" className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs">
-                  <Link to="/nodes">Add First Node</Link>
-                </Button>
               </div>
             ) : (
               <div className="space-y-2.5 max-h-[420px] overflow-y-auto pr-1">

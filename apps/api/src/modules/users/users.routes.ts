@@ -976,17 +976,16 @@ const userRoutes: FastifyPluginAsync = async (app) => {
           hasGroupSubnet = true
         }
 
-        // 2. Add explicit target Networks (Filtered by Node Assignment)
-        const allTargetNetworks = await app.db('group_networks as gn')
+        // 2. Add explicit target Networks assigned to THIS node. Reachability of a
+        // network depends on the node it sits behind, so a network with no node
+        // assignments is not reachable and contributes no routes.
+        const filteredNetworks = await app.db('group_networks as gn')
           .join('networks as n', 'gn.network_id', 'n.id')
-          .leftJoin('node_networks as nn', function(this: any) {
+          .join('node_networks as nn', function(this: any) {
             this.on('n.id', 'nn.network_id').andOn('nn.node_id', app.db.raw('?', [node.id]))
           })
           .whereIn('gn.group_id', userGroupIds)
-          .select('n.cidr', 'n.name', 'nn.node_id')
-
-        // Keep CIDR if: no node assigned (global) OR this node is assigned
-        const filteredNetworks = allTargetNetworks.filter((row: any) => row.node_id === null || row.node_id === node.id)
+          .select('n.cidr', 'n.name')
 
         if (filteredNetworks.length > 0) {
           // Remove duplicate CIDRs in case multiple groups share the same network
@@ -1131,15 +1130,13 @@ async function enqueueCcdTask(
   netmask: string,
   userId?: string,
 ): Promise<void> {
-  const onlineNodes = await app.db('vpn_nodes').where({ status: 'online' }).select('id')
+  const onlineNodes = await app.db('vpn_nodes').where({ status: 'online' }).select('id', 'hostname')
   if (onlineNodes.length === 0) {
     app.log.warn(`[ip-pool] No online nodes to enqueue write_client_ccd for ${username}`)
     return
   }
 
-  // Fetch network routes from all user's groups
-  let extraLines: string[] = []
-  // Collect all group IDs for this user (needed per-node)
+  // Collect all group IDs for this user (network routes are resolved per-node below)
   let userGroupIds: string[] = []
   if (userId) {
     userGroupIds = await app.db('user_groups')
@@ -1161,24 +1158,19 @@ async function enqueueCcdTask(
       }
     }
 
-    // Per-node network filtering:
-    // - Networks with node assignment → only push to matching nodes
-    // - Networks with NO node assignment → push to ALL nodes (global)
-    let nodeExtraLines = extraLines
+    // Per-node network filtering: a network is pushed only to the nodes it is
+    // explicitly assigned to. Reachability depends on the node the network sits
+    // behind, so a network with no node assignments is never pushed.
+    let nodeExtraLines: string[] = []
     if (userGroupIds.length > 0) {
-      const allGroupNetworks = await app.db('group_networks as gn')
+      const filteredCidrs = await app.db('group_networks as gn')
         .join('networks as n', 'gn.network_id', 'n.id')
-        .leftJoin('node_networks as nn', (builder: any) => {
+        .join('node_networks as nn', (builder: any) => {
           builder.on('n.id', 'nn.network_id').andOn('nn.node_id', app.db.raw('?', [node.id]))
         })
         .whereIn('gn.group_id', userGroupIds)
-        .select('n.cidr', 'nn.node_id')
-
-      const filteredCidrs: string[] = [...new Set(
-        (allGroupNetworks as Array<{ cidr: string; node_id: string | null }>)
-          .filter((row) => row.node_id === null || row.node_id === node.id)
-          .map((row) => row.cidr)
-      )]
+        .distinct('n.cidr')
+        .pluck('n.cidr') as string[]
 
       nodeExtraLines = cidrsToPushRoutes(filteredCidrs)
       if (nodeExtraLines.length > 0) {

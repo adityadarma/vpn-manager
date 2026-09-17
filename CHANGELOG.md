@@ -8,8 +8,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Changed
 
-- Replaced the remaining native browser `confirm()` prompts with themed in-app confirmation dialogs on Users, Groups, Group Details, Networks, Policies, and DNS pages.
-- Consolidated node decommission and permanent delete confirmations onto the shared confirmation dialog, replacing the hand-rolled overlays on the VPN Nodes page.
+- A target network with no selected nodes is no longer treated as global; routes are pushed only to explicitly selected nodes. Review any network showing `No nodes` on the Networks page and select its target nodes.
+- Replaced all remaining native browser `confirm()` prompts with themed in-app confirmation dialogs, including node decommission and permanent delete.
+- Removed duplicate primary action buttons from empty states; each list now has a single entry point in its header.
+
+### Fixed
+
+- Fixed network routes bypassing node scoping when assigning a network to a group, which could leak a node-specific route to every node.
+- Fixed unchecked Target Nodes checkboxes rendering as solid white boxes on the Networks page, which made unselected nodes look selected in dark mode.
 
 ## [2.5.0] - 2026-09-17
 

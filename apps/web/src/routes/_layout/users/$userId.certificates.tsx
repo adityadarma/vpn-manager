@@ -265,14 +265,6 @@ function UserCertificatesPage() {
                       <p className="text-xs text-muted-foreground mt-1 text-center">
                         Generate a VPN certificate to allow {user?.name || 'this user'} to connect to the network.
                       </p>
-                      <Button
-                        size="sm"
-                        className="mt-4 text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
-                        onClick={() => setShowForm(true)}
-                      >
-                        <Plus className="mr-1.5 h-3.5 w-3.5" />
-                        Add Certificate
-                      </Button>
                     </div>
                   </TableCell>
                 </TableRow>

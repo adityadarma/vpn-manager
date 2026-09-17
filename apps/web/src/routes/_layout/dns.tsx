@@ -1380,14 +1380,6 @@ function ManagedDnsPage() {
                                       Create your first record to begin mapping domain names inside{' '}
                                       {selectedZoneObj.name}.
                                     </p>
-                                    <Button
-                                      size="sm"
-                                      className="mt-3 text-xs bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
-                                      onClick={() => setShowAddRecordModal(true)}
-                                    >
-                                      <Plus className="mr-1 size-3.5" />
-                                      Add Record
-                                    </Button>
                                   </div>
                                 </TableCell>
                               </TableRow>
@@ -1661,31 +1653,6 @@ function ManagedDnsPage() {
                               ? 'No rules match your search or filter criteria.'
                               : 'No domain filtering policies configured yet.'}
                           </p>
-                          <Button
-                            size="sm"
-                            className="mt-4 text-xs bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
-                            onClick={() => {
-                              if (
-                                policySearch ||
-                                policyActionFilter !== 'all' ||
-                                policyGroupFilter
-                              ) {
-                                setPolicySearch('')
-                                setPolicyActionFilter('all')
-                                setPolicyGroupFilter('')
-                              } else {
-                                setPolicy((prev) => ({
-                                  ...prev,
-                                  group_id: groups[0]?.id ?? '',
-                                }))
-                                setShowAddPolicyModal(true)
-                              }
-                            }}
-                          >
-                            {policySearch || policyActionFilter !== 'all' || policyGroupFilter
-                              ? 'Clear filters'
-                              : 'Add First Rule'}
-                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>

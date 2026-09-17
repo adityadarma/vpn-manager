@@ -15,6 +15,7 @@ import {
   X,
   MoreHorizontal,
   Eye,
+  AlertTriangle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -108,15 +109,24 @@ function NodeSelector({ selectedIds, nodes, onToggle }: NodeSelectorProps) {
           className={`text-xs font-medium ${
             selectedIds.length > 0
               ? 'text-emerald-600 dark:text-emerald-400'
-              : 'text-muted-foreground'
+              : 'text-amber-600 dark:text-amber-400'
           }`}
         >
-          {selectedIds.length > 0 ? `${selectedIds.length} selected` : 'Global: all nodes'}
+          {selectedIds.length > 0 ? `${selectedIds.length} selected` : 'No nodes selected'}
         </span>
       </div>
       <p className="text-xs text-muted-foreground">
-        Select specific nodes, or leave empty to apply this route to every node.
+        Select the nodes that can actually reach this network. Routes are only pushed to the
+        nodes you select here.
       </p>
+      {selectedIds.length === 0 && nodes.length > 0 && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5">
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+            With no nodes selected this route is not pushed to any client.
+          </p>
+        </div>
+      )}
       {nodes.length === 0 ? (
         <p className="text-xs text-muted-foreground">No nodes registered.</p>
       ) : (
@@ -128,16 +138,20 @@ function NodeSelector({ selectedIds, nodes, onToggle }: NodeSelectorProps) {
               <button
                 key={node.id}
                 type="button"
+                role="checkbox"
+                aria-checked={selected}
                 onClick={() => onToggle(node.id)}
-                className={`flex items-center gap-2.5 rounded-md border px-3 py-2 text-left text-sm transition-colors ${
+                className={`flex items-center gap-2.5 rounded-md border px-3 py-2 text-left text-sm transition-colors cursor-pointer ${
                   selected
-                    ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-800'
+                    ? 'border-emerald-500/50 bg-emerald-500/10'
                     : 'border-transparent hover:bg-muted'
                 }`}
               >
                 <div
-                  className={`flex size-4 shrink-0 items-center justify-center rounded border ${
-                    selected ? 'border-emerald-500 bg-emerald-500' : 'border-white bg-white'
+                  className={`flex size-4 shrink-0 items-center justify-center rounded border transition-colors ${
+                    selected
+                      ? 'border-emerald-500 bg-emerald-500'
+                      : 'border-muted-foreground/40 bg-transparent'
                   }`}
                 >
                   {selected && <Check className="h-3 w-3 text-white" />}
@@ -172,7 +186,7 @@ function NetworksPage() {
   const [detailNetwork, setDetailNetwork] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>({ name: '', cidr: '', description: '', node_ids: [] })
   const [networkSearch, setNetworkSearch] = useState('')
-  const [scopeFilter, setScopeFilter] = useState<'all' | 'global' | 'specific'>('all')
+  const [scopeFilter, setScopeFilter] = useState<'all' | 'unassigned' | 'specific'>('all')
   const [groupFilter, setGroupFilter] = useState<'all' | 'assigned' | 'unassigned'>('all')
 
   // Group Allocations state
@@ -292,7 +306,7 @@ function NetworksPage() {
     const matchesScope =
       scopeFilter === 'all'
         ? true
-        : scopeFilter === 'global'
+        : scopeFilter === 'unassigned'
         ? n.node_count === 0
         : n.node_count > 0
 
@@ -422,14 +436,14 @@ function NetworksPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setScopeFilter('global')}
+                  onClick={() => setScopeFilter('unassigned')}
                   className={`px-2.5 py-1 rounded-md font-medium transition-all ${
-                    scopeFilter === 'global'
+                    scopeFilter === 'unassigned'
                       ? 'bg-card text-foreground shadow-xs'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  Global (All Nodes)
+                  No Nodes
                 </button>
                 <button
                   type="button"
@@ -576,17 +590,6 @@ function NetworksPage() {
                             <p className="text-xs text-muted-foreground mt-1 text-center">
                               Define internal subnets (e.g. 10.0.1.0/24 or 172.31.0.0/20) that VPN users should be able to access.
                             </p>
-                            <Button
-                              size="sm"
-                              onClick={() => {
-                                setShowCreate(true)
-                                setForm({ name: '', cidr: '', description: '', node_ids: [] })
-                              }}
-                              className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs shadow-xs"
-                            >
-                              <Plus className="mr-1.5 h-3.5 w-3.5" />
-                              Add First Network
-                            </Button>
                           </div>
                         )}
                       </TableCell>
@@ -652,11 +655,11 @@ function NetworksPage() {
                             <button
                               type="button"
                               onClick={() => setDetailNetwork(n.id)}
-                              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium bg-muted/40 hover:bg-muted text-muted-foreground border border-border/60 transition-colors cursor-pointer"
-                              title="Pushed to all nodes (Global)"
+                              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/30 transition-colors cursor-pointer"
+                              title="No target nodes selected — this route is not pushed to any client"
                             >
-                              <Globe className="h-3 w-3 text-muted-foreground/70" />
-                              <span>All Nodes</span>
+                              <AlertTriangle className="h-3 w-3" />
+                              <span>No nodes</span>
                             </button>
                           ) : (
                             <button
@@ -889,17 +892,6 @@ function NetworksPage() {
                             <p className="text-xs text-muted-foreground mt-1 text-center">
                               Divide node IP pools into distinct subnets for each group.
                             </p>
-                            <Button
-                              size="sm"
-                              onClick={() => {
-                                setShowAllocDialog(true)
-                                setAllocForm({ group_id: '', node_id: '', vpn_subnet: '' })
-                              }}
-                              className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs shadow-xs"
-                            >
-                              <Plus className="mr-1.5 h-3.5 w-3.5" />
-                              Allocate Subnet
-                            </Button>
                           </div>
                         )}
                       </TableCell>
@@ -1060,13 +1052,24 @@ function NetworksPage() {
                     <Server className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
                     Target Nodes
                   </span>
-                  <Badge variant="outline" className="text-xs">
-                    {networkDetail.nodes.length === 0 ? 'All Nodes (Global)' : `${networkDetail.nodes.length} node(s)`}
+                  <Badge
+                    variant="outline"
+                    className={
+                      networkDetail.nodes.length === 0
+                        ? 'text-xs border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                        : 'text-xs'
+                    }
+                  >
+                    {networkDetail.nodes.length === 0 ? 'No nodes' : `${networkDetail.nodes.length} node(s)`}
                   </Badge>
                 </div>
                 {networkDetail.nodes.length === 0 ? (
-                  <div className="text-xs text-muted-foreground bg-muted/40 p-3 rounded-lg border border-border/50">
-                    This route is pushed to connected VPN clients on <strong>all nodes</strong> automatically.
+                  <div className="flex items-start gap-2 text-xs bg-amber-500/10 p-3 rounded-lg border border-amber-500/30">
+                    <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                    <p className="text-amber-700 dark:text-amber-400 leading-relaxed">
+                      No target nodes selected, so this route is <strong>not pushed to any client</strong>.
+                      Edit the network and select the nodes that can reach this subnet.
+                    </p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 gap-1.5 max-h-48 overflow-y-auto">

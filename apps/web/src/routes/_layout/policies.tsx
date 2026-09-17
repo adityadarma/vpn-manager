@@ -76,7 +76,6 @@ interface PolicyTableProps {
   hasFilters: boolean
   onClearFilters: () => void
   onDelete: (policy: Policy) => void
-  onAddPolicy: (type: 'user' | 'group' | 'global') => void
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -87,7 +86,6 @@ function PolicyTable({
   hasFilters,
   onClearFilters,
   onDelete,
-  onAddPolicy,
 }: PolicyTableProps) {
   const targetLabel = type === 'global' ? 'Target' : type === 'user' ? 'User' : 'Group'
 
@@ -196,14 +194,6 @@ function PolicyTable({
                           ? 'No per-user network policies configured yet. Create a policy to restrict or permit access for specific users.'
                           : 'No global network policies configured yet. Global rules apply to all connected VPN clients.'}
                       </p>
-                      <Button
-                        size="sm"
-                        className="mt-4 text-xs bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
-                        onClick={() => onAddPolicy(type)}
-                      >
-                        <Plus className="mr-1.5 h-3.5 w-3.5" />
-                        Add {type === 'group' ? 'Group' : type === 'user' ? 'User' : 'Global'} Policy
-                      </Button>
                     </div>
                   )}
                 </TableCell>
@@ -639,7 +629,6 @@ function PoliciesPage() {
             hasFilters={hasFilters}
             onClearFilters={clearAllFilters}
             onDelete={handleDeletePolicy}
-            onAddPolicy={openAddPolicy}
           />
         </TabsContent>
 
@@ -652,7 +641,6 @@ function PoliciesPage() {
             hasFilters={hasFilters}
             onClearFilters={clearAllFilters}
             onDelete={handleDeletePolicy}
-            onAddPolicy={openAddPolicy}
           />
         </TabsContent>
 
@@ -665,7 +653,6 @@ function PoliciesPage() {
             hasFilters={hasFilters}
             onClearFilters={clearAllFilters}
             onDelete={handleDeletePolicy}
-            onAddPolicy={openAddPolicy}
           />
         </TabsContent>
       </Tabs>

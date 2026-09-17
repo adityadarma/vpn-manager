@@ -411,6 +411,10 @@ export type { Group }
  * Re-enqueue write_client_ccd tasks for all members of a group that have a VPN IP.
  * Called when networks are added or removed from a group, so CCD files
  * are updated with current push routes on all online nodes.
+ *
+ * Routes are filtered per node: only networks explicitly assigned to a node are
+ * pushed to clients on that node. A network with no node assignments is not
+ * reachable from anywhere and is therefore never pushed.
  */
 async function reenqueueGroupCcdTasks(app: any, groupId: string): Promise<void> {
   const members = await app.db('user_node_certificates as c')
@@ -430,14 +434,6 @@ async function reenqueueGroupCcdTasks(app: any, groupId: string): Promise<void> 
       .where({ user_id: member.user_id })
       .pluck('group_id') as string[]
 
-    const networkCidrs = await app.db('group_networks as gn')
-      .join('networks as n', 'gn.network_id', 'n.id')
-      .whereIn('gn.group_id', userGroupIds)
-      .distinct('n.cidr')
-      .pluck('n.cidr') as string[]
-
-    const extraLines = cidrsToPushRoutes(networkCidrs)
-
     // Get netmask from group allocation on this node
     let netmask = '255.255.255.0'
     if (member.group_id) {
@@ -449,6 +445,20 @@ async function reenqueueGroupCcdTasks(app: any, groupId: string): Promise<void> 
 
     const node = await app.db('vpn_nodes').where({ id: member.node_id, status: 'online' }).first()
     if (node) {
+      // Only push routes for networks explicitly assigned to THIS node. A network's
+      // reachability depends on the node it lives behind, so an unassigned network
+      // must not be pushed anywhere.
+      const networkCidrs = await app.db('group_networks as gn')
+        .join('networks as n', 'gn.network_id', 'n.id')
+        .join('node_networks as nn', (builder: any) => {
+          builder.on('n.id', 'nn.network_id').andOn('nn.node_id', app.db.raw('?', [node.id]))
+        })
+        .whereIn('gn.group_id', userGroupIds)
+        .distinct('n.cidr')
+        .pluck('n.cidr') as string[]
+
+      const extraLines = cidrsToPushRoutes(networkCidrs)
+
       tasks.push({
         id: uuidv7(),
         node_id: node.id,

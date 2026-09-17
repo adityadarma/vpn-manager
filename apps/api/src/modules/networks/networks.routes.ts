@@ -348,8 +348,8 @@ const networkRoutes: FastifyPluginAsync = async (app) => {
 
 /**
  * Re-enqueue write_client_ccd tasks for all users in groups using this network.
- * Filters routes per-node: networks with node assignments only push to matching nodes,
- * global networks (no assignment) push to all nodes.
+ * Filters routes per-node: a network is pushed only to nodes it is explicitly
+ * assigned to. Networks with no node assignments are never pushed.
  */
 async function reenqueueNetworkCcdTasks(app: any, networkId: string): Promise<void> {
   // Find all groups using this network
@@ -392,20 +392,17 @@ async function reenqueueNetworkCcdTasks(app: any, networkId: string): Promise<vo
 
     const node = await app.db('vpn_nodes').where({ id: member.node_id, status: 'online' }).first()
     if (node) {
-      // Per-node filtering: global (no node) → all nodes, specific → matched node only
-      const allGroupNetworks = await app.db('group_networks as gn')
+      // Per-node filtering: only networks explicitly assigned to this node are pushed.
+      // A network's reachability depends on the node it sits behind, so a network with
+      // no node assignments is not reachable and is never pushed.
+      const filteredCidrs = await app.db('group_networks as gn')
         .join('networks as n', 'gn.network_id', 'n.id')
-        .leftJoin('node_networks as nn', (builder: any) => {
+        .join('node_networks as nn', (builder: any) => {
           builder.on('n.id', 'nn.network_id').andOn('nn.node_id', app.db.raw('?', [node.id]))
         })
         .whereIn('gn.group_id', userGroupIds)
-        .select('n.cidr', 'nn.node_id')
-
-      const filteredCidrs: string[] = [...new Set(
-        (allGroupNetworks as Array<{ cidr: string; node_id: string | null }>)
-          .filter(row => row.node_id === null || row.node_id === node.id)
-          .map(row => row.cidr)
-      )]
+        .distinct('n.cidr')
+        .pluck('n.cidr') as string[]
 
       const extraLines = cidrsToPushRoutes(filteredCidrs)
 

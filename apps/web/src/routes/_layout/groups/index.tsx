@@ -351,17 +351,6 @@ function GroupsPage() {
                         <p className="text-xs text-muted-foreground mt-1 text-center">
                           Create your first group to start organizing VPN users and routing network access.
                         </p>
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            setShowCreate(true)
-                            setForm({ name: '', description: '' })
-                          }}
-                          className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs shadow-xs"
-                        >
-                          <Plus className="mr-1.5 h-3.5 w-3.5" />
-                          Add First Group
-                        </Button>
                       </div>
                     )}
                   </TableCell>

@@ -489,18 +489,6 @@ function GroupDetailPage() {
                             <p className="text-xs text-muted-foreground mt-1 mb-4">
                               Add users to this group to grant them configured VPN access and network routes.
                             </p>
-                            <Button
-                              size="sm"
-                              onClick={() => {
-                                setShowAddMember(true)
-                                setSelectedUserIds(new Set())
-                                setModalSearchQuery('')
-                              }}
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 text-xs"
-                            >
-                              <UserPlus className="mr-1.5 h-3.5 w-3.5" />
-                              Add First Member
-                            </Button>
                           </div>
                         )}
                       </TableCell>
@@ -699,21 +687,9 @@ function GroupDetailPage() {
                               <Network className="h-6 w-6" />
                             </div>
                             <p className="font-semibold text-sm text-foreground">No networks assigned yet</p>
-                            <p className="text-xs text-muted-foreground mt-1 mb-4">
+                            <p className="text-xs text-muted-foreground mt-1">
                               Assign network routes to this group to allow its members to access internal networks.
                             </p>
-                            <Button
-                              size="sm"
-                              onClick={() => {
-                                setShowAddNetwork(true)
-                                setSelectedNetworkIds(new Set())
-                                setModalSearchQuery('')
-                              }}
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 text-xs"
-                            >
-                              <NetworkIcon className="mr-1.5 h-3.5 w-3.5" />
-                              Assign First Network
-                            </Button>
                           </div>
                         )}
                       </TableCell>
