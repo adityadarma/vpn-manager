@@ -11,7 +11,7 @@ import { logAudit, getClientIp } from '../../utils/audit'
 import { secretsMatchTrimmed } from '../../utils/secret-compare'
 import { enqueueApplyPolicies } from '../policies/policies.routes'
 import { enqueueNodeDnsSync } from '../../services/managed-dns'
-import { cidrToRoute } from '../../services/ip-pool'
+import { cidrsToPushRoutes } from '../../services/ip-pool'
 import { claimPendingTasks, waitForPendingTasks } from '../../services/task-polling'
 
 interface NodeConfig {
@@ -525,7 +525,12 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         custom_push_directives: config.custom_push_directives ?? '',
         // Network routes are managed from the Networks page, not persisted as
         // custom directives, so unassigning a network removes them immediately.
-        network_push_directives: networkCidrs.map(cidrToRoute).join('\n'),
+        //
+        // Shown in `push "route ..."` form because that is what actually happens:
+        // the route is advertised to clients through their CCD and profile. The
+        // node reaches these networks through its own NIC, so a bare server-side
+        // `route` directive is never written into its server.conf.
+        network_push_directives: cidrsToPushRoutes(networkCidrs).join('\n'),
         // Managed DNS is selected per client group during profile generation;
         // never push a group's resolver globally from server.conf.
         managed_dns_directives: managedDnsListeners

@@ -4,6 +4,12 @@ All notable changes to VPN Manager are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- The read-only `Network Routes` field in a node's Configuration now shows each route in `push "route ..."` form and states that the routes are pushed to clients connecting through the node rather than applied to the node itself. The previous bare `route ...` text described a server-side directive that is no longer written into `server.conf`.
+
 ## [2.6.2] - 2026-09-18
 
 ### Changed

@@ -332,7 +332,9 @@ describe('Nodes API', () => {
       })
 
       expect(res.statusCode).toBe(200)
-      expect(res.json().network_push_directives).toBe('route 172.31.0.0 255.255.240.0')
+      // Shown in push form: the route is advertised to clients, never applied to
+      // the node itself. A bare `route ...` here would misdescribe what happens.
+      expect(res.json().network_push_directives).toBe('push "route 172.31.0.0 255.255.240.0"')
     })
 
     it('shows healthy Managed DNS listeners without globally pushing them', async () => {

@@ -1245,7 +1245,8 @@ function NodesPage() {
                     className="w-full p-2.5 rounded-md border border-border bg-muted text-muted-foreground font-mono text-xs resize-y"
                   />
                   <p className="text-[11px] text-muted-foreground/70">
-                    Routes from networks assigned to this node. Change these on the Networks page.
+                    Pushed to clients connecting through this node, not applied to the node itself.
+                    Change these on the Networks page.
                   </p>
                 </div>
               )}
