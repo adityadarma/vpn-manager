@@ -631,10 +631,16 @@ function NodesPage() {
                         <p className="font-semibold text-sm text-foreground flex items-center gap-1.5">
                           {node.hostname}
                           {hasDnsSync && (
-                            <Shield
-                              className="size-3 text-emerald-600 dark:text-emerald-400 shrink-0"
+                            <span
+                              className="inline-flex shrink-0"
                               title="Managed DNS active / synchronized"
-                            />
+                            >
+                              <Shield
+                                className="size-3 text-emerald-600 dark:text-emerald-400"
+                                aria-label="Managed DNS active / synchronized"
+                                role="img"
+                              />
+                            </span>
                           )}
                         </p>
                         <button

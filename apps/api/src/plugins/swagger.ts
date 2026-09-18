@@ -16,8 +16,6 @@ export default fp(async (app, options: SwaggerPluginOptions) => {
       info: {
         title: 'VPN Manager API',
         description: 'VPN Manager REST API documentation',
-        // Read from the shared package version rather than a literal, which
-        // previously fell behind because release bumps only touch package.json.
         version: APP_VERSION,
       },
       tags: [

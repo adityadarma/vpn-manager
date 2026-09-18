@@ -4,7 +4,7 @@ All notable changes to VPN Manager are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.6.0] - 2026-09-18
 
 ### Changed
 
@@ -24,6 +24,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Restored the read-only `Network Routes` and `Managed DNS Listeners` fields in the node configuration modal. The API had kept returning both, but the dashboard stopped rendering them, so there was no way to see which routes and DNS listeners were being written into the generated server config.
 - Fixed network routes bypassing node scoping when assigning a network to a group, which could leak a node-specific route to every node.
 - Fixed unchecked Target Nodes checkboxes rendering as solid white boxes on the Networks page, which made unselected nodes look selected in dark mode.
+- Fixed the type check failing on the Managed DNS shield icon on the VPN Nodes page. `@types/react@19.3.0` no longer declares `title` on `SVGAttributes`, so passing `title` to a Lucide icon is now a type error; the tooltip moved to a wrapping `span` and the icon carries `aria-label` and `role="img"` instead.
 
 ## [2.5.0] - 2026-09-17
 
