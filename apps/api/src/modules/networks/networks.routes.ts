@@ -458,20 +458,23 @@ async function triggerNodeConfigUpdate(app: any, nodeId: string): Promise<void> 
   const node = await app.db('vpn_nodes').where({ id: nodeId }).first()
   if (!node) return
 
-  // Get group subnets allocated for this node
+  // Group subnets are VPN address pools allocated on this node. They sit behind
+  // the tunnel, so server.conf needs a `route` directive for the ones outside
+  // the node's own `server` pool.
+  //
+  // Target network CIDRs are deliberately NOT included. A network such as
+  // 172.31.0.0/20 is a destination the node reaches through its own NIC, and
+  // clients are told about it on the client side: the `route` lines in the
+  // generated .ovpn profile and the `push "route ..."` lines in the node's CCD.
+  // Adding it to server.conf as well would install a tunnel route on the node
+  // itself, which outranks the NIC route and cuts the node off from that
+  // network — including its default gateway when the CIDR covers it.
   const groupSubnets = await app.db('group_node_dns_settings')
     .where({ node_id: nodeId })
     .whereNotNull('vpn_subnet')
     .pluck('vpn_subnet') as string[]
 
-  // Get node-specific network CIDRs assigned to this node
-  const nodeNetworkCidrs = await app.db('node_networks as nn')
-    .join('networks as n', 'nn.network_id', 'n.id')
-    .where('nn.node_id', nodeId)
-    .pluck('n.cidr') as string[]
-
-  // Merge into extra_routes so update-server-config agent adds `route` directives
-  const allSubnets = [...new Set([...groupSubnets, ...nodeNetworkCidrs])]
+  const allSubnets = [...new Set(groupSubnets)]
 
   // Build config payload from node's existing config
   const configPayload = {
@@ -500,7 +503,7 @@ async function triggerNodeConfigUpdate(app: any, nodeId: string): Promise<void> 
     created_at: new Date(),
   })
 
-  app.log.info(`[node-networks] Scheduled update_server_config for node ${node.hostname} with ${nodeNetworkCidrs.length} node-network route(s)`)
+  app.log.info(`[node-networks] Scheduled update_server_config for node ${node.hostname} with ${allSubnets.length} group subnet route(s)`)
 }
 
 export default networkRoutes

@@ -843,19 +843,6 @@ function TasksPage() {
                 <p className="leading-relaxed font-mono bg-background/80 p-2.5 rounded-lg border border-red-500/20 whitespace-pre-wrap">
                   {selectedTask.error_message}
                 </p>
-                <div className="flex justify-end pt-1">
-                  <Button
-                    size="sm"
-                    onClick={() => retryTask.mutate(selectedTask.id)}
-                    disabled={retryTask.isPending}
-                    className="bg-red-600 hover:bg-red-700 text-white cursor-pointer h-7 text-xs shadow-xs"
-                  >
-                    <RefreshCw
-                      className={`mr-1.5 size-3 ${retryTask.isPending ? 'animate-spin' : ''}`}
-                    />
-                    Retry Task
-                  </Button>
-                </div>
               </div>
             )}
 

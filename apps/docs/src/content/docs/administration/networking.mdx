@@ -60,7 +60,7 @@ Create a Network for the private VPC destination and select Server A under **Tar
 
 Select only the nodes that can reach the subnet. Here that is Server A, since it is inside the VPC. A network left with no target nodes is not pushed to any client, and selecting an unrelated node would hand its clients a route their server cannot deliver.
 
-The network CIDR must exclude the target node's own address. Server A sits inside the VPC, so a CIDR covering its private IP would route Server A's own subnet into the tunnel and cut it off from its gateway. When Server A is `172.31.10.64` in `172.31.0.0/20`, use the narrower subnet that holds Server B-E, such as `172.31.32.0/20`, instead of the whole `/20` that contains Server A. The Agent rejects the `update_server_config` task with an explanatory error rather than applying a route that would isolate the node; check the Tasks page if a network assignment does not take effect.
+A network CIDR may cover the target node's own address. Here `172.31.0.0/20` contains Server A at `172.31.10.64`, and that is fine: the route is advertised to clients, not installed on Server A. Clients receive it as `route` lines in their generated `.ovpn` profile and as `push "route ..."` lines in their CCD, while Server A keeps reaching the VPC through its own NIC.
 
 The resulting `route` directives appear as read-only **Network Routes** in that node's **Configuration**. Change them from the Networks page, not by editing the node config.
 

@@ -233,17 +233,25 @@ describe('Groups & Networks API', () => {
       expect(ccdRoutesFor(tasks, nodeB)).toEqual([])
     })
 
-    it('adds server.conf routes only for the assigned node', async () => {
+    it('never writes a target network CIDR into the node\u2019s own server.conf', async () => {
+      // A target network is reached through the node's NIC, so it belongs in the
+      // client profile and CCD, never in server.conf. A server-side `route` for
+      // it installs a tunnel route on the node that outranks the NIC route and
+      // cuts the node off from that network, gateway included.
       const { nodeA, nodeB, networkId, cidr } = await seedTwoNodeScenario('serverconf')
 
       await app.db('tasks').delete()
 
-      await app.inject({
-        method: 'POST',
-        url: `/api/v1/networks/${networkId}/nodes`,
-        headers: { Cookie: adminCookie },
-        payload: { node_id: nodeA },
-      })
+      expect(
+        (
+          await app.inject({
+            method: 'POST',
+            url: `/api/v1/networks/${networkId}/nodes`,
+            headers: { Cookie: adminCookie },
+            payload: { node_id: nodeA },
+          })
+        ).statusCode,
+      ).toBe(201)
 
       const configTasks = await app.db('tasks')
         .where({ action: 'update_server_config' })
@@ -254,8 +262,53 @@ describe('Groups & Networks API', () => {
           .filter((t: any) => t.node_id === nodeId)
           .flatMap((t: any) => JSON.parse(t.payload).group_subnets ?? [])
 
-      expect(subnetsFor(nodeA)).toContain(cidr)
+      // Guard against a vacuous pass: the assigned node must still be told to
+      // rewrite server.conf, it just must not carry the network CIDR.
+      expect(configTasks.filter((t: any) => t.node_id === nodeA).length).toBeGreaterThan(0)
+      expect(subnetsFor(nodeA)).not.toContain(cidr)
       expect(subnetsFor(nodeB)).not.toContain(cidr)
+
+      // The route still has to reach clients, through the CCD push instead.
+      const tasks = await app.db('tasks').select('node_id', 'action', 'payload')
+      const network = cidr.split('/')[0]
+      expect(ccdRoutesFor(tasks, nodeA)).toEqual([`push "route ${network} 255.255.240.0"`])
+    })
+
+    it('still writes group VPN subnet pools into server.conf', async () => {
+      // The counterpart to the test above: group subnets are real tunnel-side
+      // pools and must keep producing server-side `route` directives.
+      const { nodeA, groupId, networkId } = await seedTwoNodeScenario('grouppool')
+      const groupPool = '10.211.0.0/24'
+
+      await app.db('group_node_dns_settings').insert({
+        group_id: groupId,
+        node_id: nodeA,
+        vpn_subnet: groupPool,
+        enabled: false,
+        listener_port: 53,
+        upstreams: JSON.stringify(['1.1.1.1']),
+      })
+
+      await app.db('tasks').delete()
+
+      expect(
+        (
+          await app.inject({
+            method: 'POST',
+            url: `/api/v1/networks/${networkId}/nodes`,
+            headers: { Cookie: adminCookie },
+            payload: { node_id: nodeA },
+          })
+        ).statusCode,
+      ).toBe(201)
+
+      const subnets = (
+        await app.db('tasks')
+          .where({ action: 'update_server_config', node_id: nodeA })
+          .select('payload')
+      ).flatMap((t: any) => JSON.parse(t.payload).group_subnets ?? [])
+
+      expect(subnets).toContain(groupPool)
     })
 
     it('rewrites server.conf on a node that was unassigned through PATCH', async () => {

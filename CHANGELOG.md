@@ -4,6 +4,16 @@ All notable changes to VPN Manager are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Removed the duplicate `Retry Task` button from the Execution Failure Diagnostic panel in the task details modal; retrying stays available from the modal footer.
+
+### Fixed
+
+- Target network CIDRs are no longer written into the target node's own `server.conf`. A network such as `172.31.0.0/20` is a destination the node reaches through its own NIC, and clients already learn it from the `route` lines in their generated `.ovpn` profile and the `push "route ..."` lines in their CCD. Adding it server-side installed a tunnel route on the node that outranked the NIC route and cut the node off from that network, including its default gateway when the CIDR covered it. Group VPN subnet pools, which genuinely sit behind the tunnel, still produce server-side `route` directives.
+
 ## [2.6.1] - 2026-09-18
 
 ### Changed

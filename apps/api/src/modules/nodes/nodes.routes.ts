@@ -559,13 +559,12 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         .whereNotNull('vpn_subnet')
         .pluck('vpn_subnet')) as string[]
 
-      const networkCidrs = (await app
-        .db('node_networks as nn')
-        .join('networks as n', 'nn.network_id', 'n.id')
-        .where('nn.node_id', node.id)
-        .pluck('n.cidr')) as string[]
-
-      const managedSubnets = [...new Set([...groupSubnets, ...networkCidrs])]
+      // Only VPN address pools belong here. Target network CIDRs are reached
+      // through the node's own NIC and are advertised to clients instead (the
+      // `route` lines in the .ovpn profile and the CCD `push "route ..."`
+      // lines). Writing them into server.conf would install a tunnel route on
+      // the node itself and cut it off from that network.
+      const managedSubnets = [...new Set(groupSubnets)]
 
       // This body is written straight into the node's server.conf by the agent,
       // on a server running with `script-security 2`, so directives like `up`
