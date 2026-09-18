@@ -257,5 +257,82 @@ describe('Groups & Networks API', () => {
       expect(subnetsFor(nodeA)).toContain(cidr)
       expect(subnetsFor(nodeB)).not.toContain(cidr)
     })
+
+    it('rewrites server.conf on a node that was unassigned through PATCH', async () => {
+      const { nodeA, networkId, cidr } = await seedTwoNodeScenario('unassign-patch')
+
+      // Assign first so the node's server.conf carries the route directive.
+      expect(
+        (
+          await app.inject({
+            method: 'POST',
+            url: `/api/v1/networks/${networkId}/nodes`,
+            headers: { Cookie: adminCookie },
+            payload: { node_id: nodeA },
+          })
+        ).statusCode,
+      ).toBe(201)
+
+      await app.db('tasks').delete()
+
+      // Clearing the checkbox sends an empty node_ids list.
+      expect(
+        (
+          await app.inject({
+            method: 'PATCH',
+            url: `/api/v1/networks/${networkId}`,
+            headers: { Cookie: adminCookie },
+            payload: { node_ids: [] },
+          })
+        ).statusCode,
+      ).toBe(200)
+
+      const configTasks = await app.db('tasks')
+        .where({ action: 'update_server_config', node_id: nodeA })
+        .select('payload')
+
+      // The unassigned node must still be told to rewrite server.conf, and the
+      // route must be gone from the payload.
+      expect(configTasks.length).toBeGreaterThan(0)
+      expect(
+        configTasks.flatMap((t: any) => JSON.parse(t.payload).group_subnets ?? []),
+      ).not.toContain(cidr)
+    })
+
+    it('rewrites server.conf on assigned nodes when the network is deleted', async () => {
+      const { nodeA, networkId, cidr } = await seedTwoNodeScenario('delete-net')
+
+      expect(
+        (
+          await app.inject({
+            method: 'POST',
+            url: `/api/v1/networks/${networkId}/nodes`,
+            headers: { Cookie: adminCookie },
+            payload: { node_id: nodeA },
+          })
+        ).statusCode,
+      ).toBe(201)
+
+      await app.db('tasks').delete()
+
+      expect(
+        (
+          await app.inject({
+            method: 'DELETE',
+            url: `/api/v1/networks/${networkId}`,
+            headers: { Cookie: adminCookie },
+          })
+        ).statusCode,
+      ).toBe(204)
+
+      const configTasks = await app.db('tasks')
+        .where({ action: 'update_server_config', node_id: nodeA })
+        .select('payload')
+
+      expect(configTasks.length).toBeGreaterThan(0)
+      expect(
+        configTasks.flatMap((t: any) => JSON.parse(t.payload).group_subnets ?? []),
+      ).not.toContain(cidr)
+    })
   })
 })

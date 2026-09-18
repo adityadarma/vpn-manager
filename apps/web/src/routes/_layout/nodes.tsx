@@ -80,8 +80,10 @@ interface NodeConfig {
   allow_client_to_client: boolean
 }
 
-interface RegisterResponse extends VpnNode {
+interface RegisterResponse {
+  id: string
   token?: string
+  message?: string
 }
 
 type StatusFilter = 'all' | 'active' | 'online' | 'offline' | 'decommissioned'

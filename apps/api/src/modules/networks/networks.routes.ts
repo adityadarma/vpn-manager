@@ -123,6 +123,14 @@ const networkRoutes: FastifyPluginAsync = async (app) => {
 
       // Update node assignments if provided
       if (node_ids !== undefined) {
+        // Capture the current assignments before replacing them. A node that is
+        // unassigned still has the network's `route` directive in its
+        // server.conf, so it needs a config update just as much as a newly
+        // assigned one. Only refreshing the new list left stale routes behind.
+        const previousNodeIds = await app.db('node_networks')
+          .where({ network_id: request.params.id })
+          .pluck('node_id') as string[]
+
         await app.db('node_networks').where({ network_id: request.params.id }).delete()
         if (node_ids.length > 0) {
           await app.db('node_networks').insert(
@@ -132,8 +140,8 @@ const networkRoutes: FastifyPluginAsync = async (app) => {
 
         // Refresh CCD and update server.conf route directives for affected nodes
         await reenqueueNetworkCcdTasks(app, request.params.id)
-        // Trigger server config update for each newly assigned node
-        for (const node_id of (node_ids.length > 0 ? node_ids : [])) {
+        // Rewrite server.conf on both newly assigned and unassigned nodes.
+        for (const node_id of new Set([...previousNodeIds, ...node_ids])) {
           await triggerNodeConfigUpdate(app, node_id)
         }
       }
@@ -152,8 +160,20 @@ const networkRoutes: FastifyPluginAsync = async (app) => {
     '/networks/:id',
     { onRequest: [app.authenticateAdmin], schema: { tags: ['networks'], summary: 'Delete a network', security: [{ bearerAuth: [] }] } },
     async (request, reply) => {
+      // Collect assigned nodes first: the node_networks rows cascade away with
+      // the network, so after the delete there is no way to tell which nodes
+      // still carry this network's `route` directive in their server.conf.
+      const affectedNodeIds = await app.db('node_networks')
+        .where({ network_id: request.params.id })
+        .pluck('node_id') as string[]
+
       const deleted = await app.db('networks').where({ id: request.params.id }).delete()
       if (!deleted) return reply.status(404).send({ error: 'Network not found' })
+
+      for (const nodeId of affectedNodeIds) {
+        await triggerNodeConfigUpdate(app, nodeId)
+      }
+
       return reply.status(204).send()
     },
   )

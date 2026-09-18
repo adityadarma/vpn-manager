@@ -1132,25 +1132,6 @@ function NetworksPage() {
           <Button variant="outline" onClick={() => setDetailNetwork(null)}>
             Close
           </Button>
-          {networkDetail && (
-            <Button
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
-              onClick={() => {
-                const target = networkDetail
-                setDetailNetwork(null)
-                setEditNetwork(target)
-                setForm({
-                  name: target.name,
-                  cidr: target.cidr,
-                  description: target.description || '',
-                  node_ids: target.node_ids ?? [],
-                })
-              }}
-            >
-              <Pencil className="mr-1.5 h-3.5 w-3.5" />
-              Edit Network
-            </Button>
-          )}
         </ModalFooter>
       </Modal>
 

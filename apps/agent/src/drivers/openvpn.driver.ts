@@ -30,6 +30,11 @@ import type {
   ServerConfigParams,
 } from './vpn-driver.interface'
 import { resolveWithin } from '../core/net-validate'
+import {
+  findConflictingLocalNetwork,
+  localIpv4Networks,
+  type LocalIpv4Network,
+} from '../core/local-networks'
 import { applyClientIsolation } from '../services/client-isolation'
 
 // All process execution goes through execFile/execFileSync with an explicit
@@ -116,6 +121,60 @@ function _isSubnetContainedIn(
   const subPrefix = _netmaskToPrefix(subMask)
   if (subPrefix < poolPrefix) return false
   return (_ipToInt(poolNet) & _ipToInt(poolMask)) === (_ipToInt(subNet) & _ipToInt(poolMask))
+}
+
+export interface ServerRoute {
+  network: string
+  netmask: string
+  cidr: string
+}
+
+/**
+ * Decide which server-side `route` directives belong in server.conf.
+ *
+ * Subnets already inside the VPN pool are skipped: OpenVPN routes those itself.
+ * A subnet the node is directly attached to is rejected outright — see
+ * `local-networks.ts` for why that case cannot be silently dropped.
+ *
+ * Exported so the guard is unit-testable without touching /etc/openvpn.
+ */
+export function computeServerRoutes(
+  groupSubnets: string[] | undefined,
+  serverNet: string,
+  serverMask: string,
+  locals: LocalIpv4Network[] = localIpv4Networks(),
+): ServerRoute[] {
+  const routes: ServerRoute[] = []
+
+  for (const cidr of groupSubnets ?? []) {
+    const parsed = _parseCidr(cidr)
+    if (!parsed) continue
+    const gNet = _networkAddress(parsed.network, parsed.netmask)
+    const gMask = parsed.netmask
+    if (_isSubnetContainedIn(gNet, gMask, serverNet, serverMask)) continue
+
+    // Refuse to route a network this node is already attached to. Such a route
+    // competes with the NIC route and wins on metric, cutting the node off from
+    // its own subnet and its default gateway. Fail loudly rather than skipping:
+    // clients still receive `push "route ..."` for this network, so dropping it
+    // quietly would leave them believing a dead path is reachable.
+    const conflict = findConflictingLocalNetwork(`${gNet}/${_netmaskToPrefix(gMask)}`, locals)
+    if (conflict) {
+      throw new Error(
+        `Refusing to route ${cidr}: this node is already attached to ` +
+          `${conflict.network}/${conflict.prefix} on ${conflict.interfaceName} ` +
+          `(${conflict.address}). Routing it into the tunnel would cut the node off ` +
+          `from its own network and gateway. Remove this node from the network, or ` +
+          `narrow the network CIDR so it excludes the node's own subnet.`,
+      )
+    }
+
+    if (!routes.some((r) => r.network === gNet && r.netmask === gMask)) {
+      routes.push({ network: gNet, netmask: gMask, cidr })
+    }
+  }
+
+  return routes
 }
 
 /**
@@ -1184,18 +1243,9 @@ ${tlsKey ? `\n<tls-crypt>\n${tlsKey.trim()}\n</tls-crypt>` : ''}`.trim()
       }
     }
 
-    // Compute group subnet routes
-    const extraRoutes: Array<{ network: string; netmask: string; cidr: string }> = []
-    for (const cidr of params.group_subnets ?? []) {
-      const parsed = _parseCidr(cidr)
-      if (!parsed) continue
-      const gNet = _networkAddress(parsed.network, parsed.netmask)
-      const gMask = parsed.netmask
-      if (_isSubnetContainedIn(gNet, gMask, serverNet, serverMask)) continue
-      if (!extraRoutes.some((r) => r.network === gNet && r.netmask === gMask)) {
-        extraRoutes.push({ network: gNet, netmask: gMask, cidr })
-      }
-    }
+    // Compute group subnet routes. Throws when a subnet would collide with a
+    // network this node is already attached to.
+    const extraRoutes = computeServerRoutes(params.group_subnets, serverNet, serverMask)
 
     const dnsArray = params.managed_dns_enabled
       ? []

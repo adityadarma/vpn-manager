@@ -4,6 +4,17 @@ All notable changes to VPN Manager are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Removed the `Edit Network` button from the network details modal; editing stays available from the row menu on the Networks page, matching the Group Details header.
+
+### Fixed
+
+- Fixed unassigning a target node on the Networks page leaving a stale `route` directive in that node's `server.conf`. Saving the network only refreshed the newly selected nodes, so a node that lost the assignment was never sent an `update_server_config` task and kept routing the network into the tunnel. Deleting a network had the same gap, because the `node_networks` rows cascade away before the affected nodes can be identified.
+- The Agent now refuses to write a server-side `route` directive for a network the node is already attached to. Assigning a network such as `172.31.0.0/20` to a node whose own address is `172.31.10.64` installed a tunnel route that outranked the NIC route on metric, cutting the node off from its own subnet and gateway. The `update_server_config` task now fails with an error naming the conflicting interface and address instead of applying the route. Narrow the network CIDR so it excludes the node's own subnet, or remove that node from the network.
+
 ## [2.6.0] - 2026-09-18
 
 ### Changed
