@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Changed
+
+- The Tasks table's `Operation / Action` column now shows only the human-readable label, dropping the raw action string (e.g. `apply_network_policy`) shown underneath it.
+- The `Retry` button on a failed task is now hidden once a newer task with the same action and node exists, since retrying the older failure would be redundant.
+
 ## [2.7.2] - 2026-09-20
 
 ### Changed
