@@ -4,6 +4,18 @@ All notable changes to VPN Manager are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.1] - 2026-09-19
+
+### Fixed
+
+- Tasks no longer stay stuck on `Running` forever with no duration. Only the Agent's own result report moved a task out of `running`, so an Agent that died or failed to report left it there permanently — and unretryable, because `Retry Task` only accepts failed tasks. Tasks claimed more than 10 minutes ago are now timed out and marked failed.
+- Task results are no longer lost when the Manager is briefly unreachable. Reporting was fire-and-forget, so the outcome of work the Agent had already applied could vanish. Delivery is now retried with backoff and spooled to disk if every attempt fails, surviving an Agent restart.
+- Firewall commands now run with a 30-second timeout and wait up to 5 seconds for the `iptables` lock (`-w 5`). With neither, a lock held by Docker, ufw, or fail2ban blocked `apply_network_policy`, `add_firewall_rule`, and `remove_firewall_rule` indefinitely and the task hung.
+
+### Added
+
+- `tasks.started_at` records when an Agent claimed a task, separating execution time from time spent queued. Tasks already stuck in `running` are backfilled from `created_at`.
+
 ## [2.7.0] - 2026-09-19
 
 ### Changed

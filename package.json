@@ -1,6 +1,6 @@
 {
   "name": "vpn-manager",
-  "version": "2.7.0",
+  "version": "2.7.1",
   "private": true,
   "description": "VPN Manager — Modern VPN Management",
   "scripts": {
