@@ -1,8 +1,10 @@
-import { exec } from 'node:child_process'
-import { promisify } from 'node:util'
 import type { VpnDriver } from '../drivers'
-
-const execAsync = promisify(exec)
+import {
+  IPTABLES_LOCK_WAIT_SECONDS,
+  execFirewall,
+  execFirewallRaw,
+  iptablesInvocation,
+} from '../core/firewall-exec'
 
 const IPTABLES_POLICY_CHAIN = 'VPN_POLICY_FWWD'
 const IPTABLES_PREROUTING_POLICY_CHAIN = 'VPN_POLICY_PRE'
@@ -14,19 +16,9 @@ const NFTABLES_POLICY_CHAIN = 'VPN_POLICY_FWWD'
 const NFTABLES_PREROUTING_CHAIN = 'PREROUTING'
 const NFTABLES_PREROUTING_POLICY_CHAIN = 'VPN_POLICY_PRE'
 
-async function execFirewall(cmd: string, engine: 'iptables' | 'nftables' | 'firewalld' | 'ufw') {
-  try {
-    await execAsync(cmd)
-  } catch (err: any) {
-    // A missing firewall binary means the policy was not installed. Never
-    // convert that operational failure into a successful task result.
-    throw new Error(`${engine} command failed: ${err.message}`)
-  }
-}
-
 async function resolveIptablesCommand(vpnInterface: string): Promise<'iptables' | 'iptables-legacy'> {
   try {
-    const { stdout } = await execAsync('iptables-legacy -S FORWARD')
+    const { stdout } = await execFirewallRaw(`iptables-legacy -w ${IPTABLES_LOCK_WAIT_SECONDS} -S FORWARD`)
     if (stdout.includes(`-i ${vpnInterface}`)) {
       console.log(`[firewall] Using iptables-legacy because it owns the ${vpnInterface} VPN forwarding hook.`)
       return 'iptables-legacy'
@@ -173,29 +165,34 @@ async function applyIptablesPolicies(
   vpnInterface: string,
   iptablesCommand: 'iptables' | 'iptables-legacy',
 ) {
+  // Wait for the xtables lock rather than failing instantly. Docker, ufw and
+  // fail2ban all take it, and without -w a concurrent holder makes iptables
+  // block with no upper bound.
+  const ipt = iptablesInvocation(iptablesCommand)
+
   try {
     // Clean up legacy dynamic hooks/chains from older installs.
     for (const chain of ['FORWARD', 'INPUT']) {
-      await execFirewall(`${iptablesCommand} -D ${chain} -i ${vpnInterface} -j ${IPTABLES_LEGACY_POLICY_CHAIN}`, 'iptables').catch(() => {})
+      await execFirewall(`${ipt} -D ${chain} -i ${vpnInterface} -j ${IPTABLES_LEGACY_POLICY_CHAIN}`, 'iptables').catch(() => {})
     }
-    await execFirewall(`${iptablesCommand} -F ${IPTABLES_LEGACY_POLICY_CHAIN}`, 'iptables').catch(() => {})
-    await execFirewall(`${iptablesCommand} -X ${IPTABLES_LEGACY_POLICY_CHAIN}`, 'iptables').catch(() => {})
+    await execFirewall(`${ipt} -F ${IPTABLES_LEGACY_POLICY_CHAIN}`, 'iptables').catch(() => {})
+    await execFirewall(`${ipt} -X ${IPTABLES_LEGACY_POLICY_CHAIN}`, 'iptables').catch(() => {})
 
     // 1. Ensure custom chain exists
-    await execFirewall(`${iptablesCommand} -N ${IPTABLES_POLICY_CHAIN}`, 'iptables').catch(() => { /* ignore if already exists */ })
+    await execFirewall(`${ipt} -N ${IPTABLES_POLICY_CHAIN}`, 'iptables').catch(() => { /* ignore if already exists */ })
 
     // 2. Flush current rules from the custom chain
-    await execFirewall(`${iptablesCommand} -F ${IPTABLES_POLICY_CHAIN}`, 'iptables')
+    await execFirewall(`${ipt} -F ${IPTABLES_POLICY_CHAIN}`, 'iptables')
 
     // Docker DNATs published ports before filter INPUT/FORWARD. Apply the same
     // policy in mangle PREROUTING so a deny still matches the original host IP.
-    await execFirewall(`${iptablesCommand} -t mangle -N ${IPTABLES_PREROUTING_POLICY_CHAIN}`, 'iptables').catch(() => {})
-    await execFirewall(`${iptablesCommand} -t mangle -F ${IPTABLES_PREROUTING_POLICY_CHAIN}`, 'iptables')
+    await execFirewall(`${ipt} -t mangle -N ${IPTABLES_PREROUTING_POLICY_CHAIN}`, 'iptables').catch(() => {})
+    await execFirewall(`${ipt} -t mangle -F ${IPTABLES_PREROUTING_POLICY_CHAIN}`, 'iptables')
     try {
-      await execAsync(`${iptablesCommand} -t mangle -C PREROUTING -i ${vpnInterface} -j ${IPTABLES_PREROUTING_POLICY_CHAIN}`)
+      await execFirewallRaw(`${ipt} -t mangle -C PREROUTING -i ${vpnInterface} -j ${IPTABLES_PREROUTING_POLICY_CHAIN}`)
     } catch (checkErr: any) {
       if (checkErr.message?.includes('not found') || checkErr.code === 1) {
-        await execFirewall(`${iptablesCommand} -t mangle -I PREROUTING 1 -i ${vpnInterface} -j ${IPTABLES_PREROUTING_POLICY_CHAIN}`, 'iptables')
+        await execFirewall(`${ipt} -t mangle -I PREROUTING 1 -i ${vpnInterface} -j ${IPTABLES_PREROUTING_POLICY_CHAIN}`, 'iptables')
       } else if (!checkErr.message?.includes('not found')) {
         throw checkErr
       }
@@ -206,10 +203,10 @@ async function applyIptablesPolicies(
     // does not traverse FORWARD.
     for (const chain of ['FORWARD', 'INPUT']) {
       try {
-        await execAsync(`${iptablesCommand} -C ${chain} -i ${vpnInterface} -j ${IPTABLES_POLICY_CHAIN}`)
+        await execFirewallRaw(`${ipt} -C ${chain} -i ${vpnInterface} -j ${IPTABLES_POLICY_CHAIN}`)
       } catch (checkErr: any) {
         if (checkErr.message?.includes('not found') || checkErr.code === 1) { // code 1 = rule doesn't exist
-          await execFirewall(`${iptablesCommand} -I ${chain} 1 -i ${vpnInterface} -j ${IPTABLES_POLICY_CHAIN}`, 'iptables')
+          await execFirewall(`${ipt} -I ${chain} 1 -i ${vpnInterface} -j ${IPTABLES_POLICY_CHAIN}`, 'iptables')
           console.log(`[firewall] Hooked ${IPTABLES_POLICY_CHAIN} into ${chain} for interface ${vpnInterface}.`)
         } else if (!checkErr.message?.includes('not found')) {
           throw checkErr
@@ -222,7 +219,7 @@ async function applyIptablesPolicies(
     // 4. Apply policies ordered by priority (DB already sorts it, so we append them in sequence)
     for (const p of policies) {
       try {
-        let rule = `${iptablesCommand} -A ${IPTABLES_POLICY_CHAIN}`
+        let rule = `${ipt} -A ${IPTABLES_POLICY_CHAIN}`
 
         // Source IP / Subnet
         if (p.user_id) {
@@ -264,8 +261,8 @@ async function applyIptablesPolicies(
         // the filter chain after routing and must not hide later deny rules.
         if (action === 'DROP') {
           const preroutingRule = rule.replace(
-            `${iptablesCommand} -A ${IPTABLES_POLICY_CHAIN}`,
-            `${iptablesCommand} -t mangle -A ${IPTABLES_PREROUTING_POLICY_CHAIN}`,
+            `${ipt} -A ${IPTABLES_POLICY_CHAIN}`,
+            `${ipt} -t mangle -A ${IPTABLES_PREROUTING_POLICY_CHAIN}`,
           )
           await execFirewall(preroutingRule, 'iptables')
         }
@@ -276,8 +273,8 @@ async function applyIptablesPolicies(
     }
 
     // Default action: if it passes all above rules, RETURN to FORWARD chain
-    await execFirewall(`${iptablesCommand} -A ${IPTABLES_POLICY_CHAIN} -j RETURN`, 'iptables')
-    await execFirewall(`${iptablesCommand} -t mangle -A ${IPTABLES_PREROUTING_POLICY_CHAIN} -j RETURN`, 'iptables')
+    await execFirewall(`${ipt} -A ${IPTABLES_POLICY_CHAIN} -j RETURN`, 'iptables')
+    await execFirewall(`${ipt} -t mangle -A ${IPTABLES_PREROUTING_POLICY_CHAIN} -j RETURN`, 'iptables')
 
     console.log(`[firewall] Successfully applied ${appliedCount}/${policies.length} rules.`)
     
@@ -309,19 +306,19 @@ async function applyNftablesPolicies(policies: PolicyPayload[], vpnInterface: st
 
     // 2. Filter both routed targets and services hosted on the VPN node itself.
     for (const chain of [NFTABLES_FORWARD_CHAIN, NFTABLES_INPUT_CHAIN]) {
-      const checkHook = await execAsync(`nft list chain inet ${NFTABLES_FILTER_TABLE} ${chain}`).catch(() => ({ stdout: '' }))
+      const checkHook = await execFirewallRaw(`nft list chain inet ${NFTABLES_FILTER_TABLE} ${chain}`).catch(() => ({ stdout: '' }))
       if (!checkHook.stdout?.includes(NFTABLES_POLICY_CHAIN)) {
         await execFirewall(`nft add rule inet ${NFTABLES_FILTER_TABLE} ${chain} iifname "${vpnInterface}" jump ${NFTABLES_POLICY_CHAIN}`, 'nftables')
 
         // Verify the hook exists after insertion; if not, fail task so manager sees real status.
-        const verifyHook = await execAsync(`nft list chain inet ${NFTABLES_FILTER_TABLE} ${chain}`).catch(() => ({ stdout: '' }))
+        const verifyHook = await execFirewallRaw(`nft list chain inet ${NFTABLES_FILTER_TABLE} ${chain}`).catch(() => ({ stdout: '' }))
         if (!verifyHook.stdout?.includes(NFTABLES_POLICY_CHAIN)) {
           throw new Error(`nftables hook insertion failed for ${chain} on interface matcher ${vpnInterface}`)
         }
       }
     }
 
-    const preRoutingHook = await execAsync(`nft list chain inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_PREROUTING_CHAIN}`).catch(() => ({ stdout: '' }))
+    const preRoutingHook = await execFirewallRaw(`nft list chain inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_PREROUTING_CHAIN}`).catch(() => ({ stdout: '' }))
     if (!preRoutingHook.stdout?.includes(NFTABLES_PREROUTING_POLICY_CHAIN)) {
       await execFirewall(`nft add rule inet ${NFTABLES_FILTER_TABLE} ${NFTABLES_PREROUTING_CHAIN} iifname "${vpnInterface}" jump ${NFTABLES_PREROUTING_POLICY_CHAIN}`, 'nftables')
     }

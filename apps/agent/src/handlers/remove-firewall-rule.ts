@@ -1,17 +1,6 @@
-import { exec } from 'node:child_process'
-import { promisify } from 'node:util'
 import type { VpnDriver } from '../drivers'
 import { assertIpOrCidr } from '../core/net-validate'
-
-const execAsync = promisify(exec)
-
-async function execFirewall(cmd: string, engine: string) {
-  try {
-    await execAsync(cmd)
-  } catch (err: any) {
-    throw new Error(`${engine} command failed: ${err.message}`)
-  }
-}
+import { execFirewall, iptablesInvocation } from '../core/firewall-exec'
 
 export async function handleRemoveFirewallRule(
   payload: Record<string, unknown>,
@@ -50,7 +39,7 @@ export async function handleRemoveFirewallRule(
   }
 
   // iptables — covers both 'iptables' and 'ufw' modes (ufw uses direct iptables for server routing)
-  const rule = `iptables -D FORWARD -s ${sourceIp} -d ${destNetwork} -j ACCEPT`
+  const rule = `${iptablesInvocation()} -D FORWARD -s ${sourceIp} -d ${destNetwork} -j ACCEPT`
   await execFirewall(rule, 'iptables')
   console.log(`[firewall] Removed iptables rule for ${sourceIp} → ${destNetwork}`)
   return { rule }

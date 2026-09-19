@@ -17,6 +17,7 @@ import { handleWriteClientCcd } from '../handlers/write-client-ccd'
 import { handleDeleteClientCcd } from '../handlers/delete-client-ccd'
 import { handleApplyNetworkPolicy } from '../handlers/apply-network-policy'
 import { handleSyncGroupDns } from '../handlers/sync-group-dns'
+import { reportTaskResult } from './task-result-reporter'
 
 interface Task {
   id: string
@@ -82,27 +83,8 @@ export async function executeTask(env: AgentEnv, task: Task, driver: VpnDriver):
     }
   }
 
-  // Report result back to manager
-  try {
-    const reportUrl = `${env.AGENT_MANAGER_URL}/api/v1/tasks/${task.id}/result`
-    console.log(`[executor] Reporting result to: ${reportUrl}`)
-    
-    const response = await fetch(reportUrl, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${env.AGENT_SECRET_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ status, result, errorMessage }),
-    })
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error(`[executor] Failed to report result: HTTP ${response.status} - ${errorText}`)
-    } else {
-      console.log(`[executor] ✓ Task result reported successfully`)
-    }
-  } catch (err) {
-    console.error(`[executor] Failed to report result for task ${task.id}:`, (err as Error).message)
-  }
+  // Report the result back to the manager. The work is already done at this
+  // point, so a delivery failure must not discard the outcome: the reporter
+  // retries and then spools to disk. It never throws.
+  await reportTaskResult(env, task.id, { status, result, errorMessage })
 }

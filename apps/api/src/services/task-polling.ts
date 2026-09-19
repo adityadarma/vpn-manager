@@ -22,7 +22,13 @@ export async function claimPendingTasks(db: Knex, nodeId: string): Promise<Agent
     const ids = pendingTasks.map((task: { id: string }) => task.id)
     if (ids.length === 0) return []
 
-    await trx('tasks').whereIn('id', ids).where({ status: 'pending' }).update({ status: 'running' })
+    // `started_at` is what the stale-task reaper measures against. It must be
+    // written in the same statement that claims the task, otherwise a crash
+    // between the two leaves a 'running' row the reaper cannot age out.
+    await trx('tasks')
+      .whereIn('id', ids)
+      .where({ status: 'pending' })
+      .update({ status: 'running', started_at: new Date() })
     return ids
   })
 

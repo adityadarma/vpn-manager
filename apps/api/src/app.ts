@@ -4,6 +4,7 @@ import type { Env } from './config/env'
 import { NodeStatusChecker } from './services/node-status-checker'
 import { startCertExpiryWatcher } from './services/cert-expiry'
 import { TokenRevocationSweeper } from './services/token-revocation'
+import { StaleTaskReaper } from './services/stale-task-reaper'
 import { pruneNodeDnsRevisions } from './services/managed-dns'
 import { registerRealtimeEvents } from './services/realtime'
 
@@ -82,6 +83,7 @@ export async function buildApp(env: Env) {
   const shouldStartSchedulers = env.NODE_ENV !== 'test'
   let nodeStatusChecker: NodeStatusChecker | null = null
   let tokenRevocationSweeper: TokenRevocationSweeper | null = null
+  let staleTaskReaper: StaleTaskReaper | null = null
   let certExpiryWatcher: { stop: () => void } | null = null
   let dnsRevisionPruner: ReturnType<typeof setInterval> | null = null
 
@@ -97,6 +99,16 @@ export async function buildApp(env: Env) {
     // Prune revoked-token rows once they can no longer affect verification.
     tokenRevocationSweeper = new TokenRevocationSweeper(db, 60 * 60 * 1000) // hourly
     tokenRevocationSweeper.start()
+
+    // Nothing else moves a task out of 'running', so an agent that dies after
+    // claiming work would otherwise leave it stuck there permanently — and
+    // unretryable, since retry only accepts 'failed'.
+    staleTaskReaper = new StaleTaskReaper(
+      db,
+      60_000, // Sweep every 1 minute
+      10 * 60_000, // Time out a claimed task after 10 minutes
+    )
+    staleTaskReaper.start()
     // Revision history is audit data, but cap it even when DNS config stops
     // changing so old terminal rows do not accumulate indefinitely.
     dnsRevisionPruner = setInterval(
@@ -110,6 +122,7 @@ export async function buildApp(env: Env) {
     nodeStatusChecker?.stop()
     certExpiryWatcher?.stop()
     tokenRevocationSweeper?.stop()
+    staleTaskReaper?.stop()
     if (dnsRevisionPruner) clearInterval(dnsRevisionPruner)
   })
 

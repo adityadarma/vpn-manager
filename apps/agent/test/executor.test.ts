@@ -2,11 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentEnv } from '../src/config/env'
 import type { VpnDriver } from '../src/drivers'
 
-const { handleCreateUser } = vi.hoisted(() => ({
+const { handleCreateUser, reportTaskResult } = vi.hoisted(() => ({
   handleCreateUser: vi.fn(),
+  reportTaskResult: vi.fn(),
 }))
 
 vi.mock('../src/handlers/create-user', () => ({ handleCreateUser }))
+
+vi.mock('../src/core/task-result-reporter', () => ({ reportTaskResult }))
 
 import { executeTask } from '../src/core/executor'
 
@@ -19,25 +22,21 @@ const env = {
 
 const driver = {} as VpnDriver
 
-function reportedBody(fetchMock: ReturnType<typeof vi.fn>): Record<string, unknown> {
-  const init = fetchMock.mock.calls[0]?.[1] as RequestInit
-  return JSON.parse(init.body as string) as Record<string, unknown>
+/** The result the executor asked the reporter to deliver. */
+function reported(): Record<string, unknown> {
+  return reportTaskResult.mock.calls[0]![2] as Record<string, unknown>
 }
 
 describe('executeTask', () => {
-  let fetchMock: ReturnType<typeof vi.fn>
-
   beforeEach(() => {
     handleCreateUser.mockReset()
-    fetchMock = vi.fn().mockResolvedValue({ ok: true })
-    vi.stubGlobal('fetch', fetchMock)
+    reportTaskResult.mockReset().mockResolvedValue(true)
     vi.spyOn(console, 'log').mockImplementation(() => undefined)
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
-    vi.unstubAllGlobals()
   })
 
   it('reports a successful handler result with the enriched payload', async () => {
@@ -54,17 +53,11 @@ describe('executeTask', () => {
       firewall_engine: 'nftables',
       vpn_type: 'wireguard',
     }, driver)
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://manager.example.test/api/v1/tasks/task-success/result',
-      expect.objectContaining({
-        method: 'POST',
-        headers: {
-          Authorization: 'Bearer agent-secret',
-          'Content-Type': 'application/json',
-        },
-      }),
-    )
-    expect(reportedBody(fetchMock)).toEqual({ status: 'success', result: { created: true } })
+    expect(reportTaskResult).toHaveBeenCalledWith(env, 'task-success', {
+      status: 'success',
+      result: { created: true },
+      errorMessage: undefined,
+    })
   })
 
   it.each([
@@ -80,7 +73,7 @@ describe('executeTask', () => {
       payload: { username: 'alice' },
     }, driver)
 
-    expect(reportedBody(fetchMock)).toEqual({ status: 'failed', result, errorMessage })
+    expect(reported()).toEqual({ status: 'failed', result, errorMessage })
   })
 
   it('reports a thrown handler error as failed', async () => {
@@ -92,7 +85,7 @@ describe('executeTask', () => {
       payload: { username: 'alice' },
     }, driver)
 
-    expect(reportedBody(fetchMock)).toEqual({
+    expect(reported()).toEqual({
       status: 'failed',
       result: {},
       errorMessage: 'certificate generation failed',
@@ -107,27 +100,23 @@ describe('executeTask', () => {
     }, driver)
 
     expect(handleCreateUser).not.toHaveBeenCalled()
-    expect(reportedBody(fetchMock)).toEqual({
+    expect(reported()).toMatchObject({
       status: 'failed',
       result: {},
       errorMessage: expect.stringContaining('Unknown action "does_not_exist"'),
     })
   })
 
-  it('does not reject when the manager rejects the report', async () => {
-    const text = vi.fn().mockResolvedValue('manager unavailable')
-    fetchMock.mockResolvedValue({ ok: false, status: 503, text })
+  it('still reports an outcome the reporter could not deliver', async () => {
+    reportTaskResult.mockResolvedValue(false)
     handleCreateUser.mockResolvedValue({ created: true })
 
     await expect(executeTask(env, {
-      id: 'task-report-failure',
+      id: 'task-undelivered',
       action: 'create_vpn_user',
       payload: { username: 'alice' },
     }, driver)).resolves.toBeUndefined()
 
-    expect(text).toHaveBeenCalledOnce()
-    expect(console.error).toHaveBeenCalledWith(
-      '[executor] Failed to report result: HTTP 503 - manager unavailable',
-    )
+    expect(reportTaskResult).toHaveBeenCalledOnce()
   })
 })

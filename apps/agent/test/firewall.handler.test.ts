@@ -57,3 +57,91 @@ describe('firewall handler security', () => {
     }, driver)).rejects.toThrow('iptables command failed')
   })
 })
+
+/**
+ * Firewall commands used to run with no timeout and no xtables lock wait. A
+ * concurrent lock holder (Docker, ufw, fail2ban) made iptables block forever,
+ * so the handler never returned and the task sat in 'running' indefinitely.
+ */
+describe('firewall command execution is bounded', () => {
+  beforeEach(() => execAsync.mockReset())
+
+  it('waits for the xtables lock instead of failing fast', async () => {
+    execAsync.mockResolvedValue({ stdout: '', stderr: '' })
+    await handleAddFirewallRule({
+      sourceIp: '10.0.0.1', destNetwork: '10.0.0.0/24', firewall_engine: 'iptables',
+    }, driver)
+
+    expect(execAsync).toHaveBeenCalledWith(
+      expect.stringContaining('iptables -w 5 -A FORWARD'),
+      expect.anything(),
+    )
+  })
+
+  it('passes -w to remove as well, so teardown cannot wedge either', async () => {
+    execAsync.mockResolvedValue({ stdout: '', stderr: '' })
+    await handleRemoveFirewallRule({
+      sourceIp: '10.0.0.1', destNetwork: '10.0.0.0/24', firewall_engine: 'iptables',
+    }, driver)
+
+    expect(execAsync).toHaveBeenCalledWith(
+      expect.stringContaining('iptables -w 5 -D FORWARD'),
+      expect.anything(),
+    )
+  })
+
+  it('applies a hard timeout to every firewall command', async () => {
+    execAsync.mockResolvedValue({ stdout: '', stderr: '' })
+    await handleAddFirewallRule({
+      sourceIp: '10.0.0.1', destNetwork: '10.0.0.0/24', firewall_engine: 'iptables',
+    }, driver)
+
+    const [, options] = execAsync.mock.calls[0]!
+    expect(options).toMatchObject({ timeout: 30_000 })
+  })
+
+  it('reports a wedged command as a timeout rather than a generic failure', async () => {
+    // `timeout` kills the child with a signal; that is what distinguishes a
+    // wedged command from one that merely exited non-zero.
+    execAsync.mockRejectedValueOnce(
+      Object.assign(new Error('Command failed'), { killed: true, signal: 'SIGTERM' }),
+    )
+
+    await expect(handleAddFirewallRule({
+      sourceIp: '10.0.0.1', destNetwork: '10.0.0.0/24', firewall_engine: 'iptables',
+    }, driver)).rejects.toThrow(/timed out after 30000ms/)
+  })
+
+  it('still surfaces a non-zero exit as a plain failure', async () => {
+    execAsync.mockRejectedValueOnce(
+      Object.assign(new Error('Bad rule'), { code: 2 }),
+    )
+
+    await expect(handleAddFirewallRule({
+      sourceIp: '10.0.0.1', destNetwork: '10.0.0.0/24', firewall_engine: 'iptables',
+    }, driver)).rejects.toThrow('iptables command failed: Bad rule')
+  })
+
+  it('bounds policy application commands too', async () => {
+    execAsync.mockResolvedValue({ stdout: '', stderr: '' })
+    await handleApplyNetworkPolicy({
+      firewall_engine: 'iptables',
+      vpn_type: 'openvpn',
+      policies: [{
+        id: 'p1', action: 'deny', protocol: 'tcp',
+        target_network: '10.10.0.0/24', target_port: '3306', priority: 1,
+        user_ip: null, group_subnet: null, user_id: null, group_id: null,
+      }],
+    }, driver)
+
+    // Every invocation, including the probes, must carry -w and a timeout.
+    const iptablesCalls = execAsync.mock.calls.filter(([cmd]) =>
+      typeof cmd === 'string' && cmd.startsWith('iptables'),
+    )
+    expect(iptablesCalls.length).toBeGreaterThan(0)
+    for (const [cmd, options] of iptablesCalls) {
+      expect(cmd).toMatch(/^iptables(-legacy)? -w 5 /)
+      expect(options).toMatchObject({ timeout: 30_000 })
+    }
+  })
+})

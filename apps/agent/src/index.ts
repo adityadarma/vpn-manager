@@ -14,6 +14,7 @@ import { startTrafficTelemetry } from './core/traffic-telemetry'
 import { OpenVpnDriver, WireGuardDriver, type VpnDriver } from './drivers'
 import { handleSyncCertificates } from './handlers/sync-certificates'
 import { handleSyncServerConfig } from './handlers/sync-server-config'
+import { startResultFlusher } from './core/task-result-reporter'
 import { startStatusMonitor } from './services/status-monitor'
 import { startEventMonitor } from './services/event-monitor'
 import { ensureCorefileBootstrap } from './services/managed-dns-bootstrap'
@@ -148,6 +149,7 @@ async function main() {
   // Start services
   startHeartbeat(env, driver)
   startTrafficTelemetry(env, driver)
+  const resultFlusher = startResultFlusher(env)
   startPoller(env, driver)
 
   if (env.VPN_TYPE === 'openvpn') {
@@ -161,6 +163,7 @@ async function main() {
   // Graceful shutdown
   const shutdown = async () => {
     console.log('\n🛑 VPN Agent shutting down...')
+    resultFlusher.stop()
     await driver.disconnect()
     process.exit(0)
   }
