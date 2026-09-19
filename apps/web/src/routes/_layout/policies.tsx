@@ -505,15 +505,15 @@ function PoliciesPage() {
           <TabsList className="grid w-full max-w-lg grid-cols-3">
             <TabsTrigger value="group" className="gap-2 cursor-pointer">
               <UsersRound className="h-4 w-4" />
-              Group Policies ({groupPolicies.length})
+              Group Policies
             </TabsTrigger>
             <TabsTrigger value="user" className="gap-2 cursor-pointer">
               <Users className="h-4 w-4" />
-              User Policies ({userPolicies.length})
+              User Policies
             </TabsTrigger>
             <TabsTrigger value="global" className="gap-2 cursor-pointer">
               <Shield className="h-4 w-4" />
-              Global Policies ({globalPolicies.length})
+              Global Policies
             </TabsTrigger>
           </TabsList>
         </div>

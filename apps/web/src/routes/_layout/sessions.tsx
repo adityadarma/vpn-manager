@@ -540,11 +540,11 @@ function SessionsPage() {
         <TabsList className="bg-muted/60 p-1 border border-border/60">
           <TabsTrigger value="active" className="gap-2 cursor-pointer text-xs font-medium">
             <Activity className="size-3.5" />
-            Active Tunnels ({activeSessions.length})
+            Active Tunnels
           </TabsTrigger>
           <TabsTrigger value="history" className="gap-2 cursor-pointer text-xs font-medium">
             <History className="size-3.5" />
-            Session History {pagination ? `(${pagination.total})` : ''}
+            Session History
           </TabsTrigger>
         </TabsList>
 
@@ -581,15 +581,12 @@ function SessionsPage() {
                   value={activeNodeFilter}
                   onChange={(e) => setActiveNodeFilter(e.target.value)}
                 >
-                  <option value="">All VPN Nodes ({nodes.length})</option>
-                  {nodes.map((node) => {
-                    const count = activeSessions.filter((s) => s.node_id === node.id).length
-                    return (
-                      <option key={node.id} value={node.id}>
-                        {node.hostname} ({count})
-                      </option>
-                    )
-                  })}
+                  <option value="">All VPN Nodes</option>
+                  {nodes.map((node) => (
+                    <option key={node.id} value={node.id}>
+                      {node.hostname}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -870,7 +867,7 @@ function SessionsPage() {
                     setHistoryPage(1)
                   }}
                 >
-                  <option value="">All VPN Nodes ({nodes.length})</option>
+                  <option value="">All VPN Nodes</option>
                   {nodes.map((node) => (
                     <option key={node.id} value={node.id}>
                       {node.hostname}

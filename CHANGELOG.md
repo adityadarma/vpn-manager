@@ -4,6 +4,20 @@ All notable changes to VPN Manager are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Removed the DNS summary cards and item counts from the `Allocations` and `Private Zones` tab labels.
+- Removed item counts from the audit `Administrative Logs` and `Failed Connection Attempts` tab labels.
+- Removed item counts from session tabs and VPN node filter options.
+- Removed the item count from the Tasks VPN node filter.
+- Removed item counts from the `Group Policies`, `User Policies`, and `Global Policies` tab labels.
+
+### Fixed
+
+- Fixed `Retry Task` returning `415 Unsupported Media Type` by sending an explicit JSON request body.
+
 ## [2.7.1] - 2026-09-19
 
 ### Fixed

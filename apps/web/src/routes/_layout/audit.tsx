@@ -427,11 +427,11 @@ function AuditPage() {
         <TabsList className="bg-muted/60 p-1 border border-border/60">
           <TabsTrigger value="logs" className="gap-2 cursor-pointer text-xs font-medium">
             <FileText className="size-3.5" />
-            Administrative Logs ({totalLogsCount})
+            Administrative Logs
           </TabsTrigger>
           <TabsTrigger value="attempts" className="gap-2 cursor-pointer text-xs font-medium">
             <ShieldAlert className="size-3.5" />
-            Failed Connection Attempts ({totalAttemptsCount})
+            Failed Connection Attempts
           </TabsTrigger>
         </TabsList>
 

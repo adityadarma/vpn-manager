@@ -495,10 +495,6 @@ function ManagedDnsPage() {
   })
 
   const managed = useMemo(() => nodes.filter((node) => node.managed_dns_enabled), [nodes])
-  const healthy = useMemo(
-    () => managed.filter((node) => node.dns_sync_status === 'healthy').length,
-    [managed],
-  )
 
   // Tab State
   const [activeTab, setActiveTab] = useState<'allocations' | 'zones' | 'policies'>('allocations')
@@ -691,56 +687,19 @@ function ManagedDnsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-              DNS Infrastructure
-            </span>
-          </div>
-          <h1 className="mt-1 text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-            Managed DNS
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Configure CoreDNS node resolvers, per-group subnet allocations, private authoritative
-            zones, and domain policies.
-          </p>
+      <div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+            DNS Infrastructure
+          </span>
         </div>
-
-        {/* Quick Summary Stat Cards */}
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <div className="flex items-center gap-2.5 rounded-xl border border-border bg-card px-3.5 py-2 shadow-xs">
-            <Server className="size-4 text-emerald-600 dark:text-emerald-400" />
-            <div>
-              <div className="text-xs font-bold text-foreground">
-                {healthy} / {managed.length}
-              </div>
-              <div className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                Healthy Nodes
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2.5 rounded-xl border border-border bg-card px-3.5 py-2 shadow-xs">
-            <Globe className="size-4 text-blue-600 dark:text-blue-400" />
-            <div>
-              <div className="text-xs font-bold text-foreground">{zones.length}</div>
-              <div className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                Private Zones
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2.5 rounded-xl border border-border bg-card px-3.5 py-2 shadow-xs">
-            <Network className="size-4 text-indigo-600 dark:text-indigo-400" />
-            <div>
-              <div className="text-xs font-bold text-foreground">{allocations.length}</div>
-              <div className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                Allocations
-              </div>
-            </div>
-          </div>
-        </div>
+        <h1 className="mt-1 text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
+          Managed DNS
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Configure CoreDNS node resolvers, per-group subnet allocations, private authoritative
+          zones, and domain policies.
+        </p>
       </div>
 
       {/* Fleet Nodes Overview Card */}
@@ -859,11 +818,11 @@ function ManagedDnsPage() {
           <TabsList className="grid w-full max-w-lg grid-cols-3">
             <TabsTrigger value="allocations" className="gap-2 cursor-pointer text-xs sm:text-sm">
               <Network className="size-4" />
-              Allocations ({allocations.length})
+              Allocations
             </TabsTrigger>
             <TabsTrigger value="zones" className="gap-2 cursor-pointer text-xs sm:text-sm">
               <Globe className="size-4" />
-              Private Zones ({zones.length})
+              Private Zones
             </TabsTrigger>
             <TabsTrigger value="policies" className="gap-2 cursor-pointer text-xs sm:text-sm">
               <Shield className="size-4" />

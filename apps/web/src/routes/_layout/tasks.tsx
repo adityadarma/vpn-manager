@@ -230,7 +230,8 @@ function TasksPage() {
 
   // Retry mutation
   const retryTask = useMutation({
-    mutationFn: (taskId: string) => api.post<{ reused: boolean }>(`/api/v1/tasks/${taskId}/retry`),
+    mutationFn: (taskId: string) =>
+      api.post<{ reused: boolean }>(`/api/v1/tasks/${taskId}/retry`, {}),
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ['tasks'] })
       toast.success(
@@ -444,7 +445,7 @@ function TasksPage() {
                 setPage(1)
               }}
             >
-              <option value="">All VPN Nodes ({nodes.length})</option>
+              <option value="">All VPN Nodes</option>
               {nodes.map((node) => (
                 <option key={node.id} value={node.id}>
                   {node.hostname}
