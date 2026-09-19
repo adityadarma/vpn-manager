@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.7.2] - 2026-09-20
+
 ### Changed
 
 - Removed the DNS summary cards and item counts from the `Allocations` and `Private Zones` tab labels.
