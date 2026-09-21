@@ -298,6 +298,28 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
             dns_last_synced_at:
               input.status === 'success' ? new Date() : app.db.raw('dns_last_synced_at'),
           })
+        const node = await app.db('vpn_nodes').where({ id: authenticatedNode.id }).select('hostname').first()
+        const dedupKey = `dns.sync_failed:vpn_node:${authenticatedNode.id}`
+        if (input.status === 'success') {
+          await app.alerts.resolve(dedupKey, `Managed DNS recovered on ${node?.hostname ?? authenticatedNode.id}`)
+        } else {
+          await app.alerts.open({
+            event: 'dns.sync_failed', severity: 'critical', resourceType: 'vpn_node', resourceId: authenticatedNode.id,
+            resourceName: node?.hostname ?? authenticatedNode.id,
+            summary: `Managed DNS sync failed on ${node?.hostname ?? authenticatedNode.id}`,
+            details: { task_id: id, error: input.errorMessage ?? 'Unknown error' }, dedupKey,
+          })
+        }
+      }
+
+      if (input.status === 'failed') {
+        const node = await app.db('vpn_nodes').where({ id: authenticatedNode.id }).select('hostname').first()
+        await app.alerts.open({
+          event: 'task.failed', severity: task.action === 'sync_group_dns' ? 'critical' : 'warning',
+          resourceType: 'task', resourceId: id, resourceName: task.action,
+          summary: `Task ${task.action} failed on ${node?.hostname ?? authenticatedNode.id}`,
+          details: { node_id: authenticatedNode.id, node: node?.hostname, error: input.errorMessage ?? 'Unknown error' },
+        })
       }
 
       // The agent has consumed the payload, so any secret in it (e.g. the

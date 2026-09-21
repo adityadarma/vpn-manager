@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
+import { Route as LayoutAlertsRouteImport } from './routes/_layout/alerts'
 import { Route as LayoutAuditRouteImport } from './routes/_layout/audit'
 import { Route as LayoutDnsRouteImport } from './routes/_layout/dns'
 import { Route as LayoutGroupsRouteImport } from './routes/_layout/groups'
@@ -39,6 +40,11 @@ const LoginRoute = LoginRouteImport.update({
 const LayoutIndexRoute = LayoutIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutAlertsRoute = LayoutAlertsRouteImport.update({
+  id: '/alerts',
+  path: '/alerts',
   getParentRoute: () => LayoutRoute,
 } as any)
 const LayoutAuditRoute = LayoutAuditRouteImport.update({
@@ -116,6 +122,7 @@ const LayoutUsersUserIdCertificatesRoute =
 export interface FileRoutesByFullPath {
   '/': typeof LayoutIndexRoute
   '/login': typeof LoginRoute
+  '/alerts': typeof LayoutAlertsRoute
   '/audit': typeof LayoutAuditRoute
   '/dns': typeof LayoutDnsRoute
   '/groups': typeof LayoutGroupsRouteWithChildren
@@ -133,6 +140,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
+  '/alerts': typeof LayoutAlertsRoute
   '/audit': typeof LayoutAuditRoute
   '/dns': typeof LayoutDnsRoute
   '/networks': typeof LayoutNetworksRoute
@@ -151,6 +159,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_layout': typeof LayoutRouteWithChildren
   '/login': typeof LoginRoute
+  '/_layout/alerts': typeof LayoutAlertsRoute
   '/_layout/audit': typeof LayoutAuditRoute
   '/_layout/dns': typeof LayoutDnsRoute
   '/_layout/groups': typeof LayoutGroupsRouteWithChildren
@@ -172,6 +181,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/alerts'
     | '/audit'
     | '/dns'
     | '/groups'
@@ -189,6 +199,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
+    | '/alerts'
     | '/audit'
     | '/dns'
     | '/networks'
@@ -206,6 +217,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_layout'
     | '/login'
+    | '/_layout/alerts'
     | '/_layout/audit'
     | '/_layout/dns'
     | '/_layout/groups'
@@ -249,6 +261,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof LayoutIndexRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/alerts': {
+      id: '/_layout/alerts'
+      path: '/alerts'
+      fullPath: '/alerts'
+      preLoaderRoute: typeof LayoutAlertsRouteImport
       parentRoute: typeof LayoutRoute
     }
     '/_layout/audit': {
@@ -381,6 +400,7 @@ const LayoutUsersRouteWithChildren = LayoutUsersRoute._addFileChildren(
 )
 
 interface LayoutRouteChildren {
+  LayoutAlertsRoute: typeof LayoutAlertsRoute
   LayoutAuditRoute: typeof LayoutAuditRoute
   LayoutDnsRoute: typeof LayoutDnsRoute
   LayoutGroupsRoute: typeof LayoutGroupsRouteWithChildren
@@ -395,6 +415,7 @@ interface LayoutRouteChildren {
 }
 
 const LayoutRouteChildren: LayoutRouteChildren = {
+  LayoutAlertsRoute: LayoutAlertsRoute,
   LayoutAuditRoute: LayoutAuditRoute,
   LayoutDnsRoute: LayoutDnsRoute,
   LayoutGroupsRoute: LayoutGroupsRouteWithChildren,

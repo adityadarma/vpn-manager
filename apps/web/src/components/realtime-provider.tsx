@@ -46,6 +46,7 @@ const queryKeysByEvent: Record<string, string[]> = {
   ],
   policy: ['policies', 'networks', 'groups', 'nodes', 'tasks'],
   group: ['groups', 'users', 'networks', 'policies', 'group-allocations', 'nodes', 'tasks'],
+  alert: ['alerts', 'alert-channels'],
 }
 
 const RealtimeConnectionContext = createContext(false)

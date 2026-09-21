@@ -1035,6 +1035,20 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         updates.dns_last_sync_error = null
       }
       await app.db('vpn_nodes').where({ id: nodeId }).update(updates)
+      if (wasOffline) {
+        await app.alerts.resolve(`node.offline:vpn_node:${nodeId}`, `VPN node ${currentNode.hostname} recovered`)
+      }
+      const nextDnsStatus = updates.dns_sync_status
+      const dnsDedupKey = `dns.sync_failed:vpn_node:${nodeId}`
+      if (currentNode?.managed_dns_enabled && ['failed', 'degraded'].includes(nextDnsStatus)) {
+        await app.alerts.open({
+          event: 'dns.sync_failed', severity: 'critical', resourceType: 'vpn_node', resourceId: nodeId,
+          resourceName: currentNode.hostname, summary: `Managed DNS is ${nextDnsStatus} on ${currentNode.hostname}`,
+          details: { status: nextDnsStatus, error: updates.dns_last_sync_error }, dedupKey: dnsDedupKey,
+        })
+      } else if (nextDnsStatus === 'healthy' || nextDnsStatus === 'disabled') {
+        await app.alerts.resolve(dnsDedupKey, `Managed DNS recovered on ${currentNode.hostname}`)
+      }
       app.realtime.publish('node.updated', nodeId)
 
       if (activatingManagedDns) {

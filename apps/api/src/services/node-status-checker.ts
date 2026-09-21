@@ -1,4 +1,5 @@
 import type { Knex } from 'knex'
+import type { AlertService } from './alerts'
 
 /**
  * Node Status Checker Service
@@ -13,7 +14,8 @@ export class NodeStatusChecker {
   constructor(
     db: Knex,
     checkIntervalMs: number = 60000, // Check every 1 minute
-    offlineThresholdMs: number = 120000 // Mark offline after 2 minutes without heartbeat
+    offlineThresholdMs: number = 120000, // Mark offline after 2 minutes without heartbeat
+    private readonly alerts?: AlertService,
   ) {
     this.db = db
     this.checkIntervalMs = checkIntervalMs
@@ -73,6 +75,14 @@ export class NodeStatusChecker {
         await this.db('vpn_nodes')
           .whereIn('id', nodeIds)
           .update({ status: 'offline' })
+
+        for (const node of staleNodes) {
+          await this.alerts?.open({
+            event: 'node.offline', severity: 'critical', resourceType: 'vpn_node', resourceId: node.id,
+            resourceName: node.hostname, summary: `VPN node ${node.hostname} is offline`,
+            details: { last_seen: node.last_seen, threshold_ms: this.offlineThresholdMs },
+          })
+        }
 
         console.log(`[NodeStatusChecker] Marked ${staleNodes.length} node(s) as offline:`)
         staleNodes.forEach(node => {

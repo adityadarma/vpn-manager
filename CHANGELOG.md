@@ -6,8 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- Added durable operational alerting for offline and recovered nodes, failed tasks, expiring credentials, and unhealthy Managed DNS, with deduplication, acknowledgement, automatic recovery, retries, and an admin Alerts dashboard. Notification channels support Slack and Telegram with provider-specific payloads and encrypted credentials.
+
 ### Changed
 
+- Standardized the Alerts table pagination with labeled Previous/Next controls, page totals, and safe navigation while loading.
 - The Tasks table's `Operation / Action` column now shows only the human-readable label, dropping the raw action string (e.g. `apply_network_policy`) shown underneath it.
 - The `Retry` button on a failed task is now hidden once a newer task with the same action and node exists, since retrying the older failure would be redundant.
 

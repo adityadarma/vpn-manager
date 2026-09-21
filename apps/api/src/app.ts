@@ -7,6 +7,7 @@ import { TokenRevocationSweeper } from './services/token-revocation'
 import { StaleTaskReaper } from './services/stale-task-reaper'
 import { pruneNodeDnsRevisions } from './services/managed-dns'
 import { registerRealtimeEvents } from './services/realtime'
+import { AlertDeliveryWorker, AlertService, scanExpiringCredentials } from './services/alerts'
 
 import corsPlugin from './plugins/cors'
 import cookiePlugin from './plugins/cookie'
@@ -30,6 +31,7 @@ import networkRoutes from './modules/networks/networks.routes'
 import auditRoutes from './modules/audit/audit.routes'
 import dnsRoutes from './modules/dns/dns.routes'
 import realtimeRoutes from './modules/realtime/realtime.routes'
+import alertsRoutes from './modules/alerts/alerts.routes'
 
 export async function buildApp(env: Env) {
   const db = createDb({
@@ -45,6 +47,8 @@ export async function buildApp(env: Env) {
     trustProxy: true,
   })
   registerRealtimeEvents(app)
+  const alerts = new AlertService(db, app.realtime)
+  app.decorate('alerts', alerts)
 
   // Plugins
   await app.register(corsPlugin)
@@ -71,6 +75,7 @@ export async function buildApp(env: Env) {
       await v1.register(networkRoutes)
       await v1.register(dnsRoutes)
       await v1.register(auditRoutes)
+      await v1.register(alertsRoutes, { encryptionSecret: env.JWT_SECRET })
     },
     { prefix: '/api/v1' },
   )
@@ -86,15 +91,25 @@ export async function buildApp(env: Env) {
   let staleTaskReaper: StaleTaskReaper | null = null
   let certExpiryWatcher: { stop: () => void } | null = null
   let dnsRevisionPruner: ReturnType<typeof setInterval> | null = null
+  let credentialAlertScanner: ReturnType<typeof setInterval> | null = null
+  let alertDeliveryWorker: AlertDeliveryWorker | null = null
 
   if (shouldStartSchedulers) {
     nodeStatusChecker = new NodeStatusChecker(
       db,
       60000, // Check every 1 minute
       120000, // Mark offline after 2 minutes without heartbeat
+      alerts,
     )
     nodeStatusChecker.start()
-    certExpiryWatcher = startCertExpiryWatcher(db)
+    certExpiryWatcher = startCertExpiryWatcher(db, alerts)
+    void scanExpiringCredentials(db, alerts).catch((error) => app.log.error(error, 'Credential alert scan failed'))
+    credentialAlertScanner = setInterval(
+      () => void scanExpiringCredentials(db, alerts).catch((error) => app.log.error(error, 'Credential alert scan failed')),
+      6 * 60 * 60_000,
+    )
+    alertDeliveryWorker = new AlertDeliveryWorker(db, env.JWT_SECRET, env.WEB_URL)
+    alertDeliveryWorker.start()
 
     // Prune revoked-token rows once they can no longer affect verification.
     tokenRevocationSweeper = new TokenRevocationSweeper(db, 60 * 60 * 1000) // hourly
@@ -107,6 +122,7 @@ export async function buildApp(env: Env) {
       db,
       60_000, // Sweep every 1 minute
       10 * 60_000, // Time out a claimed task after 10 minutes
+      alerts,
     )
     staleTaskReaper.start()
     // Revision history is audit data, but cap it even when DNS config stops
@@ -123,6 +139,8 @@ export async function buildApp(env: Env) {
     certExpiryWatcher?.stop()
     tokenRevocationSweeper?.stop()
     staleTaskReaper?.stop()
+    alertDeliveryWorker?.stop()
+    if (credentialAlertScanner) clearInterval(credentialAlertScanner)
     if (dnsRevisionPruner) clearInterval(dnsRevisionPruner)
   })
 

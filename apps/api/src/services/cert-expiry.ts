@@ -1,5 +1,6 @@
 import type { Knex } from 'knex'
 import { v7 as uuidv7 } from 'uuid'
+import type { AlertService } from './alerts'
 
 export interface RevocationResult {
   userId: string
@@ -13,7 +14,7 @@ export interface RevocationResult {
  * Automatically revokes certificates whose expiration date has passed (expires_at <= now).
  * Lifetime certificates (expires_at = null) are never expired and never touched.
  */
-export async function revokeExpiredCertificates(db: Knex): Promise<RevocationResult[]> {
+export async function revokeExpiredCertificates(db: Knex, alerts?: AlertService): Promise<RevocationResult[]> {
   const results: RevocationResult[] = []
   const now = new Date()
 
@@ -108,6 +109,7 @@ export async function revokeExpiredCertificates(db: Knex): Promise<RevocationRes
           revoke_reason: 'Certificate expired',
           updated_at: new Date(),
         })
+        await alerts?.resolve(`credential.expiring:credential:${cert.cert_id}`, 'Expired credential was revoked')
 
         results.push({
           userId: cert.user_id,
@@ -141,15 +143,15 @@ export async function revokeExpiredCertificates(db: Knex): Promise<RevocationRes
  * Starts the periodic scheduler to revoke expired certificates.
  * Runs silently every 5 minutes and only logs when an expired certificate is found & revoked.
  */
-export function startCertExpiryWatcher(db: Knex): { stop: () => void } {
+export function startCertExpiryWatcher(db: Knex, alerts?: AlertService): { stop: () => void } {
   console.log('[cert-expiry] Starting expired certificate watcher (checks every 5 minutes)')
 
   // Initial check on server start
-  revokeExpiredCertificates(db).catch(console.error)
+  revokeExpiredCertificates(db, alerts).catch(console.error)
 
   // Periodic check every 5 minutes
   const interval = setInterval(() => {
-    revokeExpiredCertificates(db).catch(console.error)
+    revokeExpiredCertificates(db, alerts).catch(console.error)
   }, 5 * 60 * 1000)
 
   return {

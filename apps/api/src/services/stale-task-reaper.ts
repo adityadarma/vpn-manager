@@ -1,4 +1,5 @@
 import type { Knex } from 'knex'
+import type { AlertService } from './alerts'
 
 /**
  * Finalises tasks that were claimed by an agent but never reported back.
@@ -28,6 +29,7 @@ export class StaleTaskReaper {
     db: Knex,
     intervalMs: number = 60_000, // Sweep every 1 minute
     timeoutMs: number = 10 * 60_000, // Give up on a claimed task after 10 minutes
+    private readonly alerts?: AlertService,
   ) {
     this.db = db
     this.intervalMs = intervalMs
@@ -104,6 +106,11 @@ export class StaleTaskReaper {
         console.warn(`[StaleTaskReaper] Timed out ${reaped} stale task(s):`)
         for (const task of stale) {
           console.warn(`  - ${task.action} (${task.id}) on node ${task.node_id}`)
+          await this.alerts?.open({
+            event: 'task.failed', severity: 'critical', resourceType: 'task', resourceId: task.id,
+            resourceName: task.action, summary: `Task ${task.action} timed out`,
+            details: { node_id: task.node_id, reason: 'timeout' },
+          })
         }
       }
       return reaped
