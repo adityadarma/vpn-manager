@@ -18,6 +18,7 @@ import {
   FileText,
   NetworkIcon,
   BellRing,
+  Settings,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -51,6 +52,7 @@ const NAV_ITEMS = [
   { href: '/alerts', label: 'Alerts', icon: BellRing, adminOnly: true },
   { href: '/sessions', label: 'Sessions', icon: Activity },
   { href: '/audit', label: 'Audit Logs', icon: FileText, adminOnly: true },
+  { href: '/settings', label: 'Settings', icon: Settings, adminOnly: true },
 ] as const
 
 export function AppSidebar() {
@@ -92,7 +94,9 @@ export function AppSidebar() {
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-semibold">VPN Manager</span>
-                <span className="truncate text-xs text-muted-foreground">v{packageJson.version}</span>
+                <span className="truncate text-xs text-muted-foreground">
+                  v{packageJson.version}
+                </span>
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -104,7 +108,9 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {NAV_ITEMS.filter(item => !('adminOnly' in item && item.adminOnly) || user?.role === 'admin').map(({ href, label, icon: Icon }) => {
+              {NAV_ITEMS.filter(
+                (item) => !('adminOnly' in item && item.adminOnly) || user?.role === 'admin',
+              ).map(({ href, label, icon: Icon }) => {
                 const active = pathname.startsWith(href) && (href !== '/' || pathname === '/')
                 return (
                   <SidebarMenuItem key={href}>
@@ -114,13 +120,20 @@ export function AppSidebar() {
                       tooltip={label}
                       onClick={() => navigateAndClose(href)}
                       className={cn(
-                        "relative transition-all duration-150 font-medium",
+                        'relative transition-all duration-150 font-medium',
                         active
-                          ? "!bg-emerald-500/15 !text-emerald-600 dark:!bg-emerald-500/20 dark:!text-emerald-400 font-semibold shadow-xs"
-                          : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+                          ? '!bg-emerald-500/15 !text-emerald-600 dark:!bg-emerald-500/20 dark:!text-emerald-400 font-semibold shadow-xs'
+                          : 'text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50',
                       )}
                     >
-                      <Icon className={cn("size-4 shrink-0 transition-colors", active ? "!text-emerald-600 dark:!text-emerald-400" : "text-muted-foreground")} />
+                      <Icon
+                        className={cn(
+                          'size-4 shrink-0 transition-colors',
+                          active
+                            ? '!text-emerald-600 dark:!text-emerald-400'
+                            : 'text-muted-foreground',
+                        )}
+                      />
                       <span className="flex-1 truncate">{label}</span>
                       {active && (
                         <span className="size-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400 group-data-[collapsible=icon]:hidden" />
@@ -149,7 +162,9 @@ export function AppSidebar() {
                   </div>
                   <div className="grid flex-1 text-left text-sm leading-tight">
                     <span className="truncate font-semibold">{user?.name ?? 'User'}</span>
-                    <span className="truncate text-xs text-muted-foreground">{user?.email ?? 'No email'}</span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {user?.email ?? 'No email'}
+                    </span>
                   </div>
                   <ChevronsUpDown className="ml-auto size-4" />
                 </SidebarMenuButton>
@@ -160,7 +175,10 @@ export function AppSidebar() {
                 align="end"
                 sideOffset={4}
               >
-                <DropdownMenuItem onClick={() => navigateAndClose('/profile')} className="cursor-pointer">
+                <DropdownMenuItem
+                  onClick={() => navigateAndClose('/profile')}
+                  className="cursor-pointer"
+                >
                   <UserCircle className="mr-2 h-4 w-4" />
                   Profile
                 </DropdownMenuItem>

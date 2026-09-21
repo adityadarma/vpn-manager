@@ -9,12 +9,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ### Added
 
 - Added durable operational alerting for offline and recovered nodes, failed tasks, expiring credentials, and unhealthy Managed DNS, with deduplication, acknowledgement, automatic recovery, retries, and an admin Alerts dashboard. Notification channels support Slack and Telegram with provider-specific payloads and encrypted credentials.
+- Added an admin Settings workspace with consistent SQLite backups, validated restart-safe restores, per-channel notification rules and test delivery, and scheduled data-retention policies with cleanup previews.
 
 ### Changed
 
 - Standardized the Alerts table pagination with labeled Previous/Next controls, page totals, and safe navigation while loading.
+- Added permanent deletion for stored database backups and condensed backup download/delete actions to accessible icon buttons.
 - The Tasks table's `Operation / Action` column now shows only the human-readable label, dropping the raw action string (e.g. `apply_network_policy`) shown underneath it.
 - The `Retry` button on a failed task is now hidden once a newer task with the same action and node exists, since retrying the older failure would be redundant.
+
+### Fixed
+
+- Cleared the native restore file input after a database backup is successfully staged.
 
 ## [2.7.2] - 2026-09-20
 

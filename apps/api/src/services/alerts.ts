@@ -80,7 +80,7 @@ export async function validateWebhookUrl(value: string): Promise<URL> {
   return url
 }
 
-interface DeliveryAlert {
+export interface DeliveryAlert {
   event: string
   severity: AlertSeverity
   status: 'open' | 'resolved'
@@ -149,6 +149,24 @@ export function buildProviderRequest(
     headers: baseHeaders,
     body: JSON.stringify({ chat_id: config.chatId, text, disable_web_page_preview: true }),
   }
+}
+
+export async function sendProviderNotification(
+  config: NotificationProviderConfig,
+  alert: DeliveryAlert,
+): Promise<number> {
+  const request = buildProviderRequest(config, alert)
+  await validateWebhookUrl(request.url)
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 10_000)
+  const response = await fetch(request.url, {
+    method: 'POST',
+    signal: controller.signal,
+    headers: request.headers,
+    body: request.body,
+  }).finally(() => clearTimeout(timeout))
+  if (!response.ok) throw new Error(`Provider returned HTTP ${response.status}`)
+  return response.status
 }
 
 export class AlertService {
@@ -325,9 +343,18 @@ export class AlertDeliveryWorker {
         .where({ status: 'pending' })
         .orderBy('created_at')
         .limit(50)
-      const channels = await this.db('notification_channels').where({ enabled: true })
       for (const item of outbox) {
+        const alert = await this.db('alerts').where({ id: item.alert_id }).first()
+        const channels = await this.db('notification_channels').where({ enabled: true })
         for (const channel of channels) {
+          const events = channel.events
+            ? ((typeof channel.events === 'string'
+                ? JSON.parse(channel.events)
+                : channel.events) as string[])
+            : []
+          if (events.length > 0 && !events.includes(alert.event)) continue
+          if (channel.minimum_severity === 'critical' && alert.severity !== 'critical') continue
+          if (item.notification_status === 'resolved' && !channel.send_resolved) continue
           await this.db('notification_deliveries')
             .insert({
               id: uuidv7(),
@@ -384,7 +411,7 @@ export class AlertDeliveryWorker {
         decryptChannelValue(row.config_encrypted, this.encryptionSecret),
       ) as NotificationProviderConfig
       if (config.type !== row.channel_type) throw new Error('Notification channel type mismatch')
-      const request = buildProviderRequest(config, {
+      const responseStatus = await sendProviderNotification(config, {
         event: row.event,
         severity: row.severity,
         status: row.notification_status,
@@ -396,20 +423,10 @@ export class AlertDeliveryWorker {
         details: typeof row.details === 'string' ? JSON.parse(row.details) : row.details,
         detailsUrl: this.webUrl ? `${this.webUrl.replace(/\/$/, '')}/alerts` : undefined,
       })
-      await validateWebhookUrl(request.url)
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 10_000)
-      const response = await fetch(request.url, {
-        method: 'POST',
-        signal: controller.signal,
-        headers: request.headers,
-        body: request.body,
-      }).finally(() => clearTimeout(timeout))
-      if (!response.ok) throw new Error(`Webhook returned HTTP ${response.status}`)
       await this.db('notification_deliveries').where({ id: row.id }).update({
         status: 'delivered',
         attempt_count: attempt,
-        response_status: response.status,
+        response_status: responseStatus,
         error_message: null,
         delivered_at: new Date(),
         updated_at: new Date(),

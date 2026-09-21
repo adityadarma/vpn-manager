@@ -8,6 +8,7 @@ import { StaleTaskReaper } from './services/stale-task-reaper'
 import { pruneNodeDnsRevisions } from './services/managed-dns'
 import { registerRealtimeEvents } from './services/realtime'
 import { AlertDeliveryWorker, AlertService, scanExpiringCredentials } from './services/alerts'
+import { DataRetentionWorker } from './services/data-retention'
 
 import corsPlugin from './plugins/cors'
 import cookiePlugin from './plugins/cookie'
@@ -32,6 +33,7 @@ import auditRoutes from './modules/audit/audit.routes'
 import dnsRoutes from './modules/dns/dns.routes'
 import realtimeRoutes from './modules/realtime/realtime.routes'
 import alertsRoutes from './modules/alerts/alerts.routes'
+import settingsRoutes from './modules/settings/settings.routes'
 
 export async function buildApp(env: Env) {
   const db = createDb({
@@ -76,6 +78,7 @@ export async function buildApp(env: Env) {
       await v1.register(dnsRoutes)
       await v1.register(auditRoutes)
       await v1.register(alertsRoutes, { encryptionSecret: env.JWT_SECRET })
+      await v1.register(settingsRoutes)
     },
     { prefix: '/api/v1' },
   )
@@ -93,6 +96,7 @@ export async function buildApp(env: Env) {
   let dnsRevisionPruner: ReturnType<typeof setInterval> | null = null
   let credentialAlertScanner: ReturnType<typeof setInterval> | null = null
   let alertDeliveryWorker: AlertDeliveryWorker | null = null
+  let dataRetentionWorker: DataRetentionWorker | null = null
 
   if (shouldStartSchedulers) {
     nodeStatusChecker = new NodeStatusChecker(
@@ -103,13 +107,20 @@ export async function buildApp(env: Env) {
     )
     nodeStatusChecker.start()
     certExpiryWatcher = startCertExpiryWatcher(db, alerts)
-    void scanExpiringCredentials(db, alerts).catch((error) => app.log.error(error, 'Credential alert scan failed'))
+    void scanExpiringCredentials(db, alerts).catch((error) =>
+      app.log.error(error, 'Credential alert scan failed'),
+    )
     credentialAlertScanner = setInterval(
-      () => void scanExpiringCredentials(db, alerts).catch((error) => app.log.error(error, 'Credential alert scan failed')),
+      () =>
+        void scanExpiringCredentials(db, alerts).catch((error) =>
+          app.log.error(error, 'Credential alert scan failed'),
+        ),
       6 * 60 * 60_000,
     )
     alertDeliveryWorker = new AlertDeliveryWorker(db, env.JWT_SECRET, env.WEB_URL)
     alertDeliveryWorker.start()
+    dataRetentionWorker = new DataRetentionWorker(db)
+    dataRetentionWorker.start()
 
     // Prune revoked-token rows once they can no longer affect verification.
     tokenRevocationSweeper = new TokenRevocationSweeper(db, 60 * 60 * 1000) // hourly
@@ -140,6 +151,7 @@ export async function buildApp(env: Env) {
     tokenRevocationSweeper?.stop()
     staleTaskReaper?.stop()
     alertDeliveryWorker?.stop()
+    dataRetentionWorker?.stop()
     if (credentialAlertScanner) clearInterval(credentialAlertScanner)
     if (dnsRevisionPruner) clearInterval(dnsRevisionPruner)
   })

@@ -1,7 +1,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { buildApp } from '../src/app'
-import { AlertService, buildProviderRequest, decryptChannelValue } from '../src/services/alerts'
+import {
+  AlertDeliveryWorker,
+  AlertService,
+  buildProviderRequest,
+  decryptChannelValue,
+  encryptChannelValue,
+} from '../src/services/alerts'
 import { loginAsAdmin } from './helpers'
 
 describe('operational alerts', () => {
@@ -174,5 +180,34 @@ describe('operational alerts', () => {
     )
     expect(telegram.url).toBe('https://api.telegram.org/bottoken/sendMessage')
     expect(JSON.parse(telegram.body).chat_id).toBe('-1001')
+  })
+
+  it('filters queued notifications by event, severity, and recovery policy', async () => {
+    await app.db('notification_channels').insert({
+      id: 'critical-node-channel',
+      name: 'Critical nodes',
+      type: 'slack',
+      config_encrypted: encryptChannelValue(
+        JSON.stringify({ type: 'slack', url: 'https://example.com/hook' }),
+        'test-secret-that-is-at-least-32-characters',
+      ),
+      enabled: true,
+      minimum_severity: 'critical',
+      events: JSON.stringify(['node.offline']),
+      send_resolved: false,
+    })
+    await app.alerts.open({
+      event: 'task.failed',
+      severity: 'warning',
+      resourceType: 'task',
+      resourceId: 'filtered-task',
+      resourceName: 'sync',
+      summary: 'Filtered task failure',
+    })
+
+    await new AlertDeliveryWorker(app.db, 'test-secret-that-is-at-least-32-characters').runOnce()
+
+    expect(await app.db('notification_deliveries')).toHaveLength(0)
+    expect((await app.db('notification_outbox').first()).status).toBe('processed')
   })
 })

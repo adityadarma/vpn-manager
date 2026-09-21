@@ -5,6 +5,7 @@ import fs from 'fs'
 
 export interface DbConfig {
   inMemory?: boolean
+  filename?: string
 }
 
 // Resolve the monorepo root/data directory regardless of CWD
@@ -12,6 +13,10 @@ export interface DbConfig {
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const MONOREPO_ROOT = path.resolve(__dirname, '../../..') // packages/db/src → root
 const DEFAULT_SQLITE_PATH = path.join(MONOREPO_ROOT, 'data', 'vpn.sqlite')
+
+export function getDbPath(): string {
+  return fs.existsSync('/data') ? '/data/vpn.sqlite' : DEFAULT_SQLITE_PATH
+}
 
 let _db: Knex | null = null
 
@@ -32,7 +37,7 @@ export function createDb(config: DbConfig): Knex {
 
   // Production mounts /data; local development keeps the database in the repo.
   // Tests use an isolated in-memory database without an environment override.
-  const sqlitePath = config.inMemory ? ':memory:' : (fs.existsSync('/data') ? '/data/vpn.sqlite' : DEFAULT_SQLITE_PATH)
+  const sqlitePath = config.inMemory ? ':memory:' : (config.filename ?? getDbPath())
   if (!config.inMemory) fs.mkdirSync(path.dirname(sqlitePath), { recursive: true })
   const knexConfig: Knex.Config = {
     client: 'better-sqlite3',

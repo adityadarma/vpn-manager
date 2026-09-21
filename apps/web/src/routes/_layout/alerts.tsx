@@ -7,9 +7,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Plus,
   RefreshCw,
-  Trash2,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
@@ -17,8 +15,6 @@ import { useRealtimeConnected } from '@/components/realtime-provider'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/ui/modal'
 import {
   Select,
   SelectContent,
@@ -55,20 +51,6 @@ interface AlertItem {
   last_occurred_at: string
 }
 
-interface Channel {
-  id: string
-  name: string
-  type: ProviderType
-  enabled: boolean
-}
-
-type ProviderType = 'slack' | 'telegram'
-
-const providerLabels: Record<ProviderType, string> = {
-  slack: 'Slack',
-  telegram: 'Telegram',
-}
-
 // eslint-disable-next-line react-refresh/only-export-components
 function AlertsPage() {
   const qc = useQueryClient()
@@ -76,12 +58,6 @@ function AlertsPage() {
   const [page, setPage] = useState(1)
   const [status, setStatus] = useState('open')
   const [severity, setSeverity] = useState('all')
-  const [channelModalOpen, setChannelModalOpen] = useState(false)
-  const [name, setName] = useState('')
-  const [provider, setProvider] = useState<ProviderType>('slack')
-  const [url, setUrl] = useState('')
-  const [botToken, setBotToken] = useState('')
-  const [chatId, setChatId] = useState('')
 
   const { data, isFetching, isPlaceholderData, refetch } = useQuery<{
     alerts: AlertItem[]
@@ -99,48 +75,11 @@ function AlertsPage() {
     refetchInterval: realtimeConnected ? false : 60_000,
   })
 
-  const { data: channelData } = useQuery<{ channels: Channel[] }>({
-    queryKey: ['alert-channels'],
-    queryFn: () => api.get('/api/v1/alerts/channels'),
-  })
-
   const acknowledge = useMutation({
     mutationFn: (id: string) => api.patch(`/api/v1/alerts/${id}/acknowledge`, {}),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['alerts'] })
       toast.success('Alert acknowledged')
-    },
-    onError: (error: Error) => toast.error(error.message),
-  })
-
-  const createChannel = useMutation({
-    mutationFn: () => {
-      const providerConfig = provider === 'telegram' ? { botToken, chatId } : { url }
-      return api.post('/api/v1/alerts/channels', {
-        name,
-        type: provider,
-        enabled: true,
-        ...providerConfig,
-      })
-    },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['alert-channels'] })
-      setChannelModalOpen(false)
-      setName('')
-      setProvider('slack')
-      setUrl('')
-      setBotToken('')
-      setChatId('')
-      toast.success('Notification channel created')
-    },
-    onError: (error: Error) => toast.error(error.message),
-  })
-
-  const deleteChannel = useMutation({
-    mutationFn: (id: string) => api.delete(`/api/v1/alerts/channels/${id}`),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['alert-channels'] })
-      toast.success('Notification channel deleted')
     },
     onError: (error: Error) => toast.error(error.message),
   })
@@ -155,14 +94,9 @@ function AlertsPage() {
             Node, task, credential, and Managed DNS incidents.
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => void refetch()} disabled={isFetching}>
-            <RefreshCw className={`size-4 ${isFetching ? 'animate-spin' : ''}`} /> Refresh
-          </Button>
-          <Button onClick={() => setChannelModalOpen(true)}>
-            <Plus className="size-4" /> Add Channel
-          </Button>
-        </div>
+        <Button variant="outline" onClick={() => void refetch()} disabled={isFetching}>
+          <RefreshCw className={`size-4 ${isFetching ? 'animate-spin' : ''}`} /> Refresh
+        </Button>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
@@ -346,121 +280,6 @@ function AlertsPage() {
           )}
         </CardContent>
       </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Notification Channels</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {(channelData?.channels ?? []).map((channel) => (
-            <div
-              key={channel.id}
-              className="flex items-center justify-between rounded-md border p-3"
-            >
-              <div>
-                <div className="font-medium">{channel.name}</div>
-                <div className="text-xs text-muted-foreground">
-                  {providerLabels[channel.type]} · {channel.enabled ? 'Enabled' : 'Disabled'}
-                </div>
-              </div>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="text-red-600"
-                onClick={() => deleteChannel.mutate(channel.id)}
-              >
-                <Trash2 className="size-4" />
-              </Button>
-            </div>
-          ))}
-          {!channelData?.channels.length && (
-            <p className="text-sm text-muted-foreground">
-              No notification channel configured. Alerts remain available in this page.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Modal open={channelModalOpen} onClose={() => setChannelModalOpen(false)}>
-        <ModalHeader
-          title="Add Notification Channel"
-          description="Choose a provider and enter its delivery credentials."
-          onClose={() => setChannelModalOpen(false)}
-        />
-        <ModalBody className="space-y-4">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">Name</label>
-            <Input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="Operations alerts"
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">Provider</label>
-            <Select value={provider} onValueChange={(value) => setProvider(value as ProviderType)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(providerLabels).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {provider === 'slack' && (
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">Webhook URL</label>
-              <Input
-                value={url}
-                onChange={(event) => setUrl(event.target.value)}
-                placeholder="Slack incoming webhook URL"
-              />
-              <p className="mt-1 text-xs text-muted-foreground">HTTPS public endpoints only.</p>
-            </div>
-          )}
-          {provider === 'telegram' && (
-            <>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium">Bot token</label>
-                <Input
-                  type="password"
-                  value={botToken}
-                  onChange={(event) => setBotToken(event.target.value)}
-                  placeholder="123456789:AA..."
-                />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium">Chat ID</label>
-                <Input
-                  value={chatId}
-                  onChange={(event) => setChatId(event.target.value)}
-                  placeholder="-1001234567890"
-                />
-              </div>
-            </>
-          )}
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="outline" onClick={() => setChannelModalOpen(false)}>
-            Cancel
-          </Button>
-          <Button
-            disabled={
-              !name ||
-              createChannel.isPending ||
-              (provider === 'slack' && !url) ||
-              (provider === 'telegram' && (!botToken || !chatId))
-            }
-            onClick={() => createChannel.mutate()}
-          >
-            Create Channel
-          </Button>
-        </ModalFooter>
-      </Modal>
     </div>
   )
 }

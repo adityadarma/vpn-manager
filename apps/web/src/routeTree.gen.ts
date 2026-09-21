@@ -21,6 +21,7 @@ import { Route as LayoutNodesRouteImport } from './routes/_layout/nodes'
 import { Route as LayoutPoliciesRouteImport } from './routes/_layout/policies'
 import { Route as LayoutProfileRouteImport } from './routes/_layout/profile'
 import { Route as LayoutSessionsRouteImport } from './routes/_layout/sessions'
+import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
 import { Route as LayoutTasksRouteImport } from './routes/_layout/tasks'
 import { Route as LayoutUsersRouteImport } from './routes/_layout/users'
 import { Route as LayoutGroupsIndexRouteImport } from './routes/_layout/groups/index'
@@ -87,6 +88,11 @@ const LayoutSessionsRoute = LayoutSessionsRouteImport.update({
   path: '/sessions',
   getParentRoute: () => LayoutRoute,
 } as any)
+const LayoutSettingsRoute = LayoutSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => LayoutRoute,
+} as any)
 const LayoutTasksRoute = LayoutTasksRouteImport.update({
   id: '/tasks',
   path: '/tasks',
@@ -131,6 +137,7 @@ export interface FileRoutesByFullPath {
   '/policies': typeof LayoutPoliciesRoute
   '/profile': typeof LayoutProfileRoute
   '/sessions': typeof LayoutSessionsRoute
+  '/settings': typeof LayoutSettingsRoute
   '/tasks': typeof LayoutTasksRoute
   '/users': typeof LayoutUsersRouteWithChildren
   '/groups/$groupId': typeof LayoutGroupsGroupIdRoute
@@ -148,6 +155,7 @@ export interface FileRoutesByTo {
   '/policies': typeof LayoutPoliciesRoute
   '/profile': typeof LayoutProfileRoute
   '/sessions': typeof LayoutSessionsRoute
+  '/settings': typeof LayoutSettingsRoute
   '/tasks': typeof LayoutTasksRoute
   '/': typeof LayoutIndexRoute
   '/groups/$groupId': typeof LayoutGroupsGroupIdRoute
@@ -168,6 +176,7 @@ export interface FileRoutesById {
   '/_layout/policies': typeof LayoutPoliciesRoute
   '/_layout/profile': typeof LayoutProfileRoute
   '/_layout/sessions': typeof LayoutSessionsRoute
+  '/_layout/settings': typeof LayoutSettingsRoute
   '/_layout/tasks': typeof LayoutTasksRoute
   '/_layout/users': typeof LayoutUsersRouteWithChildren
   '/_layout/': typeof LayoutIndexRoute
@@ -190,6 +199,7 @@ export interface FileRouteTypes {
     | '/policies'
     | '/profile'
     | '/sessions'
+    | '/settings'
     | '/tasks'
     | '/users'
     | '/groups/$groupId'
@@ -207,6 +217,7 @@ export interface FileRouteTypes {
     | '/policies'
     | '/profile'
     | '/sessions'
+    | '/settings'
     | '/tasks'
     | '/'
     | '/groups/$groupId'
@@ -226,6 +237,7 @@ export interface FileRouteTypes {
     | '/_layout/policies'
     | '/_layout/profile'
     | '/_layout/sessions'
+    | '/_layout/settings'
     | '/_layout/tasks'
     | '/_layout/users'
     | '/_layout/'
@@ -326,6 +338,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutSessionsRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/_layout/settings': {
+      id: '/_layout/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof LayoutSettingsRouteImport
+      parentRoute: typeof LayoutRoute
+    }
     '/_layout/tasks': {
       id: '/_layout/tasks'
       path: '/tasks'
@@ -409,6 +428,7 @@ interface LayoutRouteChildren {
   LayoutPoliciesRoute: typeof LayoutPoliciesRoute
   LayoutProfileRoute: typeof LayoutProfileRoute
   LayoutSessionsRoute: typeof LayoutSessionsRoute
+  LayoutSettingsRoute: typeof LayoutSettingsRoute
   LayoutTasksRoute: typeof LayoutTasksRoute
   LayoutUsersRoute: typeof LayoutUsersRouteWithChildren
   LayoutIndexRoute: typeof LayoutIndexRoute
@@ -424,6 +444,7 @@ const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutPoliciesRoute: LayoutPoliciesRoute,
   LayoutProfileRoute: LayoutProfileRoute,
   LayoutSessionsRoute: LayoutSessionsRoute,
+  LayoutSettingsRoute: LayoutSettingsRoute,
   LayoutTasksRoute: LayoutTasksRoute,
   LayoutUsersRoute: LayoutUsersRouteWithChildren,
   LayoutIndexRoute: LayoutIndexRoute,
