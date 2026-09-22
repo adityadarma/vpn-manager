@@ -8,6 +8,7 @@ export default defineConfig({
   format: ['esm'],
   target: 'node24',
   noExternal: ['@vpn/shared', '@vpn/db'],
+  external: ['better-sqlite3'],
   clean: true,
   outExtension() {
     return {

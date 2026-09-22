@@ -20,6 +20,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Fixed
 
+- Fixed the production Manager crashing before startup with `Dynamic require of "fs" is not supported` after database backup support pulled the native `better-sqlite3` module into the ESM API bundle.
 - Cleared the native restore file input after a database backup is successfully staged.
 
 ## [2.7.2] - 2026-09-20

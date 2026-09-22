@@ -36,6 +36,11 @@ for _ in $(seq 1 60); do
     READY=true
     break
   fi
+  if [ "$(docker inspect -f '{{.State.Running}}' "$MANAGER")" != true ]; then
+    echo "Manager exited before becoming ready"
+    docker logs "$MANAGER"
+    exit 1
+  fi
   sleep 1
 done
 if [ "$READY" != true ]; then
