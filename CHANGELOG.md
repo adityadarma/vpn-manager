@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-09-23
+
 ### Added
 
 - Added durable operational alerting for offline and recovered nodes, failed tasks, expiring credentials, and unhealthy Managed DNS, with deduplication, acknowledgement, automatic recovery, retries, and an admin Alerts dashboard. Notification channels support Slack and Telegram with provider-specific payloads and encrypted credentials.
