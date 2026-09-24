@@ -25,7 +25,7 @@ Manager: Fastify API + static dashboard
 
 In production, one Manager container serves the static dashboard and API on the same port, `3000` by default. The API uses the `/api/v1` prefix and persists data in SQLite through Knex. The container does not terminate TLS; use a reverse proxy for public HTTPS.
 
-The Manager creates tasks such as client configuration generation. The Agent polls for tasks and reports their results. It also sends heartbeats; the Manager checks status every minute and marks a node offline after two minutes without a heartbeat.
+The Manager creates tasks such as client configuration generation. The Agent polls for tasks and reports their results. It also sends heartbeats every 30 seconds; the Manager checks status every 15 seconds and marks a node offline after 60 seconds without a heartbeat.
 
 ## VPN Node
 

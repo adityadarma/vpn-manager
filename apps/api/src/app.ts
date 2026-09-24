@@ -101,9 +101,10 @@ export async function buildApp(env: Env) {
   if (shouldStartSchedulers) {
     nodeStatusChecker = new NodeStatusChecker(
       db,
-      60000, // Check every 1 minute
-      120000, // Mark offline after 2 minutes without heartbeat
+      15_000, // Check every 15 seconds
+      60_000, // Mark offline after two missed 30-second heartbeats
       alerts,
+      app.realtime,
     )
     nodeStatusChecker.start()
     certExpiryWatcher = startCertExpiryWatcher(db, alerts)

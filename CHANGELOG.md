@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Changed
+
+- Hid the empty Alerts table action column when filtering acknowledged or resolved alerts.
+- Nodes are now detected as offline after 60 seconds without a heartbeat, checked every 15 seconds instead of every minute, and their dashboard status updates immediately through realtime events.
+
 ## [2.8.0] - 2026-09-23
 
 ### Added

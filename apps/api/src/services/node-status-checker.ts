@@ -1,5 +1,6 @@
 import type { Knex } from 'knex'
 import type { AlertService } from './alerts'
+import type { RealtimeEvents } from './realtime'
 
 /**
  * Node Status Checker Service
@@ -16,6 +17,7 @@ export class NodeStatusChecker {
     checkIntervalMs: number = 60000, // Check every 1 minute
     offlineThresholdMs: number = 120000, // Mark offline after 2 minutes without heartbeat
     private readonly alerts?: AlertService,
+    private readonly realtime?: RealtimeEvents,
   ) {
     this.db = db
     this.checkIntervalMs = checkIntervalMs
@@ -31,15 +33,18 @@ export class NodeStatusChecker {
       return
     }
 
-    console.log(`[NodeStatusChecker] Starting (check every ${this.checkIntervalMs}ms, offline threshold ${this.offlineThresholdMs}ms)`)
-    
+    console.log(
+      `[NodeStatusChecker] Starting (check every ${this.checkIntervalMs}ms, offline threshold ${this.offlineThresholdMs}ms)`,
+    )
+
     // Run immediately
     void this.checkNodeStatus()
-    
+
     // Then run on interval
     this.intervalId = setInterval(() => {
       void this.checkNodeStatus()
     }, this.checkIntervalMs)
+    this.intervalId.unref?.()
   }
 
   /**
@@ -56,41 +61,51 @@ export class NodeStatusChecker {
   /**
    * Check all nodes and mark offline if needed
    */
-  private async checkNodeStatus(): Promise<void> {
+  async checkNodeStatus(): Promise<number> {
     try {
       const thresholdDate = new Date(Date.now() - this.offlineThresholdMs)
-      
+
       // Find nodes that are marked as 'online' but haven't sent heartbeat recently
       const staleNodes = await this.db('vpn_nodes')
         .where('status', 'online')
-        .where(function() {
-          this.where('last_seen', '<', thresholdDate)
-            .orWhereNull('last_seen')
+        .where(function () {
+          this.where('last_seen', '<', thresholdDate).orWhereNull('last_seen')
         })
         .select('id', 'hostname', 'last_seen')
 
-      if (staleNodes.length > 0) {
-        // Mark them as offline
-        const nodeIds = staleNodes.map(n => n.id)
-        await this.db('vpn_nodes')
-          .whereIn('id', nodeIds)
+      let markedOffline = 0
+      for (const node of staleNodes) {
+        // Recheck last_seen in the update so a concurrent heartbeat wins.
+        const updated = await this.db('vpn_nodes')
+          .where({ id: node.id, status: 'online' })
+          .where(function () {
+            this.where('last_seen', '<', thresholdDate).orWhereNull('last_seen')
+          })
           .update({ status: 'offline' })
 
-        for (const node of staleNodes) {
+        if (updated > 0) {
+          markedOffline += 1
           await this.alerts?.open({
-            event: 'node.offline', severity: 'critical', resourceType: 'vpn_node', resourceId: node.id,
-            resourceName: node.hostname, summary: `VPN node ${node.hostname} is offline`,
+            event: 'node.offline',
+            severity: 'critical',
+            resourceType: 'vpn_node',
+            resourceId: node.id,
+            resourceName: node.hostname,
+            summary: `VPN node ${node.hostname} is offline`,
             details: { last_seen: node.last_seen, threshold_ms: this.offlineThresholdMs },
           })
-        }
-
-        console.log(`[NodeStatusChecker] Marked ${staleNodes.length} node(s) as offline:`)
-        staleNodes.forEach(node => {
+          this.realtime?.publish('node.updated', node.id)
           console.log(`  - ${node.hostname} (last seen: ${node.last_seen || 'never'})`)
-        })
+        }
       }
+
+      if (markedOffline > 0) {
+        console.log(`[NodeStatusChecker] Marked ${markedOffline} node(s) as offline`)
+      }
+      return markedOffline
     } catch (error) {
       console.error('[NodeStatusChecker] Error checking node status:', error)
+      return 0
     }
   }
 }

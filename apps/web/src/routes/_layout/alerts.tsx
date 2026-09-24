@@ -85,6 +85,7 @@ function AlertsPage() {
   })
 
   const counts = data?.status_counts ?? {}
+  const showActions = status === 'all' || status === 'open'
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -177,7 +178,7 @@ function AlertsPage() {
                   <TableHead>Resource</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Last occurrence</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
+                  {showActions && <TableHead className="text-right">Action</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -220,22 +221,27 @@ function AlertsPage() {
                     <TableCell className="whitespace-nowrap">
                       {formatBrowserDateTime(alert.last_occurred_at)}
                     </TableCell>
-                    <TableCell className="text-right">
-                      {alert.status === 'open' && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => acknowledge.mutate(alert.id)}
-                        >
-                          <CheckCircle2 className="size-4" /> Acknowledge
-                        </Button>
-                      )}
-                    </TableCell>
+                    {showActions && (
+                      <TableCell className="text-right">
+                        {alert.status === 'open' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => acknowledge.mutate(alert.id)}
+                          >
+                            <CheckCircle2 className="size-4" /> Acknowledge
+                          </Button>
+                        )}
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
                 {!data?.alerts.length && (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-28 text-center text-muted-foreground">
+                    <TableCell
+                      colSpan={showActions ? 6 : 5}
+                      className="h-28 text-center text-muted-foreground"
+                    >
                       No alerts match the selected filters.
                     </TableCell>
                   </TableRow>
