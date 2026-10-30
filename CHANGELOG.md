@@ -6,6 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Changed
+
+- Upgraded the Operational Alerts stat cards into interactive, styled summary cards with active focus rings, incident descriptions, and 1-click status filtering that stays synchronized with the alert table.
+
+### Fixed
+
+- Isolated API tests in child processes to prevent `better-sqlite3` from causing a segmentation fault during Vitest worker shutdown on Linux.
+- Hid retry controls for failed tasks when a newer task for the same action and node exists outside the current Task Queue filter or page, and rejected equivalent stale retries in the API.
+
 ## [2.8.1] - 2026-09-24
 
 ### Changed

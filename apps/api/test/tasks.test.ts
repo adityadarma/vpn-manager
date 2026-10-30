@@ -53,6 +53,62 @@ describe('Tasks API', () => {
     expect(second.json()).toMatchObject({ id: first.json().id, reused: true })
   })
 
+  it('marks a failed task as superseded when a newer successful task exists', async () => {
+    const nodeId = uuidv7()
+    const failedTaskId = uuidv7()
+    await app
+      .db('vpn_nodes')
+      .insert({
+        id: nodeId,
+        hostname: 'superseded-node',
+        ip_address: '203.0.113.12',
+        port: 1194,
+        token: 'superseded-node-token',
+        status: 'online',
+        vpn_type: 'openvpn',
+      })
+    await app.db('tasks').insert([
+      {
+        id: failedTaskId,
+        node_id: nodeId,
+        action: 'reload_openvpn',
+        payload: JSON.stringify({}),
+        status: 'failed',
+        error_message: 'Old failure',
+        created_at: new Date('2026-09-23T10:00:00Z'),
+        completed_at: new Date('2026-09-23T10:01:00Z'),
+      },
+      {
+        id: uuidv7(),
+        node_id: nodeId,
+        action: 'reload_openvpn',
+        payload: JSON.stringify({}),
+        status: 'done',
+        result: JSON.stringify({ success: true }),
+        created_at: new Date('2026-09-23T11:00:00Z'),
+        completed_at: new Date('2026-09-23T11:00:01Z'),
+      },
+    ])
+
+    const list = await app.inject({
+      method: 'GET',
+      url: `/api/v1/tasks?nodeId=${nodeId}&status=failed&page=1&limit=10`,
+      headers: { Cookie: adminCookie },
+    })
+    expect(list.statusCode).toBe(200)
+    expect(list.json().tasks).toEqual([
+      expect.objectContaining({ id: failedTaskId, superseded: 1 }),
+    ])
+
+    const retry = await app.inject({
+      method: 'POST',
+      url: `/api/v1/tasks/${failedTaskId}/retry`,
+      headers: { Cookie: adminCookie },
+    })
+    expect(retry.statusCode).toBe(409)
+    expect(retry.json().message).toBe('A newer task for this action and node already exists')
+  })
+
   describe('POST /tasks action whitelist + payload validation', () => {
     let nodeId: string
 

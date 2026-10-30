@@ -27,7 +27,19 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
       const builder = app
         .db('tasks as t')
         .join('vpn_nodes as n', 't.node_id', 'n.id')
-        .select('t.*', 'n.hostname as node_hostname')
+        .select(
+          't.*',
+          'n.hostname as node_hostname',
+          app.db.raw(`exists (
+            select 1 from tasks as newer
+            where newer.node_id = t.node_id
+              and newer.action = t.action
+              and (
+                newer.created_at > t.created_at
+                or (newer.created_at = t.created_at and newer.id > t.id)
+              )
+          ) as superseded`),
+        )
         .orderBy('t.created_at', 'desc')
 
       if (query.nodeId) builder.where('t.node_id', query.nodeId)
@@ -184,6 +196,18 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
           .first()
         if (existing) return { task: existing, reused: true }
 
+        const newerTask = await trx('tasks')
+          .where({ node_id: task.node_id, action: task.action })
+          .andWhere((builder) => {
+            builder
+              .where('created_at', '>', task.created_at)
+              .orWhere((sameTime) =>
+                sameTime.where('created_at', task.created_at).andWhere('id', '>', task.id),
+              )
+          })
+          .first()
+        if (newerTask) return { task: newerTask, reused: false, superseded: true }
+
         const created = {
           id: uuidv7(),
           node_id: task.node_id,
@@ -198,6 +222,12 @@ const taskRoutes: FastifyPluginAsync = async (app) => {
         await trx('tasks').insert(created)
         return { task: created, reused: false }
       })
+
+      if ('superseded' in retry)
+        return reply.status(409).send({
+          error: 'Conflict',
+          message: 'A newer task for this action and node already exists',
+        })
 
       return reply.status(retry.reused ? 200 : 201).send({
         id: retry.task.id,

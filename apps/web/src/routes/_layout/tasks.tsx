@@ -62,6 +62,7 @@ interface TaskItem {
   error_message: string | null
   created_at: string
   completed_at: string | null
+  superseded: boolean | number
 }
 
 function parseJsonSafe(value: unknown): unknown {
@@ -243,30 +244,6 @@ function TasksPage() {
     },
     onError: (error: Error) => toast.error(error.message),
   })
-
-  // For each failed task, determine if a newer task with the same action + node
-  // already exists (superseded) — if so, hide its retry button.
-  const supersededTaskIds = useMemo(() => {
-    const list = data?.tasks ?? []
-    const latestByKey = new Map<string, TaskItem>()
-    for (const t of list) {
-      const key = `${t.action}::${t.node_id}`
-      const current = latestByKey.get(key)
-      if (!current || new Date(t.created_at).getTime() > new Date(current.created_at).getTime()) {
-        latestByKey.set(key, t)
-      }
-    }
-    const superseded = new Set<string>()
-    for (const t of list) {
-      if (t.status !== 'failed') continue
-      const key = `${t.action}::${t.node_id}`
-      const latest = latestByKey.get(key)
-      if (latest && latest.id !== t.id) {
-        superseded.add(t.id)
-      }
-    }
-    return superseded
-  }, [data?.tasks])
 
   // Client search filter across current page items
   const filteredTasks = useMemo(() => {
@@ -685,7 +662,7 @@ function TasksPage() {
                       </TableCell>
                       <TableCell className="py-3 text-right pr-5">
                         <div className="flex items-center justify-end gap-1.5">
-                          {task.status === 'failed' && !supersededTaskIds.has(task.id) && (
+                          {task.status === 'failed' && !task.superseded && (
                             <Button
                               size="sm"
                               variant="outline"
@@ -944,7 +921,7 @@ function TasksPage() {
             </div>
           </ModalBody>
           <ModalFooter>
-            {selectedTask.status === 'failed' && !supersededTaskIds.has(selectedTask.id) && (
+            {selectedTask.status === 'failed' && !selectedTask.superseded && (
               <Button
                 type="button"
                 onClick={() => retryTask.mutate(selectedTask.id)}

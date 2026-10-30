@@ -2,11 +2,14 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import {
+  AlertCircle,
   AlertTriangle,
+  Bell,
   BellRing,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Clock,
   RefreshCw,
 } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -85,46 +88,193 @@ function AlertsPage() {
   })
 
   const counts = data?.status_counts ?? {}
+  const openCount = counts.open ?? 0
+  const ackCount = counts.acknowledged ?? 0
+  const resCount = counts.resolved ?? 0
+  const totalAlerts = openCount + ackCount + resCount
   const showActions = status === 'all' || status === 'open'
+
+  const handleStatusFilter = (targetStatus: string) => {
+    setStatus((prev) => (prev === targetStatus ? 'all' : targetStatus))
+    setPage(1)
+  }
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Operational Alerts</h1>
-          <p className="text-sm text-muted-foreground">
-            Node, task, credential, and Managed DNS incidents.
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+              Operations & Automation
+            </span>
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground mt-0.5">
+            Operational Alerts
+          </h1>
+          <p className="text-xs text-muted-foreground mt-1">
+            {totalAlerts} total incident{totalAlerts !== 1 ? 's' : ''} recorded • {openCount} active
+            requiring attention
           </p>
         </div>
-        <Button variant="outline" onClick={() => void refetch()} disabled={isFetching}>
-          <RefreshCw className={`size-4 ${isFetching ? 'animate-spin' : ''}`} /> Refresh
-        </Button>
+
+        <div className="flex items-center gap-2.5">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void refetch()}
+            disabled={isFetching}
+            className="cursor-pointer h-9 px-3 text-xs shadow-xs"
+            title="Refresh alerts immediately"
+          >
+            <RefreshCw
+              className={`mr-1.5 size-3.5 ${isFetching ? 'animate-spin text-emerald-600' : ''}`}
+            />
+            Refresh
+          </Button>
+
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted/60 border border-border/70 text-muted-foreground text-xs font-medium rounded-lg">
+            <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+            {realtimeConnected ? 'Live Realtime' : 'Auto-refresh 60s'}
+          </span>
+        </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Open</CardTitle>
-          </CardHeader>
-          <CardContent className="text-2xl font-semibold text-red-600">
-            {counts.open ?? 0}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Acknowledged</CardTitle>
-          </CardHeader>
-          <CardContent className="text-2xl font-semibold text-amber-600">
-            {counts.acknowledged ?? 0}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Resolved</CardTitle>
-          </CardHeader>
-          <CardContent className="text-2xl font-semibold text-emerald-600">
-            {counts.resolved ?? 0}
-          </CardContent>
-        </Card>
+      {/* Interactive Stat Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+        {/* Total Alerts Card */}
+        <div
+          role="button"
+          tabIndex={0}
+          title="Click to show all alerts"
+          onClick={() => {
+            setStatus('all')
+            setPage(1)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              setStatus('all')
+              setPage(1)
+            }
+          }}
+          className={`rounded-xl border p-4 shadow-xs transition-all cursor-pointer select-none ${
+            status === 'all'
+              ? 'bg-card border-primary ring-2 ring-primary/20 shadow-md'
+              : 'bg-card border-border hover:border-primary/40 hover:shadow-sm'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground">Total Alerts</span>
+            <div className="p-2 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
+              <Bell className="size-4" />
+            </div>
+          </div>
+          <div className="text-2xl font-bold text-foreground mt-2">{totalAlerts}</div>
+          <p className="text-[11px] text-muted-foreground mt-1 truncate">All incident records</p>
+        </div>
+
+        {/* Open Card */}
+        <div
+          role="button"
+          tabIndex={0}
+          title="Click to filter open alerts"
+          onClick={() => handleStatusFilter('open')}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              handleStatusFilter('open')
+            }
+          }}
+          className={`rounded-xl border p-4 shadow-xs transition-all cursor-pointer select-none ${
+            status === 'open'
+              ? 'bg-card border-red-500 ring-2 ring-red-500/20 shadow-md'
+              : 'bg-card border-border hover:border-red-500/40 hover:shadow-sm'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground">Open</span>
+            <div className="p-2 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400">
+              <AlertCircle className="size-4" />
+            </div>
+          </div>
+          <div className="flex items-baseline gap-2 mt-2">
+            <span className="text-2xl font-bold text-red-600 dark:text-red-400">{openCount}</span>
+            {openCount > 0 && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-500/10 text-red-600 dark:text-red-400 animate-pulse">
+                Action needed
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-red-600 dark:text-red-400 font-medium mt-1 truncate">
+            {openCount > 0 ? 'Requires operator action' : 'No active incidents'}
+          </p>
+        </div>
+
+        {/* Acknowledged Card */}
+        <div
+          role="button"
+          tabIndex={0}
+          title="Click to filter acknowledged alerts"
+          onClick={() => handleStatusFilter('acknowledged')}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              handleStatusFilter('acknowledged')
+            }
+          }}
+          className={`rounded-xl border p-4 shadow-xs transition-all cursor-pointer select-none ${
+            status === 'acknowledged'
+              ? 'bg-card border-amber-500 ring-2 ring-amber-500/20 shadow-md'
+              : 'bg-card border-border hover:border-amber-500/40 hover:shadow-sm'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground">Acknowledged</span>
+            <div className="p-2 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
+              <Clock className="size-4" />
+            </div>
+          </div>
+          <div className="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-2">
+            {ackCount}
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-1 truncate">
+            {ackCount > 0 ? 'Under review / silenced' : 'None in progress'}
+          </p>
+        </div>
+
+        {/* Resolved Card */}
+        <div
+          role="button"
+          tabIndex={0}
+          title="Click to filter resolved alerts"
+          onClick={() => handleStatusFilter('resolved')}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              handleStatusFilter('resolved')
+            }
+          }}
+          className={`rounded-xl border p-4 shadow-xs transition-all cursor-pointer select-none ${
+            status === 'resolved'
+              ? 'bg-card border-emerald-500 ring-2 ring-emerald-500/20 shadow-md'
+              : 'bg-card border-border hover:border-emerald-500/40 hover:shadow-sm'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground">Resolved</span>
+            <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 className="size-4" />
+            </div>
+          </div>
+          <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-2">
+            {resCount}
+          </div>
+          <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium mt-1 truncate">
+            {resCount > 0
+              ? `${resCount} incident${resCount !== 1 ? 's' : ''} resolved`
+              : 'No resolved alerts'}
+          </p>
+        </div>
       </div>
 
       <Card>
@@ -237,12 +387,33 @@ function AlertsPage() {
                   </TableRow>
                 ))}
                 {!data?.alerts.length && (
-                  <TableRow>
-                    <TableCell
-                      colSpan={showActions ? 6 : 5}
-                      className="h-28 text-center text-muted-foreground"
-                    >
-                      No alerts match the selected filters.
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell colSpan={showActions ? 6 : 5} className="py-12 text-center">
+                      <div className="flex flex-col items-center justify-center max-w-sm mx-auto">
+                        <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center mb-2.5">
+                          <BellRing className="size-5 text-muted-foreground/60" />
+                        </div>
+                        <p className="font-semibold text-foreground text-sm">No alerts found</p>
+                        <p className="text-xs text-muted-foreground mt-1 text-center">
+                          {status !== 'all' || severity !== 'all'
+                            ? 'No alerts match your selected status or severity filter.'
+                            : 'No operational alerts recorded in the system.'}
+                        </p>
+                        {(status !== 'all' || severity !== 'all') && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="mt-3 text-xs cursor-pointer"
+                            onClick={() => {
+                              setStatus('all')
+                              setSeverity('all')
+                              setPage(1)
+                            }}
+                          >
+                            Reset all filters
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 )}
