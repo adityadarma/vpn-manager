@@ -17,6 +17,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Isolated API tests in child processes to prevent `better-sqlite3` from causing a segmentation fault during Vitest worker shutdown on Linux.
 - Hid retry controls for failed tasks when a newer task for the same action and node exists outside the current Task Queue filter or page, and rejected equivalent stale retries in the API.
 - Skipped installed but kernel-inoperable iptables backends in Agent live firewall tests, preventing `iptables-legacy` false failures in containerized CI environments without matching legacy kernel tables.
+- Moved WireGuard live-test private keys from `/tmp` to restricted files under `/etc/wireguard`, avoiding container filesystem permission failures in CI.
 
 ## [2.8.1] - 2026-09-24
 

@@ -46,13 +46,12 @@ describe.runIf(isLinuxWithNetAdmin && hasNetworkNamespace)('WireGuard Live Serve
 
     serverPrivKey = execSync('wg genkey', { encoding: 'utf-8' }).trim()
     serverPubKey = execSync('wg pubkey', { input: serverPrivKey + '\n', encoding: 'utf-8' }).trim()
-    fs.writeFileSync('/etc/wireguard/privatekey', serverPrivKey)
+    fs.writeFileSync('/etc/wireguard/privatekey', serverPrivKey, { mode: 0o600 })
     fs.writeFileSync('/etc/wireguard/publickey', serverPubKey)
 
     // 2. Create wgtest0 interface
     execSync(`ip link add dev ${iface} type wireguard`)
-    fs.writeFileSync(`/tmp/${iface}.key`, serverPrivKey)
-    execSync(`wg set ${iface} listen-port 51829 private-key /tmp/${iface}.key`)
+    execSync(`wg set ${iface} listen-port 51829 private-key /etc/wireguard/privatekey`)
     execSync(`ip addr add 10.9.0.1/24 dev ${iface}`)
     execSync(`ip link set dev ${iface} up`)
     execSync(`ip link add ${serverTransport} type veth peer name ${clientTransport}`)
@@ -86,7 +85,6 @@ describe.runIf(isLinuxWithNetAdmin && hasNetworkNamespace)('WireGuard Live Serve
     } catch {}
     try {
       fs.unlinkSync(`/etc/wireguard/${iface}.conf`)
-      fs.unlinkSync(`/tmp/${iface}.key`)
     } catch {}
   })
 
@@ -139,8 +137,8 @@ describe.runIf(isLinuxWithNetAdmin && hasNetworkNamespace)('WireGuard Live Serve
   it('connects a real WireGuard client peer and carries ICMP traffic through the tunnel', async () => {
     const clientPrivateKey = execSync('wg genkey', { encoding: 'utf-8' }).trim()
     const clientPublicKey = execSync('wg pubkey', { input: `${clientPrivateKey}\n`, encoding: 'utf-8' }).trim()
-    const keyPath = `/tmp/${clientIface}.key`
-    fs.writeFileSync(keyPath, clientPrivateKey)
+    const keyPath = `/etc/wireguard/${clientIface}.key`
+    fs.writeFileSync(keyPath, clientPrivateKey, { mode: 0o600 })
 
     await driver.writeClientConfig('traffic_wg', '10.9.0.2', { publicKey: clientPublicKey })
     execSync(`ip netns exec ${clientNamespace} ip link add dev ${clientIface} type wireguard`)
