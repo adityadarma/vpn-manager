@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.8.2] - 2026-11-16
+
 ### Changed
 
 - Upgraded the Operational Alerts stat cards into interactive, styled summary cards with active focus rings, incident descriptions, and 1-click status filtering that stays synchronized with the alert table.
