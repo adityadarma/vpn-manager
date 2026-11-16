@@ -22,7 +22,7 @@ const hasNftables = (() => {
 
 const iptablesBackends = ['iptables', 'iptables-nft', 'iptables-legacy'].filter((command) => {
   try {
-    execSync(`${command} --version`, { stdio: 'ignore' })
+    execSync(`${command} -S INPUT`, { stdio: 'ignore' })
     return true
   } catch {
     return false
