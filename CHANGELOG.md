@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-11-17
+
 ### Added
 
 - Added API request-framing tests that send every mutating route an empty body, an empty chunked body without Content-Type, JSON `{}`, and unsupported content. Routes are discovered from the OpenAPI spec, so new routes are covered automatically.
