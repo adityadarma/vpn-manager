@@ -106,6 +106,17 @@ for _ in $(seq 1 40); do
 done
 [ "$STATE" = done ]
 
+# The manager queues sync_server_config when the node first comes online. It
+# must succeed for WireGuard too, not fail schema validation silently.
+for _ in $(seq 1 40); do
+  STATUS=$(curl -fsS "http://127.0.0.1:$MANAGER_PORT/api/v1/tasks?nodeId=$NODE_ID" -b "$COOKIE_JAR")
+  SYNC_STATE=$(node -e 'const t=JSON.parse(process.argv[1]).find(x=>x.action==="sync_server_config");process.stdout.write(t?.status||"")' "$STATUS")
+  [ "$SYNC_STATE" = done ] && break
+  [ "$SYNC_STATE" = failed ] && { echo "sync_server_config task failed" >&2; exit 1; }
+  sleep .25
+done
+[ "$SYNC_STATE" = done ]
+
 SERVER_PUBLIC=$(docker exec "$AGENT" cat /etc/wireguard/publickey)
 AGENT_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$AGENT")
 docker run -d --name "$CLIENT" --network "$NETWORK" --privileged \

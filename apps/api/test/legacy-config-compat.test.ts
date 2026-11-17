@@ -135,6 +135,34 @@ describe('Legacy node config compatibility', () => {
     expect(put.statusCode).toBe(200)
   })
 
+  it('accepts a WireGuard sync without OpenVPN-only fields and keeps stored values', async () => {
+    const nodeId = await makeNode({
+      vpn_type: 'wireguard',
+      cipher: 'AES-256-GCM',
+      auth_digest: 'SHA256',
+      dns_servers: '9.9.9.9',
+      firewall_engine: 'nftables',
+    })
+    const token = (await app.db('vpn_nodes').where({ id: nodeId }).first()).token
+
+    // Exactly what WireGuardDriver._parseWgConfig produces.
+    const sync = await app.inject({
+      method: 'POST',
+      url: '/api/v1/nodes/sync-config',
+      headers: { Authorization: `Bearer ${token}` },
+      payload: { port: 51821, protocol: 'udp', vpnNetwork: '10.250.0.0', vpnNetmask: '255.255.255.0' },
+    })
+    expect(sync.statusCode).toBe(200)
+
+    const row = await app.db('vpn_nodes').where({ id: nodeId }).first()
+    expect(row.port).toBe(51821)
+    expect(row.vpn_network).toBe('10.250.0.0')
+    expect(row.cipher).toBe('AES-256-GCM')
+    expect(row.auth_digest).toBe('SHA256')
+    expect(row.dns_servers).toBe('9.9.9.9')
+    expect(row.firewall_engine).toBe('nftables')
+  })
+
   describe('permissive does not mean unvalidated', () => {
     const put = (overrides: Record<string, unknown>) =>
       makeNode().then((nodeId) =>

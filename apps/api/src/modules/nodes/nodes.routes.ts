@@ -1781,17 +1781,18 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
     Body: {
       port: number
       protocol: string
-      cipher: string
-      auth: string
+      cipher?: string
+      auth?: string
       vpnNetwork: string
       vpnNetmask: string
-      dnsServers: string
-      pushRoutes: string
-      compression: string
-      keepalivePing: number
-      keepaliveTimeout: number
-      maxClients: number
-      tunnelMode: string
+      dnsServers?: string
+      pushRoutes?: string
+      compression?: string
+      keepalivePing?: number
+      keepaliveTimeout?: number
+      maxClients?: number
+      tunnelMode?: string
+      customPushDirectives?: string
       firewallEngine?: string
     }
   }>(
@@ -1803,7 +1804,9 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
         security: [{ bearerAuth: [] }],
         body: {
           type: 'object',
-          required: ['port', 'protocol', 'cipher', 'auth', 'vpnNetwork', 'vpnNetmask'],
+          // cipher/auth and the push options are OpenVPN-only. WireGuard agents
+          // report just port, protocol, and the tunnel network.
+          required: ['port', 'protocol', 'vpnNetwork', 'vpnNetmask'],
           properties: {
             port: { type: 'number', description: 'VPN server port' },
             protocol: { type: 'string', description: 'Protocol (udp/tcp)' },
@@ -1818,6 +1821,7 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
             keepaliveTimeout: { type: 'number', description: 'Keepalive timeout' },
             maxClients: { type: 'number', description: 'Maximum clients' },
             tunnelMode: { type: 'string', description: 'Tunnel mode (full/split)' },
+            customPushDirectives: { type: 'string', description: 'Extra push directives' },
             firewallEngine: { type: 'string', description: 'Firewall backend engine' },
           },
         },
@@ -1829,29 +1833,34 @@ const nodeRoutes: FastifyPluginAsync = async (app) => {
 
       const config = request.body
 
+      // Only overwrite columns the agent actually reported, so a WireGuard sync
+      // (no cipher/push options) keeps the stored values instead of wiping them.
+      const optional: Record<string, unknown> = {
+        cipher: config.cipher,
+        auth_digest: config.auth,
+        dns_servers: config.dnsServers,
+        push_routes: config.pushRoutes,
+        compression: config.compression,
+        keepalive_ping: config.keepalivePing,
+        keepalive_timeout: config.keepaliveTimeout,
+        max_clients: config.maxClients,
+        tunnel_mode: config.tunnelMode,
+        custom_push_directives: config.customPushDirectives,
+        firewall_engine: config.firewallEngine,
+      }
+      const updates: Record<string, unknown> = {
+        port: config.port,
+        protocol: config.protocol,
+        vpn_network: config.vpnNetwork,
+        vpn_netmask: config.vpnNetmask,
+        last_seen: new Date(),
+      }
+      for (const [column, value] of Object.entries(optional)) {
+        if (value !== undefined) updates[column] = value
+      }
+
       try {
-        // Update node configuration
-        await app
-          .db('vpn_nodes')
-          .where({ id: node.id })
-          .update({
-            port: config.port,
-            protocol: config.protocol,
-            cipher: config.cipher,
-            auth_digest: config.auth,
-            vpn_network: config.vpnNetwork,
-            vpn_netmask: config.vpnNetmask,
-            dns_servers: config.dnsServers,
-            push_routes: config.pushRoutes,
-            compression: config.compression,
-            keepalive_ping: config.keepalivePing,
-            keepalive_timeout: config.keepaliveTimeout,
-            max_clients: config.maxClients,
-            tunnel_mode: config.tunnelMode,
-            custom_push_directives: (config as any).customPushDirectives ?? null,
-            firewall_engine: config.firewallEngine ?? 'iptables',
-            last_seen: new Date(),
-          })
+        await app.db('vpn_nodes').where({ id: node.id }).update(updates)
 
         app.log.info(`Server config synced for node ${node.id}`)
 
