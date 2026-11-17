@@ -23,6 +23,10 @@ const AgentEnvSchema = z.object({
   DNS_ENABLED: z.coerce.boolean().default(false),
   COREDNS_CONFIG_DIR: z.string().min(1).default('/etc/vpn-manager/coredns'),
   COREDNS_HEALTH_URL: z.string().url().default('http://127.0.0.1:8181/health'),
+  // How long a sync waits for CoreDNS to become healthy. A crash-looping
+  // container can sit in Docker's restart backoff (up to 60s) before it
+  // retries the bind, so a single check right after writing the config fails.
+  COREDNS_HEALTH_TIMEOUT_MS: z.coerce.number().int().positive().default(75_000),
   DNS_BLOCK_DOT: z.coerce.boolean().default(false),
 })
 

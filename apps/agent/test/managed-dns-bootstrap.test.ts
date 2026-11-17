@@ -1,9 +1,21 @@
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentEnv } from '../src/config/env'
-import { ensureCorefileBootstrap } from '../src/services/managed-dns-bootstrap'
+
+// `ip` is not available on every dev machine; the real address handling is
+// covered by the live Managed DNS E2E scripts.
+const { ensureDnsListenerAddresses } = vi.hoisted(() => ({
+  ensureDnsListenerAddresses: vi.fn().mockResolvedValue(undefined),
+}))
+vi.mock('../src/services/managed-dns-listener', () => ({ ensureDnsListenerAddresses }))
+
+import {
+  corefileListenerIps,
+  ensureCorefileBootstrap,
+  restoreDnsListenersFromCorefile,
+} from '../src/services/managed-dns-bootstrap'
 
 const roots: string[] = []
 
@@ -53,5 +65,48 @@ describe('ensureCorefileBootstrap', () => {
     const { root, env } = await fixture(false)
     await ensureCorefileBootstrap(env)
     await expect(fs.access(path.join(root, 'Corefile'))).rejects.toThrow()
+  })
+})
+
+describe('restoreDnsListenersFromCorefile', () => {
+  it('extracts unique non-loopback bind addresses', () => {
+    const corefile = [
+      'corp.internal:53 {', '    bind 10.17.1.53', '}',
+      '.:53 {', '    bind 10.17.1.53', '}',
+      '.:53 {', '    bind 10.17.2.53 # second group', '}',
+      '.:53 {', '    bind 127.0.0.1', '}',
+    ].join('\n')
+    expect(corefileListenerIps(corefile)).toEqual(['10.17.1.53', '10.17.2.53'])
+  })
+
+  it('re-assigns the active Corefile listeners after a reboot', async () => {
+    const { root, env } = await fixture()
+    await fs.writeFile(path.join(root, 'Corefile'), '.:53 {\n    bind 10.17.1.53\n    health 127.0.0.1:8181\n}\n')
+    ensureDnsListenerAddresses.mockClear()
+    await restoreDnsListenersFromCorefile(env)
+    expect(ensureDnsListenerAddresses).toHaveBeenCalledWith(['10.17.1.53'])
+  })
+
+  it('leaves the interface alone for the loopback-only placeholder', async () => {
+    const { env } = await fixture()
+    await ensureCorefileBootstrap(env)
+    ensureDnsListenerAddresses.mockClear()
+    await restoreDnsListenersFromCorefile(env)
+    expect(ensureDnsListenerAddresses).not.toHaveBeenCalled()
+  })
+
+  it('does not throw when assigning the address fails', async () => {
+    const { root, env } = await fixture()
+    await fs.writeFile(path.join(root, 'Corefile'), '.:53 {\n    bind 10.17.1.53\n}\n')
+    ensureDnsListenerAddresses.mockRejectedValueOnce(new Error('ip: not found'))
+    await expect(restoreDnsListenersFromCorefile(env)).resolves.toBeUndefined()
+  })
+
+  it('does nothing when Managed DNS is disabled', async () => {
+    const { root, env } = await fixture(false)
+    await fs.writeFile(path.join(root, 'Corefile'), '.:53 {\n    bind 10.17.1.53\n}\n')
+    ensureDnsListenerAddresses.mockClear()
+    await restoreDnsListenersFromCorefile(env)
+    expect(ensureDnsListenerAddresses).not.toHaveBeenCalled()
   })
 })

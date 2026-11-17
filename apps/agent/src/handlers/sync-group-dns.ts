@@ -4,6 +4,7 @@ import { validateTaskPayload } from '@vpn/shared'
 import type { AgentEnv } from '../config/env'
 import type { VpnDriver } from '../drivers'
 import { applyManagedDnsFirewall } from '../services/managed-dns-firewall'
+import { corefileListenerIps } from '../services/managed-dns-bootstrap'
 import {
   currentDnsListenerAddresses,
   ensureDnsListenerAddresses,
@@ -306,9 +307,29 @@ function corefile(groups: DnsGroup[]): string {
   return blocks.join('\n')
 }
 
-async function health(url: string): Promise<void> {
+async function healthOnce(url: string): Promise<void> {
   const response = await fetch(url, { signal: AbortSignal.timeout(5_000) })
   if (!response.ok) throw new Error(`CoreDNS health check returned HTTP ${response.status}`)
+}
+
+/**
+ * Polls CoreDNS until it is healthy or `timeoutMs` passes.
+ *
+ * CoreDNS that was crash-looping (e.g. its listener address was missing) only
+ * comes back on its next restart attempt, which can be up to a minute away
+ * under Docker's restart backoff.
+ */
+async function health(url: string, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    try {
+      await healthOnce(url)
+      return
+    } catch (error) {
+      if (Date.now() >= deadline) throw error
+      await new Promise((resolve) => setTimeout(resolve, Math.min(1_000, timeoutMs)))
+    }
+  }
 }
 
 async function replaceSymlink(target: string, link: string): Promise<void> {
@@ -375,7 +396,13 @@ async function applySyncGroupDns(
   const rootCorefile = path.join(root, 'Corefile')
   const previous = await fs.readlink(active).catch(() => null)
   const previousCorefile = await fs.readFile(rootCorefile, 'utf8').catch(() => null)
-  const previousListeners = await currentDnsListenerAddresses().catch(() => [])
+  // Derive the rollback listener set from the Corefile being restored, not the
+  // live interface. After a reboot the interface is empty, and rolling back to
+  // "empty" would leave the restored config unable to bind.
+  const previousListeners =
+    previousCorefile !== null
+      ? corefileListenerIps(previousCorefile)
+      : await currentDnsListenerAddresses().catch(() => [])
 
   await fs.mkdir(revisions, { recursive: true })
   await fs.rm(staging, { recursive: true, force: true })
@@ -412,7 +439,7 @@ async function applySyncGroupDns(
     // CoreDNS reload checks its Corefile every two seconds. Wait for the first
     // reload window before accepting the new revision as healthy.
     await new Promise((resolve) => setTimeout(resolve, 2_500))
-    await health(env.COREDNS_HEALTH_URL)
+    await health(env.COREDNS_HEALTH_URL, env.COREDNS_HEALTH_TIMEOUT_MS ?? 75_000)
     await applyManagedDnsFirewall(
       groups,
       String(payload['firewall_engine'] ?? env.FIREWALL_ENGINE),

@@ -17,7 +17,7 @@ import { handleSyncServerConfig } from './handlers/sync-server-config'
 import { startResultFlusher } from './core/task-result-reporter'
 import { startStatusMonitor } from './services/status-monitor'
 import { startEventMonitor } from './services/event-monitor'
-import { ensureCorefileBootstrap } from './services/managed-dns-bootstrap'
+import { ensureCorefileBootstrap, restoreDnsListenersFromCorefile } from './services/managed-dns-bootstrap'
 
 /**
  * Create VPN driver based on configuration
@@ -121,6 +121,9 @@ async function main() {
   // Lets coredns start immediately on a fresh volume, before the first
   // Managed DNS sync has run. No-op once a real Corefile exists.
   await ensureCorefileBootstrap(env)
+  // Listener addresses do not survive a reboot. Put them back before CoreDNS
+  // retries its bind, instead of waiting for the next Managed DNS sync.
+  await restoreDnsListenersFromCorefile(env)
 
   // Initialize VPN driver (factory pattern)
   const driver = createVpnDriver(env)

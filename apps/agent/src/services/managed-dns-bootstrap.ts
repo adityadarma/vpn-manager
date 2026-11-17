@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import type { AgentEnv } from '../config/env'
+import { ensureDnsListenerAddresses } from './managed-dns-listener'
 
 /**
  * Writes a minimal placeholder Corefile at startup, if one is not already
@@ -50,5 +51,46 @@ export async function ensureCorefileBootstrap(env: AgentEnv): Promise<void> {
     console.log(`[startup] Wrote placeholder Corefile at ${corefile} (coredns can start before the first Managed DNS sync)`)
   } catch (error) {
     console.warn(`[startup] Failed to write placeholder Corefile: ${(error as Error).message}`)
+  }
+}
+
+/**
+ * Returns every `bind` address in a Corefile, excluding loopback.
+ *
+ * Loopback is skipped because 127.0.0.1 always exists and must never be put on
+ * the Managed DNS dummy interface.
+ */
+export function corefileListenerIps(content: string): string[] {
+  const ips = new Set<string>()
+  for (const match of content.matchAll(/^\s*bind\s+([^\s#]+)/gm)) {
+    const ip = match[1]!
+    if (!ip.startsWith('127.')) ips.add(ip)
+  }
+  return [...ips]
+}
+
+/**
+ * Re-assigns the listener addresses the active Corefile binds to.
+ *
+ * The addresses live on a dummy interface created with `ip`, which does not
+ * survive a reboot. Without this, CoreDNS crash-loops with
+ * "bind: cannot assign requested address" after every node restart, and the
+ * node stays degraded until someone triggers a sync.
+ */
+export async function restoreDnsListenersFromCorefile(env: AgentEnv): Promise<void> {
+  if (!env.DNS_ENABLED) return
+
+  const corefile = path.join(path.resolve(env.COREDNS_CONFIG_DIR), 'Corefile')
+  const content = await fs.readFile(corefile, 'utf8').catch(() => null)
+  if (content === null) return
+
+  const ips = corefileListenerIps(content)
+  if (ips.length === 0) return
+
+  try {
+    await ensureDnsListenerAddresses(ips)
+    console.log(`[startup] Restored Managed DNS listener addresses: ${ips.join(', ')}`)
+  } catch (error) {
+    console.warn(`[startup] Failed to restore Managed DNS listener addresses: ${(error as Error).message}`)
   }
 }

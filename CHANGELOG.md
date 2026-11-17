@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed Managed DNS staying `Degraded` with `CoreDNS health check failed: fetch failed` after a node reboot. CoreDNS crash-looped with `bind: cannot assign requested address` because listener addresses on `vpn-dns0` were lost on reboot, and a manual Sync could not recover. The Agent now restores listener addresses from the active Corefile at startup. A sync waits up to `COREDNS_HEALTH_TIMEOUT_MS` (default 75s) for CoreDNS to become healthy, and a failed sync rolls listener addresses back to what the restored Corefile binds instead of the empty post-reboot interface.
+
 ## [2.8.2] - 2026-11-16
 
 ### Changed

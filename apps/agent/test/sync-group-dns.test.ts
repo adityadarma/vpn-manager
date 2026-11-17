@@ -27,6 +27,7 @@ async function fixture() {
     VPN_TYPE: 'openvpn',
     COREDNS_CONFIG_DIR: root,
     COREDNS_HEALTH_URL: 'http://127.0.0.1:8181/health',
+    COREDNS_HEALTH_TIMEOUT_MS: 50,
   } as AgentEnv
   return { root, env }
 }
@@ -104,6 +105,34 @@ describe('sync_group_dns handler', () => {
     await expect(handleSyncGroupDns(payload, {} as VpnDriver, env)).rejects.toThrow('CoreDNS health check returned HTTP 503')
     expect(await fs.readlink(path.join(root, 'active'))).toBe('revisions/0')
     expect(await fs.readFile(path.join(root, 'Corefile'), 'utf8')).toBe('previous config\n')
+  })
+
+  it('waits for a crash-looping CoreDNS to come back instead of failing on the first check', async () => {
+    const { env } = await fixture()
+    env.COREDNS_HEALTH_TIMEOUT_MS = 5_000
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValue({ ok: true })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await handleSyncGroupDns(payload, {} as VpnDriver, env)
+
+    expect(result).toMatchObject({ status: 'healthy' })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('rolls listeners back to what the restored Corefile binds, not the empty post-reboot interface', async () => {
+    const { root, env } = await fixture()
+    await fs.mkdir(path.join(root, 'revisions/0'), { recursive: true })
+    await fs.symlink('revisions/0', path.join(root, 'active'))
+    await fs.writeFile(path.join(root, 'Corefile'), '.:53 {\n    bind 10.17.1.53\n}\n')
+    currentDnsListenerAddresses.mockResolvedValueOnce([])
+    ensureDnsListenerAddresses.mockClear()
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('fetch failed')))
+
+    await expect(handleSyncGroupDns(payload, {} as VpnDriver, env)).rejects.toThrow('fetch failed')
+
+    expect(ensureDnsListenerAddresses).toHaveBeenLastCalledWith(['10.17.1.53'])
   })
 
   it('serialises overlapping syncs instead of interleaving them', async () => {
