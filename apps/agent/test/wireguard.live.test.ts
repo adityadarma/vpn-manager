@@ -103,6 +103,9 @@ describe.runIf(isLinuxWithNetAdmin && hasNetworkNamespace)('WireGuard Live Serve
     const cert = await driver.generateClientCert('alice_wg')
     expect(cert.clientKey).toBeDefined()
     expect(cert.clientCert).toBeDefined()
+    // The returned public key must be derived from the returned private key.
+    const expectedPub = execSync('wg pubkey', { input: `${cert.clientKey}\n`, encoding: 'utf-8' }).trim()
+    expect(cert.clientCert).toBe(expectedPub)
 
     const config = await driver.generateClientConfig('alice_wg', {
       serverIp: '192.168.1.100',
