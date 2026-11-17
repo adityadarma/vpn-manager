@@ -53,8 +53,11 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const api = {
   get: <T>(path: string) => apiFetch<T>(path),
+  // Always send a JSON body. A body-less POST has no Content-Type, and a
+  // reverse proxy that forwards it as `Transfer-Encoding: chunked` makes
+  // Fastify reject it with 415 Unsupported Media Type.
   post: <T>(path: string, body?: unknown) =>
-    apiFetch<T>(path, { method: 'POST', body: body !== undefined ? JSON.stringify(body) : undefined }),
+    apiFetch<T>(path, { method: 'POST', body: JSON.stringify(body ?? {}) }),
   put: <T>(path: string, body: unknown) =>
     apiFetch<T>(path, { method: 'PUT', body: body !== undefined ? JSON.stringify(body) : undefined }),
   patch: <T>(path: string, body: unknown) =>

@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- Added API request-framing tests that send every mutating route an empty body, an empty chunked body without Content-Type, JSON `{}`, and unsupported content. Routes are discovered from the OpenAPI spec, so new routes are covered automatically.
+- Added Vitest to the dashboard with tests for how the API client frames requests and handles error responses. CI now runs the dashboard tests.
+
+### Fixed
+
+- Fixed dashboard actions without a request body, such as Managed DNS **Sync**, failing with `Unsupported Media Type` behind reverse proxies that forward an empty POST as `Transfer-Encoding: chunked`. The dashboard now always sends a JSON body with POST requests, and the API treats an empty body with no Content-Type as no body.
+- Fixed API routes answering `500 Internal Server Error` when a required request body was missing or failed validation. They now answer `400 Bad Request` with the validation message.
+
 ## [2.8.3] - 2026-11-17
 
 ### Fixed

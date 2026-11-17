@@ -49,6 +49,7 @@ jobs:
         run: |
           pnpm --filter @vpn/api test
           pnpm --filter @vpn/agent test
+          pnpm --filter @vpn/web test
         env:
           ADMIN_PASSWORD: ci-test-admin-password-32chars!!
 

@@ -18,6 +18,7 @@ import swaggerPlugin from './plugins/swagger'
 import dbPlugin from './plugins/db'
 import nodeAuthPlugin from './plugins/node-auth'
 import staticPlugin from './plugins/static'
+import requestBodyPlugin from './plugins/request-body'
 
 import healthRoutes from './modules/health/health.routes'
 import authRoutes from './modules/auth/auth.routes'
@@ -53,6 +54,7 @@ export async function buildApp(env: Env) {
   app.decorate('alerts', alerts)
 
   // Plugins
+  await app.register(requestBodyPlugin) // before routes so they inherit the parser and error handler
   await app.register(corsPlugin)
   await app.register(cookiePlugin) // must be before jwtPlugin
   await app.register(rateLimitPlugin, { nodeEnv: env.NODE_ENV })
