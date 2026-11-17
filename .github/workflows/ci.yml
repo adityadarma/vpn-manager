@@ -86,10 +86,23 @@ jobs:
           docker build --target test -f apps/agent/Dockerfile -t vpn-agent-live-base .
           docker build -t vpn-agent-live-test -f - . <<'EOF'
           FROM vpn-agent-live-base
-          RUN apk add --no-cache openvpn easy-rsa wireguard-tools iproute2 iptables nftables ufw firewalld dbus \
-              && sed -i 's|^SELF=.*|SELF="${BASH_SOURCE[0]}"|' /usr/bin/wg-quick \
-              && grep -Fq 'SELF="${BASH_SOURCE[0]}"' /usr/bin/wg-quick
+          RUN apk add --no-cache openvpn easy-rsa wireguard-tools iproute2 iptables nftables ufw firewalld dbus
           EOF
+
+      # Ubuntu 26.04 runners load an AppArmor profile attached to the path
+      # /usr/bin/wg-quick. Privileged containers run unconfined, so the
+      # container's wg-quick inherits that host profile, which only permits
+      # Ubuntu's own /usr/bin/readlink and rejects Alpine's. Unload it on the
+      # disposable runner only.
+      - name: Unload host AppArmor profile for wg-quick
+        run: |
+          if sudo grep -q '^wg-quick ' /sys/kernel/security/apparmor/profiles 2>/dev/null; then
+            sudo apparmor_parser -R /etc/apparmor.d/wg-quick
+          fi
+          if sudo grep -q '^wg-quick ' /sys/kernel/security/apparmor/profiles 2>/dev/null; then
+            echo "wg-quick AppArmor profile is still loaded" >&2
+            exit 1
+          fi
 
       - name: Run kernel-backed VPN and firewall tests
         run: |

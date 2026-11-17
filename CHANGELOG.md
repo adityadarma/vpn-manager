@@ -19,7 +19,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Skipped installed but kernel-inoperable iptables backends in Agent live firewall tests, preventing `iptables-legacy` false failures in containerized CI environments without matching legacy kernel tables.
 - Moved WireGuard live-test private keys from `/tmp` to restricted files under `/etc/wireguard`, avoiding container filesystem permission failures in CI.
 - Added GNU `readlink` to the disposable Agent live-test image so Alpine's `wg-quick save` can persist WireGuard peer changes reliably in CI.
-- Removed `wg-quick`'s unnecessary `readlink` bootstrap from the disposable Agent live-test image, preventing `wg-quick save` permission failures on GitHub-hosted runners.
+- Unloaded the Ubuntu 26.04 host AppArmor `wg-quick` profile in the Agent live-test CI job, which blocked Alpine's `readlink` inside privileged containers and made `wg-quick save` fail with `Permission denied`.
 
 ## [2.8.1] - 2026-09-24
 
