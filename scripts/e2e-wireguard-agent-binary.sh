@@ -12,7 +12,20 @@ ADMIN_PASSWORD="e2e-admin-password-32-characters"
 JWT_SECRET="e2e-jwt-secret-that-is-at-least-32-characters"
 COOKIE_JAR=$(mktemp)
 
+trap 'echo "E2E failed at line $LINENO: $BASH_COMMAND" >&2' ERR
+
 cleanup() {
+  local status=$?
+  if [ "$status" -ne 0 ]; then
+    for container in "$MANAGER" "$AGENT" "$CLIENT"; do
+      docker inspect "$container" >/dev/null 2>&1 || continue
+      echo "::group::$container (diagnostics)"
+      docker inspect -f 'status={{.State.Status}} exit={{.State.ExitCode}}' "$container" || true
+      docker logs --tail 200 "$container" 2>&1 || true
+      echo "::endgroup::"
+    done
+    docker exec "$AGENT" wg show 2>&1 || true
+  fi
   docker rm -f "$CLIENT" "$AGENT" "$MANAGER" >/dev/null 2>&1 || true
   docker network rm "$NETWORK" >/dev/null 2>&1 || true
   rm -f "$COOKIE_JAR"
