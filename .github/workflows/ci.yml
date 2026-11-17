@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -9,6 +10,7 @@ on:
       - 'apps/web/**'
       - 'apps/agent/**'
       - 'packages/**'
+      - 'scripts/**'
       - 'Dockerfile'
       - 'apps/agent/Dockerfile'
       - 'docker-compose*.yml'
