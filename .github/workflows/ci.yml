@@ -86,9 +86,9 @@ jobs:
           docker build --target test -f apps/agent/Dockerfile -t vpn-agent-live-base .
           docker build -t vpn-agent-live-test -f - . <<'EOF'
           FROM vpn-agent-live-base
-          RUN apk add --no-cache openvpn easy-rsa wireguard-tools iproute2 iptables nftables ufw firewalld dbus coreutils \
-              && install -m 0755 /bin/coreutils /usr/local/bin/readlink \
-              && /usr/local/bin/readlink -f /usr/bin/wg-quick >/dev/null
+          RUN apk add --no-cache openvpn easy-rsa wireguard-tools iproute2 iptables nftables ufw firewalld dbus \
+              && sed -i 's|^SELF=.*|SELF="${BASH_SOURCE[0]}"|' /usr/bin/wg-quick \
+              && grep -Fq 'SELF="${BASH_SOURCE[0]}"' /usr/bin/wg-quick
           EOF
 
       - name: Run kernel-backed VPN and firewall tests
