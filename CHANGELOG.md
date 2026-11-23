@@ -6,6 +6,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.9.1] - 2026-11-23
+
+### Security
+
+- Fixed the login and node registration rate limits being bypassable by sending a different `X-Forwarded-For` header on each request. The API now trusts that header only from loopback and private-network proxies. Set `TRUST_PROXY` to change this: use a proxy's address when it has a public IP, or `false` when the API port is exposed directly.
+- Fixed audit logs and VPN connection records accepting a client IP supplied through the `CF-Connecting-IP`, `X-Real-IP`, or `X-Forwarded-For` headers. The recorded IP now comes from the proxy-aware address, so a client cannot choose it.
+- Fixed a logged-out admin token still working when the request also carried an unrelated `vpn_token` cookie. Token verification, the revocation check, and logout now read the same token (the `Authorization` header first, then the cookie).
+- Updated dependencies to patched versions, including `fastify`, `fast-jwt` (via `@fastify/jwt`), `zod`, `undici`, `seroval`, `astro`, and `sharp`. `pnpm audit` findings dropped from 79 (20 high) to 1 low.
+- Fixed the API starting in production with template secrets from `.env.production`, which are public in the repository. With `NODE_ENV=production`, the API now exits at startup if `JWT_SECRET`, `NODE_REGISTRATION_KEY`, or `VPN_TOKEN` contains `CHANGE_ME`. In other environments it logs a warning and continues.
+- Fixed an admin password change leaving the user's existing sessions valid until their token expired. Changing a user's password through `PATCH /api/v1/users/:id` now revokes all of that user's tokens, as a role or active-status change already did.
+
+### Removed
+
+- Removed `apps/web/package-lock.json`. The workspace uses `pnpm-lock.yaml` only.
+
 ## [2.9.0] - 2026-11-17
 
 ### Added
