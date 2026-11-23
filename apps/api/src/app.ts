@@ -1,6 +1,6 @@
 import Fastify from 'fastify'
 import { createDb } from '@vpn/db'
-import type { Env } from './config/env'
+import { parseTrustProxy, type Env } from './config/env'
 import { NodeStatusChecker } from './services/node-status-checker'
 import { startCertExpiryWatcher } from './services/cert-expiry'
 import { TokenRevocationSweeper } from './services/token-revocation'
@@ -45,9 +45,10 @@ export async function buildApp(env: Env) {
     logger: {
       level: env.NODE_ENV === 'development' ? 'info' : 'warn',
     },
-    // Trust reverse proxy headers (Cloudflare Tunnel, nginx, etc.)
-    // so request.ip reads from X-Forwarded-For instead of the Docker socket IP
-    trustProxy: true,
+    // Read X-Forwarded-For only when the connection comes from a trusted proxy
+    // (see TRUST_PROXY). `true` would let any client choose its own request.ip
+    // and sidestep the per-IP rate limits.
+    trustProxy: parseTrustProxy(env.TRUST_PROXY),
   })
   registerRealtimeEvents(app)
   const alerts = new AlertService(db, app.realtime)

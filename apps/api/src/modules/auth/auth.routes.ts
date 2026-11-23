@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs'
 import { v7 as uuidv7 } from 'uuid'
 import { LoginSchema } from '@vpn/shared'
 import { revokeToken } from '../../services/token-revocation'
+import { extractRequestToken } from '../../utils/request-token'
 
 const authRoutes: FastifyPluginAsync = async (app) => {
   // POST /api/v1/auth/login
@@ -101,9 +102,7 @@ const authRoutes: FastifyPluginAsync = async (app) => {
     },
     async (request, reply) => {
       // Revoke the token so it can't be reused even if captured
-      const rawToken =
-        request.cookies?.['vpn_token'] ||
-        request.headers.authorization?.replace('Bearer ', '')
+      const rawToken = extractRequestToken(request)
 
       if (rawToken) {
         try {

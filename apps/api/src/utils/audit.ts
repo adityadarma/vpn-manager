@@ -2,34 +2,18 @@ import { v7 as uuidv7 } from 'uuid'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 
 /**
- * Resolve the real client IP from any reverse proxy setup.
+ * Resolve the client IP for audit logs and connection records.
  *
- * Header priority (first non-empty value wins):
- *   1. CF-Connecting-IP  — Cloudflare Tunnel / CDN
- *   2. X-Real-IP         — Nginx / Nginx Proxy Manager / HAProxy
- *   3. X-Forwarded-For   — Standard header (all proxies); we take the FIRST hop
- *   4. request.ip        — Fastify socket IP (works when trustProxy:true is set)
+ * Uses `request.ip`, which Fastify derives from X-Forwarded-For only when the
+ * connection comes from a trusted proxy (see TRUST_PROXY). Reading the
+ * forwarded headers directly would let any client write an IP of its choice
+ * into the audit log.
  *
- * Works out-of-the-box with: Cloudflare Tunnel, Nginx Proxy Manager, Traefik, Caddy, HAProxy, etc.
+ * Proxies that terminate the client connection (nginx, Caddy, Traefik,
+ * Cloudflare Tunnel) all set X-Forwarded-For, so no provider-specific header
+ * is needed.
  */
 export function getClientIp(request: FastifyRequest): string {
-  // 1. Cloudflare: sets a single clean IP
-  const cfIp = request.headers['cf-connecting-ip']
-  if (cfIp && typeof cfIp === 'string' && cfIp.trim()) return cfIp.trim()
-
-  // 2. Nginx / standard proxies: X-Real-IP is a single clean IP
-  const realIp = request.headers['x-real-ip']
-  if (realIp && typeof realIp === 'string' && realIp.trim()) return realIp.trim()
-
-  // 3. X-Forwarded-For: may be comma-separated chain "clientIp, proxy1, proxy2"
-  //    We only trust the FIRST value (leftmost = original client)
-  const forwarded = request.headers['x-forwarded-for']
-  if (forwarded) {
-    const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded).split(',')[0].trim()
-    if (first) return first
-  }
-
-  // 4. Fallback to socket IP (already resolved by Fastify trustProxy)
   return request.ip
 }
 

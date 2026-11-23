@@ -235,4 +235,48 @@ describe('Token Revocation', () => {
     })
     expect(meRes2.statusCode).toBe(401)
   })
+
+  it('should reject a revoked header token even when a different cookie is sent', async () => {
+    const loginRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: { email: 'admin@vpn.local', password: 'Admin@1234!' },
+    })
+    const cookie = String(loginRes.headers['set-cookie']).split(';')[0]!
+    const token = decodeURIComponent(cookie.replace('vpn_token=', ''))
+
+    await app.inject({ method: 'POST', url: '/api/v1/auth/logout', headers: { Cookie: cookie } })
+
+    const withDecoy = await app.inject({
+      method: 'GET',
+      url: '/api/v1/auth/me',
+      headers: { authorization: `Bearer ${token}`, cookie: 'vpn_token=unrelated-cookie' },
+    })
+    expect(withDecoy.statusCode).toBe(401)
+  })
+
+  it('should revoke the token that authenticates the request when logging out', async () => {
+    const loginRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: { email: 'admin@vpn.local', password: 'Admin@1234!' },
+    })
+    const token = decodeURIComponent(
+      String(loginRes.headers['set-cookie']).split(';')[0]!.replace('vpn_token=', ''),
+    )
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/logout',
+      headers: { authorization: `Bearer ${token}`, cookie: 'vpn_token=unrelated-cookie' },
+    })
+
+    expect(await isTokenRevoked(app.db, token)).toBe(true)
+    const after = await app.inject({
+      method: 'GET',
+      url: '/api/v1/auth/me',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(after.statusCode).toBe(401)
+  })
 })

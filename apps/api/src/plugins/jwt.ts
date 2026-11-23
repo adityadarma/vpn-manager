@@ -2,6 +2,7 @@ import fp from 'fastify-plugin'
 import fastifyJwt from '@fastify/jwt'
 import type { FastifyRequest, FastifyReply } from 'fastify'
 import { isTokenRevoked, isUserTokenRevoked } from '../services/token-revocation'
+import { extractRequestToken } from '../utils/request-token'
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -29,6 +30,8 @@ export default fp(async (app, options: JwtPluginOptions) => {
   await app.register(fastifyJwt, {
     secret: options.secret,
     sign: { expiresIn: options.expiresIn },
+    // Verification and the revocation check must read the same token.
+    verify: { extractToken: extractRequestToken },
     // Read token from httpOnly cookie "vpn_token"
     cookie: {
       cookieName: 'vpn_token',
@@ -43,10 +46,7 @@ export default fp(async (app, options: JwtPluginOptions) => {
    * in-memory Map, so a logout survives restarts and applies across replicas.
    */
   async function checkBlacklist(request: FastifyRequest): Promise<boolean> {
-    // Get raw token from cookie or Authorization header
-    const rawToken =
-      request.cookies?.['vpn_token'] ||
-      request.headers.authorization?.replace('Bearer ', '')
+    const rawToken = extractRequestToken(request)
 
     if (rawToken && (await isTokenRevoked(app.db, rawToken))) {
       return true

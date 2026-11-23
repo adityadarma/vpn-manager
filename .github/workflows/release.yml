@@ -136,7 +136,8 @@ jobs:
         run: |
           cp .env.production .env
           sed -i 's/CHANGE_ME_TO_SECURE_RANDOM_STRING_MIN_32_CHARS/test-secret-key-for-ci-testing-only-32chars/' .env
-          echo "VPN_TOKEN=test-vpn-token-for-ci" >> .env
+          printf '\nVPN_TOKEN=test-vpn-token-for-ci\n' >> .env
+          echo "NODE_REGISTRATION_KEY=test-registration-key-for-ci" >> .env
           echo "ADMIN_PASSWORD=ci-deploy-test-admin-pw-32c!!" >> .env
 
       - name: Start manager image

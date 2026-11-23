@@ -81,6 +81,40 @@ describe('Users API', () => {
     expect(JSON.parse(task.payload)).toMatchObject({ username: 'disable_user_laptop', client_cert: 'client-certificate' })
   })
 
+  it('revokes existing sessions when an admin changes a user password', async () => {
+    const email = 'password-rotation@example.com'
+    const create = await app.inject({
+      method: 'POST',
+      url: '/api/v1/users',
+      headers: { Cookie: adminCookie },
+      payload: { name: 'Password Rotation', email, password: 'OldPassword@123', role: 'admin' },
+    })
+    expect(create.statusCode).toBe(201)
+    const userId = create.json().id
+
+    const login = await app.inject({ method: 'POST', url: '/api/v1/auth/login', payload: { email, password: 'OldPassword@123' } })
+    expect(login.statusCode).toBe(200)
+    const setCookie = login.headers['set-cookie']
+    const oldCookie = (Array.isArray(setCookie) ? setCookie[0]! : setCookie!).split(';')[0]!
+
+    const before = await app.inject({ method: 'GET', url: '/api/v1/auth/me', headers: { Cookie: oldCookie } })
+    expect(before.statusCode).toBe(200)
+
+    const patch = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/users/${userId}`,
+      headers: { Cookie: adminCookie },
+      payload: { password: 'NewPassword@123' },
+    })
+    expect(patch.statusCode).toBe(200)
+
+    const after = await app.inject({ method: 'GET', url: '/api/v1/auth/me', headers: { Cookie: oldCookie } })
+    expect(after.statusCode).toBe(401)
+
+    const relogin = await app.inject({ method: 'POST', url: '/api/v1/auth/login', payload: { email, password: 'NewPassword@123' } })
+    expect(relogin.statusCode).toBe(200)
+  })
+
   it('uses a healthy group Managed DNS listener in WireGuard config', async () => {
     const groupId = uuidv7()
     const userId = uuidv7()

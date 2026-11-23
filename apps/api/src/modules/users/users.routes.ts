@@ -189,8 +189,8 @@ const userRoutes: FastifyPluginAsync = async (app) => {
         updated_at: new Date(),
       }
 
-      // If role or active status changed, revoke all existing tokens for this user
-      if ((input.role && input.role !== user.role) || (input.isActive !== undefined && input.isActive !== user.is_active)) {
+      // If role, active status, or password changed, revoke all existing tokens for this user
+      if ((input.role && input.role !== user.role) || (input.isActive !== undefined && input.isActive !== user.is_active) || input.password) {
         const { revokeAllUserTokens } = await import('../../services/token-revocation')
         await revokeAllUserTokens(app.db, id)
       }

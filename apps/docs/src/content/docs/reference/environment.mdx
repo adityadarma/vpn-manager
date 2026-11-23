@@ -15,6 +15,7 @@ Store `.env` files with restrictive permissions and never commit them to Git. Ro
 | `JWT_SECRET`            | required                 | At least 32 characters; secret for session tokens                                     |
 | `JWT_EXPIRES_IN`        | `7d`                     | JWT lifetime                                                                          |
 | `WEB_URL`               | optional                 | Dashboard URL for CORS in local development                                           |
+| `TRUST_PROXY`           | `loopback,linklocal,uniquelocal` | Connections allowed to set the client IP through `X-Forwarded-For`. Accepts `false` or a comma-separated list of IPs, CIDRs, and named ranges. Set `false` when the API port is exposed directly. |
 | `NODE_REGISTRATION_KEY` | not validated by API env | Secret for node auto-registration; consumed by the registration route                 |
 | `VPN_TOKEN`             | not validated by API env | `X-VPN-Token` secret for VPN hooks and registration                                   |
 | `ADMIN_PASSWORD`        | empty                    | Used only for the first admin seed; empty generates and prints a random password once |
